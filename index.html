@@ -1864,7 +1864,7 @@ function updateFolderUI(handle) {
   if (handle) {
     statusEl.textContent = `✅ 자동저장 폴더: ${handle.name}`;
     statusEl.style.color = 'var(--ac2)';
-    pathEl.textContent   = `${handle.name} / 날짜_아파트 / 호수 / 사진 순서로 저장됩니다`;
+    pathEl.textContent   = `${handle.name}/ 에 [날짜_아파트_호수_전1.jpg] 형식으로 저장됩니다`;
     clearBtn.style.display = 'inline-flex';
     setBtn.textContent   = '📁 폴더 변경';
   } else {
@@ -2003,40 +2003,37 @@ async function tryAutoSave(photo, unitName, typeLabel) {
   updatePendingUI();
 }
 
-// 실제 쓰기 (한 장) — createWritable 직전에 다른 핸들 호출 안 함
+// 실제 쓰기 (한 장) — Android Chrome의 하위 디렉토리 createWritable 버그 회피
+// crbug.com/376097631: 새로 생성된 디렉토리에서 createWritable이 InvalidStateError 발생
+// 우회: 하위 폴더를 만들지 않고 사용자가 선택한 폴더에 직접 저장 (파일명에 경로 정보 포함)
 async function doWriteOne(photo, unitName, typeLabel) {
   const date   = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
   const apt    = document.getElementById('aptName').value  || '작업';
-  const folder = `${date}_${apt}`;
   const safe   = unitName.replace(/[\/\\:*?"<>|]/g, '_');
+  const aptSafe = apt.replace(/[\/\\:*?"<>|]/g, '_');
 
   let step = 'init';
   try {
-    // 1) Blob을 먼저 만들어서 핸들 호출 사이에 다른 작업 안 끼게 함
     step = 'Blob 변환';
     const blob = dataURLtoBlob(photo.dataUrl);
     if (blob.size === 0) throw new Error('Blob 크기 0');
 
-    // 2) 인덱스를 메모리 카운터로만 결정 (파일존재 확인 호출 안 함)
+    // 인덱스 결정 (메모리 카운터)
     step = '인덱스 결정';
-    const idxKey = `${folder}/${safe}/${typeLabel}`;
+    const idxKey = `${date}_${apt}/${safe}/${typeLabel}`;
     let idx = _indexCounter.get(idxKey) || 1;
     _indexCounter.set(idxKey, idx + 1);
-    const fname = `${typeLabel}${idx}.jpg`;
 
-    // 3) 디렉토리 → 파일 핸들 → createWritable을 연속으로 호출
-    //    (중간에 다른 핸들 작업 안 함 → 캐시 충돌 방지)
-    step = '날짜폴더';
-    const dateDir = await photoFolderHandle.getDirectoryHandle(folder, { create: true });
-
-    step = '호수폴더';
-    const unitDir = await dateDir.getDirectoryHandle(safe, { create: true });
+    // ★ 핵심: 하위 디렉토리 만들지 않고 루트에 직접 저장
+    // 파일명에 모든 경로 정보를 평탄하게 인코딩
+    // 예: 2026-04-20_OO아파트_101동 201호_전1.jpg
+    const fname = `${date}_${aptSafe}_${safe}_${typeLabel}${idx}.jpg`;
 
     step = '파일핸들';
-    const fh = await unitDir.getFileHandle(fname, { create: true });
+    const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
 
     step = 'createWritable';
-    const w = await fh.createWritable({ keepExistingData: false });
+    const w = await fh.createWritable();
 
     step = 'write';
     await w.write(blob);
@@ -2174,24 +2171,26 @@ async function savePhotosToFolder() {
 
   const date = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
   const apt  = document.getElementById('aptName').value || '작업';
-  const folderName = `${date}_${apt}`;
+  const aptSafe = apt.replace(/[\/\\:*?"<>|]/g, '_');
 
   showOverlay('사진 저장 중...');
   let saved = 0, skipped = 0;
-  try {
-    const dateDir = await photoFolderHandle.getDirectoryHandle(folderName, { create: true });
+  const errors = [];
 
-    // 사진 1장 저장 헬퍼 (중복 체크 포함)
-    async function savePhoto(p, unitDir, typeLabel) {
-      // 이미 저장된 사진은 스킵
+  try {
+    // 사진 1장 저장 헬퍼 (평탄 저장)
+    async function savePhoto(p, unitName, typeLabel, idx) {
       if (typeof p === 'object' && (p.savedToFolder || _savedPhotoIds.has(p.id))) {
         skipped++;
         return;
       }
-      const idx   = await findNextFileIndex(unitDir, typeLabel);
-      const fname = `${typeLabel}${idx}.jpg`;
-      const fh    = await unitDir.getFileHandle(fname, { create: true });
-      await writeBlobToFile(fh, dataURLtoBlob(photoUrl(p)));
+      const safe  = unitName.replace(/[\/\\:*?"<>|]/g, '_');
+      const fname = `${date}_${aptSafe}_${safe}_${typeLabel}${idx}.jpg`;
+      const fh    = await photoFolderHandle.getFileHandle(fname, { create: true });
+      const blob  = dataURLtoBlob(photoUrl(p));
+      const w     = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
       if (typeof p === 'object') {
         p.savedToFolder = true;
         _savedPhotoIds.add(p.id);
@@ -2200,31 +2199,33 @@ async function savePhotosToFolder() {
     }
 
     for (const u of units) {
-      const safe    = u.name.replace(/[\/\\:*?"<>|]/g, '_');
-      const unitDir = await dateDir.getDirectoryHandle(safe, { create: true });
-
       for (let i = 0; i < u.before.length; i++) {
         setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
-        await savePhoto(u.before[i], unitDir, '전');
+        try { await savePhoto(u.before[i], u.name, '전', i+1); }
+        catch(e) { errors.push(`${u.name} 전${i+1}: ${e.message}`); }
       }
       for (let i = 0; i < u.after.length; i++) {
         setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
-        await savePhoto(u.after[i], unitDir, '후');
+        try { await savePhoto(u.after[i], u.name, '후', i+1); }
+        catch(e) { errors.push(`${u.name} 후${i+1}: ${e.message}`); }
       }
       for (let si = 0; si < u.specials.length; si++) {
         for (let pi = 0; pi < u.specials[si].photos.length; pi++) {
           setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
-          await savePhoto(u.specials[si].photos[pi], unitDir, `특이${si+1}_`);
+          try { await savePhoto(u.specials[si].photos[pi], u.name, `특이${si+1}_`, pi+1); }
+          catch(e) { errors.push(`${u.name} 특이${si+1}_${pi+1}: ${e.message}`); }
         }
       }
     }
     sessionAutoSave();
     hideOverlay();
     renderAll();
-    if (skipped > 0) {
-      showToast(`✅ ${saved}장 저장 (${skipped}장 이미 저장됨) → ${folderName}/`, 'ok');
+    if (errors.length > 0) {
+      showDebugPanel(`${saved}장 저장, ${errors.length}장 실패\n\n` + errors.slice(0,5).join('\n'));
+    } else if (skipped > 0) {
+      showToast(`✅ ${saved}장 저장 (${skipped}장 이미 저장됨)`, 'ok');
     } else {
-      showToast(`✅ ${saved}장 저장 완료 → ${folderName}/`, 'ok');
+      showToast(`✅ ${saved}장 저장 완료`, 'ok');
     }
   } catch(e) {
     hideOverlay();

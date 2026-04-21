@@ -1914,7 +1914,7 @@ function updateFolderUI(handle, perm) {
     if (perm === 'granted') {
       statusEl.textContent = `✅ 자동저장 폴더: ${handle.name}`;
       statusEl.style.color = 'var(--ac2)';
-      pathEl.textContent   = `${handle.name}/날짜_아파트/호수/[B1.jpg, A1.jpg] 형식 · 매핑은 _info.txt`;
+      pathEl.textContent   = `${handle.name}/[날짜]/work01/image01.jpg 형식 · 호수 매핑은 _info.txt 참고`;
       clearBtn.style.display = 'inline-flex';
       setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'none';
@@ -2069,11 +2069,20 @@ async function tryAutoSave(photo, unitName, typeLabel) {
   updatePendingUI();
 }
 
-// 실제 쓰기 (한 장) — Android Chrome 한글 파일명 버그 회피
-// 폴더와 파일명 모두 ASCII(영문)만 사용, 한글 매핑은 _info.txt에 저장
+// 호수별 번호 매핑 (1호 → work01, 2호 → work02, ...)
+// 앱 실행 중 동일 호수는 같은 번호 유지
+const _unitWorkNumber = new Map();
+function getWorkNumber(unitName) {
+  if (!_unitWorkNumber.has(unitName)) {
+    _unitWorkNumber.set(unitName, _unitWorkNumber.size + 1);
+  }
+  return String(_unitWorkNumber.get(unitName)).padStart(2, '0');
+}
+
+// 실제 쓰기 (한 장) — 간결한 영문 폴더/파일명
+// 구조: [선택폴더]/[YYYY-MM-DD]/workNN/imageNN.jpg
 async function doWriteOne(photo, unitName, typeLabel) {
-  const date   = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
-  const apt    = document.getElementById('aptName').value  || 'site';
+  const date = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
 
   let step = 'init';
   try {
@@ -2081,30 +2090,30 @@ async function doWriteOne(photo, unitName, typeLabel) {
     const blob = dataURLtoBlob(photo.dataUrl);
     if (blob.size === 0) throw new Error('Blob 크기 0');
 
-    // 인덱스 결정 (메모리 카운터)
+    // 인덱스 결정 (타입별 카운터)
     step = '인덱스 결정';
     const idxKey = `${date}/${unitName}/${typeLabel}`;
     let idx = _indexCounter.get(idxKey) || 1;
     _indexCounter.set(idxKey, idx + 1);
 
-    // 영문 코드 생성
-    const typeEn = typeLabel === '전' ? 'B'
-                 : typeLabel === '후' ? 'A'
-                 : typeLabel.replace(/^특이(\d+)_?$/, 'S$1_')
-                            .replace(/[^A-Za-z0-9_]/g, '_');
-    const unitHash = toShortHash(unitName);
-    const aptHash  = toShortHash(apt);
+    // 호수 → workNN 번호
+    const workNum = getWorkNumber(unitName);
 
-    // 폴더 구조: [선택 폴더] / [날짜_아파트코드] / [호수코드] / [타입번호].jpg
+    // 타입 프리픽스: B=before, A=after, S1=special1, ...
+    const typePrefix = typeLabel === '전' ? 'B'
+                     : typeLabel === '후' ? 'A'
+                     : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
+
+    // 폴더 구조: [루트] / [날짜] / workNN / [타입]imageNN.jpg
     step = '날짜폴더';
-    const dateDir = await photoFolderHandle.getDirectoryHandle(`${date}_${aptHash}`, { create: true });
+    const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
 
-    step = '호수폴더';
-    const unitDir = await dateDir.getDirectoryHandle(unitHash, { create: true });
+    step = '작업폴더';
+    const workDir = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });
 
     step = '파일핸들';
-    const fname = `${typeEn}${idx}.jpg`;
-    const fh = await unitDir.getFileHandle(fname, { create: true });
+    const fname = `${typePrefix}_image${String(idx).padStart(2, '0')}.jpg`;
+    const fh = await workDir.getFileHandle(fname, { create: true });
 
     step = 'createWritable';
     const w = await fh.createWritable();
@@ -2578,14 +2587,12 @@ async function savePhotosToFolder() {
       skipped++;
       return;
     }
-    // 영문 파일명
-    const typeEn = typeLabel === '전' ? 'B'
-                 : typeLabel === '후' ? 'A'
-                 : typeLabel.replace(/^특이(\d+)_?$/, 'S$1_')
-                            .replace(/[^A-Za-z0-9_]/g, '_');
-    const unitHash = toShortHash(unitName);
-    const aptHash  = toShortHash(apt);
-    const fname    = `${typeEn}${idx}.jpg`;
+    // 영문 폴더/파일명
+    const workNum = getWorkNumber(unitName);
+    const typePrefix = typeLabel === '전' ? 'B'
+                     : typeLabel === '후' ? 'A'
+                     : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
+    const fname = `${typePrefix}_image${String(idx).padStart(2, '0')}.jpg`;
 
     // 최대 3번 재시도
     let lastErr = null;
@@ -2594,11 +2601,11 @@ async function savePhotosToFolder() {
         const blob = dataURLtoBlob(photoUrl(p));
         if (blob.size === 0) throw new Error('Blob 크기 0');
 
-        // 폴더 구조: [루트] / [날짜_아파트코드] / [호수코드] / [타입번호].jpg
-        const dateDir = await photoFolderHandle.getDirectoryHandle(`${date}_${aptHash}`, { create: true });
-        const unitDir = await dateDir.getDirectoryHandle(unitHash, { create: true });
+        // 폴더 구조: [루트] / [날짜] / workNN / 파일명
+        const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
+        const workDir = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });
 
-        const fh = await unitDir.getFileHandle(fname, { create: true });
+        const fh = await workDir.getFileHandle(fname, { create: true });
         const w  = await fh.createWritable();
         await w.write(blob);
         await w.close();
@@ -2641,27 +2648,28 @@ async function savePhotosToFolder() {
       }
     }
 
-    // 매핑 정보 파일 저장 (어떤 영문코드 = 어떤 한글 호수인지)
+    // 매핑 정보 파일 저장 (work01 = 어느 호수인지)
     try {
-      const aptHashI = toShortHash(apt);
       const lines = [
         `에어컨 청소 작업 사진 — ${new Date().toLocaleString('ko-KR')}`,
         `날짜: ${date}`,
         `아파트명: ${apt}`,
-        `아파트 코드: ${aptHashI}`,
+        `담당자: ${document.getElementById('workerName').value || ''}`,
         '',
         '── 폴더 구조 ──',
-        `[${date}_${aptHashI}]/[호수코드]/[타입][번호].jpg`,
-        '타입: B=작업전(Before), A=작업후(After), SN_=특이사항N',
+        `${date}/workNN/[B/A/S]_imageNN.jpg`,
+        'B = 작업전 (Before)',
+        'A = 작업후 (After)',
+        'S1, S2... = 특이사항',
         '',
         '── 호수 매핑 ──',
       ];
       for (const u of units) {
-        const uHash = toShortHash(u.name);
-        lines.push(`${uHash} = ${u.name}  (전 ${u.before.length}장 · 후 ${u.after.length}장 · 특이 ${u.specials.length}건)`);
+        const num = getWorkNumber(u.name);
+        lines.push(`work${num} = ${u.name}  (전 ${u.before.length}장 · 후 ${u.after.length}장 · 특이 ${u.specials.length}건)`);
       }
       const infoBlob = new Blob([lines.join('\n')], { type: 'text/plain; charset=utf-8' });
-      const dateDir = await photoFolderHandle.getDirectoryHandle(`${date}_${aptHashI}`, { create: true });
+      const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
       const infoFh = await dateDir.getFileHandle('_info.txt', { create: true });
       const infoW = await infoFh.createWritable();
       await infoW.write(infoBlob);

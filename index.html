@@ -2124,19 +2124,27 @@ async function flushPendingSaves() {
   if (pendingSaves.length === 0) return;
   if (!photoFolderHandle) { showToast('폴더가 설정되지 않았습니다', 'err'); return; }
 
-  // 권한 재요청 (사용자 제스처 안에서만 가능)
+  // ★ 핵심: 이미 granted면 requestPermission 건너뛰기 (제스처 보존)
+  let permOk = false;
   try {
-    const perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') {
-      showToast('📁 폴더 권한이 거부됐습니다', 'err');
-      return;
+    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (curPerm === 'granted') {
+      permOk = true;
+    } else {
+      // 권한 없을 때만 요청 (이 경우 다음 번엔 queryPermission만 쓰게 됨)
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      permOk = (newPerm === 'granted');
     }
-    // 권한 획득 성공 → UI 업데이트
-    updateFolderUI(photoFolderHandle, 'granted');
   } catch(e) {
-    showToast('📁 권한 요청 실패: ' + e.message, 'err');
+    showToast('📁 권한 확인 실패: ' + e.message, 'err');
     return;
   }
+
+  if (!permOk) {
+    showToast('📁 폴더 권한이 거부됐습니다', 'err');
+    return;
+  }
+  updateFolderUI(photoFolderHandle, 'granted');
 
   showOverlay('저장 중...');
   const total = pendingSaves.length;
@@ -2412,15 +2420,23 @@ async function saveSinglePhoto(photo, unitName, typeLabel, index) {
     return;
   }
 
-  // 폴더 설정되어 있으면 폴더로 저장 (권한 재요청)
+  // 폴더 설정되어 있으면 폴더로 저장 (이미 granted면 requestPermission 생략)
+  let permOk = false;
   try {
-    const perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') {
-      showToast('📁 폴더 권한이 거부됐습니다', 'err');
-      return;
+    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (curPerm === 'granted') {
+      permOk = true;
+    } else {
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      permOk = (newPerm === 'granted');
     }
   } catch(e) {
-    showToast('권한 요청 실패', 'err');
+    showToast('권한 확인 실패', 'err');
+    return;
+  }
+
+  if (!permOk) {
+    showToast('📁 폴더 권한이 거부됐습니다', 'err');
     return;
   }
 
@@ -2456,12 +2472,20 @@ async function savePhotosToFolder() {
   if (totalPhotos === 0) { showToast('저장할 사진이 없습니다', 'err'); return; }
   if (!photoFolderHandle) { showToast('먼저 폴더를 설정해주세요', 'err'); return; }
 
-  // 권한 재요청 (사용자 제스처)
+  // ★ 이미 granted면 requestPermission 생략 (제스처 보존)
+  let permOk = false;
   try {
-    const perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') { showToast('📁 폴더 권한이 거부됐습니다', 'err'); return; }
-    updateFolderUI(photoFolderHandle, 'granted');
-  } catch(e) { showToast('권한 요청 실패', 'err'); return; }
+    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (curPerm === 'granted') {
+      permOk = true;
+    } else {
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      permOk = (newPerm === 'granted');
+    }
+  } catch(e) { showToast('권한 확인 실패: ' + e.message, 'err'); return; }
+
+  if (!permOk) { showToast('📁 폴더 권한이 거부됐습니다', 'err'); return; }
+  updateFolderUI(photoFolderHandle, 'granted');
 
   // 이미 저장됐다고 표시된 사진 개수 확인
   const alreadyMarked = units.reduce((s, u) => {

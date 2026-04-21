@@ -15,123 +15,115 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=DM+Mono:wght@400;500&display=swap');
 :root{--bg:#0d0f18;--sf:#161924;--sf2:#1e2235;--sf3:#252a40;--bd:#2a2f47;--ac:#3d8ef0;--ac2:#00c9a7;--tx:#dde2f5;--mu:#7880a0;--dn:#f06060;--wn:#f0b429;}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);}
+html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);font-size:15px;}
 
-/* HEADER */
-.hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px;}
-.logo{display:flex;align-items:center;gap:9px;flex-shrink:0;}
-.logo-ic{width:34px;height:34px;background:linear-gradient(135deg,var(--ac),var(--ac2));border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;}
-.logo-tx{font-size:13px;font-weight:700;}.logo-sb{font-size:9px;color:var(--mu);}
-.save-status{font-size:9px;padding:2px 7px;border-radius:10px;font-weight:600;opacity:0;transition:opacity .4s;}
+/* HEADER - S22 친화적 */
+.hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:10px;}
+.logo{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.logo-ic{width:40px;height:40px;background:linear-gradient(135deg,var(--ac),var(--ac2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.logo-tx{font-size:15px;font-weight:700;}.logo-sb{font-size:11px;color:var(--mu);margin-top:2px;}
+.save-status{font-size:11px;padding:3px 9px;border-radius:12px;font-weight:600;opacity:0;transition:opacity .4s;}
 .save-status.saving{background:rgba(240,180,41,.2);color:var(--wn);opacity:1;}
 .save-status.saved{background:rgba(0,201,167,.15);color:var(--ac2);opacity:1;}
 .save-status.hide{opacity:0;}
-.hdr-fields{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;}
-.hf{display:flex;flex-direction:column;gap:2px;}
-.hf label{font-size:9px;color:var(--mu);text-transform:uppercase;letter-spacing:.6px;}
-.hf input{background:var(--sf2);border:1px solid var(--bd);border-radius:5px;padding:5px 8px;color:var(--tx);font-family:inherit;font-size:12px;width:108px;}
+.hdr-fields{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;width:100%;}
+.hf{display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px;}
+.hf label{font-size:11px;color:var(--mu);text-transform:uppercase;letter-spacing:.6px;font-weight:600;}
+.hf input{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:9px 11px;color:var(--tx);font-family:inherit;font-size:14px;width:100%;}
 .hf input:focus{outline:none;border-color:var(--ac);}
-.hdr-btns{display:flex;gap:5px;flex-wrap:wrap;}
+.hdr-btns{display:flex;gap:6px;flex-wrap:wrap;width:100%;}
 
-/* BUTTONS */
-.btn{padding:7px 13px;border-radius:7px;border:none;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;white-space:nowrap;touch-action:manipulation;}
+/* BUTTONS - 터치 친화적 크기 */
+.btn{padding:10px 14px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;touch-action:manipulation;min-height:40px;}
 .btn:active{transform:scale(.96);}
 .b-blue{background:linear-gradient(135deg,var(--ac),#5b6ef7);color:#fff;}
 .b-green{background:linear-gradient(135deg,var(--ac2),#00a884);color:#0d1117;}
 .b-orange{background:linear-gradient(135deg,#f0832a,#e05c10);color:#fff;}
 .b-gold{background:linear-gradient(135deg,#e0a020,#c07010);color:#fff;}
-.b-ghost{background:transparent;border:1px solid var(--bd);color:var(--mu);}
+.b-ghost{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);}
 .b-ghost:hover,.b-ghost:active{border-color:var(--ac);color:var(--ac);}
 .b-red{background:rgba(240,96,96,.15);border:1px solid var(--dn);color:var(--dn);}
-.b-xs{padding:4px 9px;font-size:10px;border-radius:5px;}
+.b-xs{padding:7px 11px;font-size:12px;border-radius:6px;min-height:34px;}
 .btn:disabled{opacity:.4;pointer-events:none;}
-.icon-btn{background:none;border:none;cursor:pointer;color:var(--mu);padding:3px 5px;font-size:13px;touch-action:manipulation;}
-.del-btn{background:none;border:none;cursor:pointer;color:var(--dn);font-size:10px;padding:2px 7px;border-radius:4px;font-family:inherit;font-weight:600;touch-action:manipulation;}
+.icon-btn{background:none;border:none;cursor:pointer;color:var(--mu);padding:5px 7px;font-size:15px;touch-action:manipulation;}
+.del-btn{background:rgba(240,96,96,.1);border:1px solid var(--dn);cursor:pointer;color:var(--dn);font-size:12px;padding:5px 11px;border-radius:6px;font-family:inherit;font-weight:700;touch-action:manipulation;min-height:32px;}
 
 /* MAIN */
-.main{padding:14px;max-width:900px;margin:0 auto;}
+.main{padding:14px;max-width:900px;margin:0 auto;padding-bottom:30px;}
 
-/* COMPANY SECTION */
-.cmp-sec{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:13px 14px;margin-bottom:12px;}
-.sec-title{font-size:11px;font-weight:700;color:var(--ac);margin-bottom:10px;}
-.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.cf{display:flex;flex-direction:column;gap:3px;}
-.cf label{font-size:10px;color:var(--mu);}
-.cf input,.cf textarea{background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:6px 9px;color:var(--tx);font-family:inherit;font-size:13px;width:100%;}
-.cf input:focus,.cf textarea:focus{outline:none;border-color:var(--ac);}
-.cf textarea{resize:vertical;min-height:58px;}
-.cf.full{grid-column:1/-1;}
+.cmp-sec{display:none!important;}
 
-/* STATS */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px;}
-.stat{background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:10px 12px;}
-.stat-lbl{font-size:9px;color:var(--mu);text-transform:uppercase;margin-bottom:2px;}
-.stat-val{font-size:22px;font-weight:900;font-family:'DM Mono',monospace;}
+/* STATS - 큰 숫자 */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
+.stat{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:11px 10px;text-align:center;}
+.stat-lbl{font-size:10px;color:var(--mu);text-transform:uppercase;margin-bottom:4px;font-weight:600;}
+.stat-val{font-size:24px;font-weight:900;font-family:'DM Mono',monospace;line-height:1;}
 .c-bl{color:var(--ac);}.c-gr{color:var(--ac2);}.c-wn{color:var(--wn);}.c-mu{color:var(--mu);}
 
-/* ADD ROW */
-.add-row{display:flex;gap:7px;margin-bottom:9px;}
-.add-inp{background:var(--sf);border:1px solid var(--bd);border-radius:7px;padding:10px 13px;color:var(--tx);font-family:inherit;font-size:14px;flex:1;min-width:0;}
+/* ADD ROW - 터치 친화 */
+.add-row{display:flex;gap:7px;margin-bottom:10px;}
+.add-inp{background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:12px 14px;color:var(--tx);font-family:inherit;font-size:15px;flex:1;min-width:0;}
 .add-inp:focus{outline:none;border-color:var(--ac);}
 .add-inp::placeholder{color:var(--mu);}
-.toolbar{display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap;}
-.srch{flex:1;min-width:100px;background:var(--sf);border:1px solid var(--bd);border-radius:7px;padding:7px 11px;color:var(--tx);font-family:inherit;font-size:13px;}
+.toolbar{display:flex;gap:7px;margin-bottom:12px;align-items:center;flex-wrap:wrap;}
+.srch{flex:1;min-width:120px;background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:10px 13px;color:var(--tx);font-family:inherit;font-size:14px;}
 .srch:focus{outline:none;border-color:var(--ac);}
 
-/* UNIT CARDS */
-.unit-list{display:flex;flex-direction:column;gap:7px;}
-.u-card{background:var(--sf);border:1px solid var(--bd);border-radius:11px;overflow:hidden;transition:border-color .2s;}
-.u-card.done{border-color:rgba(0,201,167,.4);}
-.u-card.part{border-color:rgba(240,180,41,.4);}
-.u-top{display:grid;grid-template-columns:26px 1fr auto auto auto;gap:8px;align-items:center;padding:11px 13px;cursor:pointer;user-select:none;}
-.u-num{font-family:'DM Mono',monospace;font-size:11px;color:var(--mu);text-align:center;}
-.u-name-row{display:flex;align-items:center;gap:5px;min-width:0;}
-.u-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.u-name-inp{background:var(--sf2);border:1px solid var(--ac);border-radius:5px;padding:3px 8px;color:var(--tx);font-family:inherit;font-size:14px;font-weight:700;width:160px;}
+/* UNIT CARDS - 가독성 향상 */
+.unit-list{display:flex;flex-direction:column;gap:9px;}
+.u-card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;overflow:hidden;transition:border-color .2s;}
+.u-card.done{border-color:rgba(0,201,167,.5);}
+.u-card.part{border-color:rgba(240,180,41,.5);}
+.u-top{display:grid;grid-template-columns:32px 1fr auto auto auto;gap:10px;align-items:center;padding:14px 14px;cursor:pointer;user-select:none;}
+.u-num{font-family:'DM Mono',monospace;font-size:14px;color:var(--mu);text-align:center;font-weight:700;}
+.u-name-row{display:flex;align-items:center;gap:6px;min-width:0;}
+.u-name{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.u-name-inp{background:var(--sf2);border:1px solid var(--ac);border-radius:6px;padding:5px 10px;color:var(--tx);font-family:inherit;font-size:16px;font-weight:700;width:170px;}
 .u-name-inp:focus{outline:none;}
-.bdg{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap;}
+.bdg{display:inline-flex;align-items:center;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;}
 .bdg-ok{background:rgba(0,201,167,.15);color:var(--ac2);}
 .bdg-pt{background:rgba(240,180,41,.15);color:var(--wn);}
 .bdg-no{background:rgba(240,96,96,.1);color:var(--dn);}
-.u-chev{font-size:12px;color:var(--mu);transition:transform .2s;flex-shrink:0;}
+.u-chev{font-size:14px;color:var(--mu);transition:transform .2s;flex-shrink:0;}
 .u-chev.open{transform:rotate(180deg);}
-.u-body{display:none;padding:0 13px 13px;border-top:1px solid var(--bd);}
+.u-body{display:none;padding:0 14px 14px;border-top:1px solid var(--bd);}
 .u-body.open{display:block;}
-.ph-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:11px;}
-.ph-lbl{font-size:11px;font-weight:700;padding:4px 10px;border-radius:5px;margin-bottom:6px;}
+.ph-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}
+.ph-lbl{font-size:13px;font-weight:700;padding:6px 11px;border-radius:6px;margin-bottom:7px;}
 .lbl-b{background:rgba(240,96,96,.12);color:#ff8a80;}
 .lbl-a{background:rgba(0,201,167,.12);color:var(--ac2);}
-.up-btns{display:flex;gap:4px;margin-bottom:6px;}
-.up-btn{flex:1;padding:8px 4px;border-radius:7px;border:1.5px dashed var(--bd);background:var(--sf2);color:var(--mu);font-family:inherit;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;position:relative;overflow:hidden;touch-action:manipulation;}
+.up-btns{display:flex;gap:5px;margin-bottom:8px;}
+.up-btn{flex:1;padding:11px 4px;border-radius:8px;border:1.5px dashed var(--bd);background:var(--sf2);color:var(--mu);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;position:relative;overflow:hidden;touch-action:manipulation;min-height:42px;}
 .up-btn:active{border-color:var(--ac);color:var(--ac);}
 .up-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;}
-.thumbs{display:flex;flex-wrap:wrap;gap:5px;}
+.thumbs{display:flex;flex-wrap:wrap;gap:7px;}
 .th-wrap{position:relative;flex-shrink:0;}
-.th-wrap img{width:58px;height:58px;object-fit:cover;border-radius:6px;border:1px solid var(--bd);cursor:pointer;display:block;}
-.th-del{position:absolute;top:-4px;right:-4px;width:17px;height:17px;background:var(--dn);border:none;border-radius:50%;color:#fff;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;}
-.th-save{position:absolute;bottom:-4px;right:-4px;width:17px;height:17px;background:var(--ac2);border:none;border-radius:50%;color:#fff;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;text-decoration:none;}
-.th-saved{position:absolute;bottom:-4px;left:-4px;width:17px;height:17px;background:#16a34a;border:none;border-radius:50%;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:2;}
-.sp-sec{margin-top:11px;border-top:1px solid var(--bd);padding-top:10px;}
-.sp-hdr{font-size:11px;font-weight:700;color:var(--wn);margin-bottom:7px;}
-.sp-item{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:9px;margin-bottom:7px;position:relative;}
-.sp-del{position:absolute;top:7px;right:7px;background:none;border:none;color:var(--mu);cursor:pointer;font-size:11px;touch-action:manipulation;}
-.sp-del:active{color:var(--dn);}
-.sp-txt{width:100%;background:transparent;border:none;color:var(--tx);font-family:inherit;font-size:12px;resize:none;outline:none;min-height:44px;padding-right:38px;}
-.sp-photos{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center;}
-.add-sp-btn{width:100%;padding:7px;background:rgba(240,180,41,.1);border:1.5px dashed var(--wn);border-radius:7px;color:var(--wn);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;touch-action:manipulation;}
+.th-wrap img{width:68px;height:68px;object-fit:cover;border-radius:7px;border:1px solid var(--bd);cursor:pointer;display:block;}
+.th-del{position:absolute;top:-5px;right:-5px;width:20px;height:20px;background:var(--dn);border:none;border-radius:50%;color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;}
+.th-save{position:absolute;bottom:-5px;right:-5px;width:20px;height:20px;background:var(--ac2);border:none;border-radius:50%;color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;text-decoration:none;font-weight:700;}
+.th-save-btn{position:absolute;bottom:-5px;right:-5px;width:22px;height:22px;background:var(--ac2);border:none;border-radius:50%;color:#0d1117;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;font-weight:900;font-family:inherit;padding:0;}
+.th-save-btn:active{transform:scale(.9);}
+.th-saved{position:absolute;bottom:-5px;left:-5px;width:20px;height:20px;background:#16a34a;border:none;border-radius:50%;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:2;}
+.sp-sec{margin-top:12px;border-top:1px solid var(--bd);padding-top:11px;}
+.sp-hdr{font-size:13px;font-weight:700;color:var(--wn);margin-bottom:8px;}
+.sp-item{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:8px;position:relative;}
+.sp-del{position:absolute;top:8px;right:8px;background:rgba(240,96,96,.15);border:1px solid var(--dn);color:var(--dn);cursor:pointer;font-size:11px;padding:4px 9px;border-radius:5px;font-family:inherit;font-weight:600;touch-action:manipulation;}
+.sp-txt{width:100%;background:transparent;border:none;color:var(--tx);font-family:inherit;font-size:14px;resize:none;outline:none;min-height:50px;padding-right:60px;line-height:1.5;}
+.sp-photos{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;align-items:center;}
+.add-sp-btn{width:100%;padding:10px;background:rgba(240,180,41,.1);border:1.5px dashed var(--wn);border-radius:8px;color:var(--wn);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;touch-action:manipulation;min-height:42px;}
 .add-sp-btn:active{background:rgba(240,180,41,.2);}
-.empty{text-align:center;padding:44px 16px;color:var(--mu);}
-.empty-ic{font-size:36px;opacity:.2;margin-bottom:8px;}
+.empty{text-align:center;padding:50px 16px;color:var(--mu);}
+.empty-ic{font-size:40px;opacity:.2;margin-bottom:10px;}
 
 /* ── SAVE DIALOG ── */
 .dlg-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;padding:20px;}
 .dlg-backdrop.open{display:flex;}
 .dlg-box{background:var(--sf);border:1px solid var(--bd);border-radius:14px;width:100%;max-width:420px;overflow:hidden;}
 .dlg-head{padding:16px 18px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;}
-.dlg-title{font-size:15px;font-weight:700;}
+.dlg-title{font-size:16px;font-weight:700;}
 .dlg-body{padding:18px;}
-.dlg-label{font-size:11px;color:var(--mu);margin-bottom:6px;}
-.dlg-input{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;color:var(--tx);font-family:inherit;font-size:15px;}
+.dlg-label{font-size:12px;color:var(--mu);margin-bottom:7px;}
+.dlg-input{width:100%;background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:11px 14px;color:var(--tx);font-family:inherit;font-size:15px;}
 .dlg-input:focus{outline:none;border-color:var(--ac);}
 .dlg-hint{font-size:10px;color:var(--mu);margin-top:6px;}
 .dlg-foot{padding:12px 18px;border-top:1px solid var(--bd);display:flex;gap:8px;justify-content:flex-end;}
@@ -177,10 +169,10 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 .prog-fl{height:100%;background:linear-gradient(90deg,var(--ac),var(--ac2));border-radius:3px;transition:width .3s;width:0%;}
 .prog-lb{font-size:10px;color:var(--mu);margin-top:7px;}
 
-/* TOAST */
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--sf2);border:1px solid var(--bd);border-radius:9px;padding:9px 16px;font-size:12px;z-index:600;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;max-width:90vw;text-align:center;}
+/* TOAST - 가독성 향상 */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--sf2);border:1.5px solid var(--bd);border-radius:10px;padding:13px 20px;font-size:14px;font-weight:700;z-index:600;opacity:0;transition:opacity .25s;pointer-events:none;max-width:92vw;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.4);}
 .toast.show{opacity:1;}
-.toast.ok{border-color:var(--ac2);color:var(--ac2);}
+.toast.ok{border-color:var(--ac2);color:var(--ac2);background:rgba(0,201,167,.08);}
 .toast.err{border-color:var(--dn);color:var(--dn);}
 
 /* ═══════════════════════════
@@ -379,7 +371,7 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
     <button class="co-hdr-btn" id="btnCoInfo">🏢 업체정보</button>
     <button class="btn b-gold" id="btnSave">💾 저장</button>
     <button class="btn b-ghost b-xs" id="btnLoad">📂 불러오기</button>
-    <button class="btn b-ghost b-xs" id="btnSavePhotos" style="color:var(--ac2);border-color:rgba(0,201,167,.4)">📁 사진저장</button>
+    <button class="btn b-ghost b-xs" id="btnSavePhotos" style="color:var(--ac2);border-color:rgba(0,201,167,.4)">📁 모든사진저장</button>
     <button class="btn b-blue" id="btnGen" disabled>📄 미리보기</button>
     <button class="btn b-green" id="btnPDF" disabled>⬇️ PDF</button>
     <button class="btn b-orange" id="btnJPG" disabled>🖼️ JPG</button>
@@ -411,14 +403,15 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
   </div>
 
   <!-- 사진 자동저장 폴더 상태 표시 -->
-  <div id="folderBar" style="display:none;background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:10px 14px;margin-bottom:10px;align-items:center;gap:10px;flex-wrap:wrap;">
+  <div id="folderBar" style="display:none;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:13px 15px;margin-bottom:12px;align-items:center;gap:10px;flex-wrap:wrap;">
     <div style="flex:1;min-width:0;">
-      <div style="font-size:11px;font-weight:700;color:var(--ac2);margin-bottom:2px;" id="folderStatusText">📁 자동저장 폴더 설정 안됨</div>
-      <div style="font-size:10px;color:var(--mu);" id="folderPathText">사진을 찍으면 지정한 폴더에 자동 저장됩니다</div>
-      <div id="pendingSaveBar" style="display:none;font-size:10px;color:var(--wn);margin-top:4px;font-weight:600;">⏳ 저장 대기 중인 사진: <span id="pendingSaveCount">0</span>장</div>
+      <div style="font-size:14px;font-weight:700;color:var(--ac2);margin-bottom:4px;" id="folderStatusText">📁 자동저장 폴더 설정 안됨</div>
+      <div style="font-size:12px;color:var(--mu);line-height:1.4;" id="folderPathText">사진을 찍으면 지정한 폴더에 자동 저장됩니다</div>
+      <div id="pendingSaveBar" style="display:none;font-size:12px;color:var(--wn);margin-top:6px;font-weight:700;">⏳ 저장 대기 중인 사진: <span id="pendingSaveCount">0</span>장</div>
     </div>
+    <button class="btn b-gold b-xs" id="btnResumeFolder" style="flex-shrink:0;display:none;">🔓 권한 복구</button>
     <button class="btn b-green b-xs" id="btnFlushNow" style="flex-shrink:0;display:none;">💾 지금 저장</button>
-    <button class="btn b-ghost b-xs" id="btnSetFolder" style="flex-shrink:0;">📁 폴더 설정</button>
+    <button class="btn b-ghost b-xs" id="btnSetFolder" style="flex-shrink:0;">📁 폴더 변경</button>
     <button class="btn b-ghost b-xs" id="btnClearFolder" style="flex-shrink:0;color:var(--dn);display:none;">✕ 해제</button>
   </div>
 
@@ -772,6 +765,7 @@ function bindAll() {
   document.getElementById('btnSetFolder').addEventListener('click', selectPhotoFolder);
   document.getElementById('btnClearFolder').addEventListener('click', clearPhotoFolder);
   document.getElementById('btnFlushNow').addEventListener('click', flushPendingSaves);
+  document.getElementById('btnResumeFolder').addEventListener('click', resumeFolderPermission);
   document.getElementById('btnAdd').addEventListener('click', () => addUnit());
   document.getElementById('newName').addEventListener('keydown', e => { if(e.key==='Enter') addUnit(); });
   document.getElementById('btnBulk').addEventListener('click', bulkAdd);
@@ -825,8 +819,31 @@ function bindAll() {
     const tdl = t.closest('.th-del');
     if (tdl) {
       e.stopPropagation();
+      // 특이사항 사진 삭제는 별도 핸들러에서 처리
+      if (tdl.classList.contains('sp-th-del')) return;
       const uid=+tdl.dataset.uid, type=tdl.dataset.type, idx=+tdl.dataset.idx;
       const u=findU(uid); if(u){ u[type].splice(idx,1); renderAll(); updateStats(); sessionAutoSave(); } return;
+    }
+    // 개별 사진 폴더로 저장 (↓ 버튼)
+    const tsv = t.closest('.th-save-btn');
+    if (tsv) {
+      e.stopPropagation();
+      // 특이사항 사진 저장은 별도 처리
+      if (tsv.classList.contains('sp-save-btn')) {
+        const uid=+tsv.dataset.uid, sid=+tsv.dataset.sid, idx=+tsv.dataset.idx;
+        const u=findU(uid); if(!u) return;
+        const s=u.specials.find(s=>s.id===sid); if(!s) return;
+        const p=s.photos[idx]; if(!p) return;
+        const sIdx = u.specials.indexOf(s);
+        saveSinglePhoto(p, u.name, `특이${sIdx+1}_`, idx+1);
+      } else {
+        const uid=+tsv.dataset.uid, type=tsv.dataset.type, idx=+tsv.dataset.idx;
+        const u=findU(uid); if(!u) return;
+        const p=u[type][idx]; if(!p) return;
+        const label = type==='before' ? '전' : '후';
+        saveSinglePhoto(p, u.name, label, idx+1);
+      }
+      return;
     }
     // 사진 크게 보기
     if (t.tagName==='IMG' && t.closest('.th-wrap')) { showImg(t.src); return; }
@@ -969,6 +986,7 @@ function addUnit(name) {
   units.push({id:nid++,name:n,before:[],after:[],specials:[],open:true});
   if(name===undefined){ inp.value=''; inp.focus(); }
   renderAll(); updateStats(); sessionAutoSave();
+  showToast(`✅ "${n}" 호수가 추가되었습니다`, 'ok');
 }
 
 function bulkAdd() {
@@ -1032,7 +1050,7 @@ function renderAll() {
         <img src="${src}" alt="">
         ${saved?'<span class="th-saved">✓</span>':''}
         <button class="th-del" data-uid="${u.id}" data-type="${type}" data-idx="${idx}">✕</button>
-        <a class="th-save" href="${src}" download="사진_${u.name}_${type==='before'?'전':'후'}${idx+1}.jpg" title="저장">↓</a>
+        <button class="th-save-btn" data-uid="${u.id}" data-type="${type}" data-idx="${idx}" title="폴더로 저장">↓</button>
       </div>`;
     }).join('');
 
@@ -1043,7 +1061,7 @@ function renderAll() {
         <img src="${src}" style="width:50px;height:50px;object-fit:cover;border-radius:5px;border:1px solid var(--bd);cursor:pointer;" alt="">
         ${saved?'<span class="th-saved" style="font-size:8px;width:13px;height:13px;">✓</span>':''}
         <button class="th-del sp-th-del" data-uid="${u.id}" data-sid="${s.id}" data-idx="${idx}">✕</button>
-        <a class="th-save" href="${src}" download="특이사항_${u.name}_${idx+1}.jpg" title="저장" style="width:15px;height:15px;font-size:8px;">↓</a>
+        <button class="th-save-btn sp-save-btn" data-uid="${u.id}" data-sid="${s.id}" data-idx="${idx}" title="폴더로 저장" style="width:15px;height:15px;font-size:8px;">↓</button>
       </div>`;
     }).join('');
 
@@ -1817,16 +1835,40 @@ async function initPhotoFolder() {
       updateFolderUI(null);
       return;
     }
-    // 저장된 핸들로 권한 재요청
-    const perm = await handle.requestPermission({ mode: 'readwrite' });
+
+    // ★ 핵심: 복원된 핸들은 무조건 유지 (requestPermission 호출 안 함 - 사용자 제스처 없으면 실패)
+    //   queryPermission으로 현재 권한 상태만 확인
+    photoFolderHandle = handle;
+
+    let perm = 'prompt';
+    try {
+      perm = await handle.queryPermission({ mode: 'readwrite' });
+    } catch(e) { perm = 'prompt'; }
+
+    updateFolderUI(handle, perm);
+  } catch(e) {
+    console.warn('폴더 복원 실패:', e);
+    updateFolderUI(null);
+  }
+}
+
+// 복원된 핸들의 권한을 사용자 제스처와 함께 요청
+async function resumeFolderPermission() {
+  if (!photoFolderHandle) return;
+  try {
+    const perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
-      photoFolderHandle = handle;
-      updateFolderUI(handle);
+      updateFolderUI(photoFolderHandle, 'granted');
+      showToast(`✅ ${photoFolderHandle.name} 폴더 권한 복구 완료`, 'ok');
+      // 권한 복구 후 대기 중인 사진 자동 저장 시도
+      if (pendingSaves.length > 0) {
+        setTimeout(() => flushPendingSaves(), 300);
+      }
     } else {
-      updateFolderUI(null);
+      showToast('권한이 거부되었습니다', 'err');
     }
   } catch(e) {
-    updateFolderUI(null);
+    if (e.name !== 'AbortError') showToast('권한 요청 실패: ' + e.message, 'err');
   }
 }
 
@@ -1836,12 +1878,12 @@ async function selectPhotoFolder() {
     return;
   }
   try {
-    showToast('저장할 기본 폴더를 선택해주세요 (예: Downloads)', 'ok');
+    showToast('저장할 폴더를 선택해주세요', 'ok');
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
     photoFolderHandle = handle;
     await settingsPut('photoFolderHandle', handle);
-    updateFolderUI(handle);
-    showToast(`✅ 폴더 설정 완료: ${handle.name} → 앞으로 자동저장됩니다`, 'ok');
+    updateFolderUI(handle, 'granted');
+    showToast(`✅ 폴더 설정 완료: ${handle.name}`, 'ok');
   } catch(e) {
     if (e.name !== 'AbortError') showToast('폴더 선택 실패: ' + e.message, 'err');
   }
@@ -1855,24 +1897,38 @@ async function clearPhotoFolder() {
   showToast('폴더 설정 해제됨', 'ok');
 }
 
-function updateFolderUI(handle) {
-  const statusEl = document.getElementById('folderStatusText');
-  const pathEl   = document.getElementById('folderPathText');
-  const clearBtn = document.getElementById('btnClearFolder');
-  const setBtn   = document.getElementById('btnSetFolder');
+function updateFolderUI(handle, perm) {
+  const statusEl   = document.getElementById('folderStatusText');
+  const pathEl     = document.getElementById('folderPathText');
+  const clearBtn   = document.getElementById('btnClearFolder');
+  const setBtn     = document.getElementById('btnSetFolder');
+  const resumeBtn  = document.getElementById('btnResumeFolder');
 
   if (handle) {
-    statusEl.textContent = `✅ 자동저장 폴더: ${handle.name}`;
-    statusEl.style.color = 'var(--ac2)';
-    pathEl.textContent   = `${handle.name}/ 에 [날짜_아파트_호수_전1.jpg] 형식으로 저장됩니다`;
-    clearBtn.style.display = 'inline-flex';
-    setBtn.textContent   = '📁 폴더 변경';
+    if (perm === 'granted') {
+      // 권한 있음 - 정상 동작 가능
+      statusEl.textContent = `✅ 자동저장 폴더: ${handle.name}`;
+      statusEl.style.color = 'var(--ac2)';
+      pathEl.textContent   = `${handle.name}/ 에 [날짜_아파트_호수_전1.jpg] 형식으로 저장됩니다`;
+      clearBtn.style.display = 'inline-flex';
+      setBtn.textContent   = '📁 폴더 변경';
+      if (resumeBtn) resumeBtn.style.display = 'none';
+    } else {
+      // 폴더는 기억하지만 권한 요청 필요
+      statusEl.textContent = `🔒 ${handle.name} (권한 복구 필요)`;
+      statusEl.style.color = 'var(--wn)';
+      pathEl.textContent   = '▶️ "권한 복구" 버튼을 눌러주세요 (브라우저 보안정책상 필요)';
+      clearBtn.style.display = 'inline-flex';
+      setBtn.textContent   = '📁 폴더 변경';
+      if (resumeBtn) resumeBtn.style.display = 'inline-flex';
+    }
   } else {
     statusEl.textContent = '📁 자동저장 폴더가 설정되지 않았습니다';
     statusEl.style.color = 'var(--mu)';
     pathEl.textContent   = '아래 버튼을 눌러 저장 위치를 설정해주세요';
     clearBtn.style.display = 'none';
     setBtn.textContent   = '📁 폴더 설정';
+    if (resumeBtn) resumeBtn.style.display = 'none';
   }
 }
 
@@ -2058,6 +2114,8 @@ async function flushPendingSaves() {
       showToast('📁 폴더 권한이 거부됐습니다', 'err');
       return;
     }
+    // 권한 획득 성공 → UI 업데이트
+    updateFolderUI(photoFolderHandle, 'granted');
   } catch(e) {
     showToast('📁 권한 요청 실패: ' + e.message, 'err');
     return;
@@ -2144,6 +2202,48 @@ function showDebugPanel(text) {
 // 큐잉 함수 (업로드 핸들러에서 호출)
 function enqueueAutoSave(photo, unitName, typeLabel) {
   return tryAutoSave(photo, unitName, typeLabel);
+}
+
+// 개별 사진을 폴더로 저장 (폴더 없으면 브라우저 다운로드로 폴백)
+async function saveSinglePhoto(photo, unitName, typeLabel, index) {
+  // 폴더 미설정 시 → 브라우저 다운로드 방식으로 폴백
+  if (!photoFolderHandle) {
+    const url = photoUrl(photo);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${unitName}_${typeLabel}${index}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('📥 다운로드 폴더에 저장됐습니다', 'ok');
+    return;
+  }
+
+  // 폴더 설정되어 있으면 폴더로 저장 (권한 재요청)
+  try {
+    const perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      showToast('📁 폴더 권한이 거부됐습니다', 'err');
+      return;
+    }
+  } catch(e) {
+    showToast('권한 요청 실패', 'err');
+    return;
+  }
+
+  try {
+    await doWriteOne(photo, unitName, typeLabel);
+    if (typeof photo === 'object') {
+      photo.savedToFolder = true;
+      _savedPhotoIds.add(photo.id);
+    }
+    renderAll();
+    sessionAutoSave();
+    showToast('✅ 폴더에 저장 완료', 'ok');
+  } catch(e) {
+    console.warn('개별 저장 실패:', e);
+    showToast(`저장 실패: ${e.message}`, 'err');
+  }
 }
 
 // (구버전 호환용) 기존 코드에서 호출되는 함수명 유지

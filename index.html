@@ -35,7 +35,11 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 .hf label{font-size:11px;color:var(--mu);text-transform:uppercase;letter-spacing:.6px;font-weight:600;}
 .hf input{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:9px 11px;color:var(--tx);font-family:inherit;font-size:14px;width:100%;}
 .hf input:focus{outline:none;border-color:var(--ac);}
-.hdr-btns{display:flex;gap:6px;flex-wrap:wrap;width:100%;}
+
+/* 버튼 그리드 (4열 균등) */
+.hdr-btns{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;width:100%;}
+.hdr-btns .btn{min-height:44px;width:100%;justify-content:center;padding:8px 4px;font-size:12px;}
+.hdr-btns .co-hdr-btn{min-height:44px;width:100%;}
 
 /* BUTTONS - 터치 친화적 크기 */
 .btn{padding:10px 14px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;touch-action:manipulation;min-height:40px;}
@@ -372,11 +376,13 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
     <div class="hf"><label>담당자</label><input id="workerName" placeholder="성함"></div>
   </div>
   <div class="hdr-btns">
-    <button class="co-hdr-btn" id="btnCoInfo">🏢 업체정보</button>
+    <!-- 1행: 데이터 관리 (3열) + 업체정보 -->
+    <button class="co-hdr-btn" id="btnCoInfo" style="grid-column:span 1">🏢 업체정보</button>
     <button class="btn b-gold" id="btnSave">💾 저장</button>
-    <button class="btn b-ghost b-xs" id="btnLoad">📂 불러오기</button>
-    <button class="btn b-ghost b-xs" id="btnSavePhotos" style="color:var(--ac2);border-color:rgba(0,201,167,.4)">📁 모든사진저장</button>
-    <button class="btn b-blue" id="btnGen" disabled>📄 미리보기</button>
+    <button class="btn b-ghost" id="btnLoad">📂 불러오기</button>
+    <button class="btn b-ghost" id="btnSavePhotos" style="color:var(--ac2);border-color:rgba(0,201,167,.4)">📁 사진저장</button>
+    <!-- 2행: 보고서 출력 (3열) -->
+    <button class="btn b-blue" id="btnGen" disabled style="grid-column:span 2">📄 미리보기</button>
     <button class="btn b-green" id="btnPDF" disabled>⬇️ PDF</button>
     <button class="btn b-orange" id="btnJPG" disabled>🖼️ JPG</button>
   </div>
@@ -407,18 +413,19 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
   </div>
 
   <!-- 사진 자동저장 폴더 상태 표시 -->
-  <div id="folderBar" style="display:none;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:13px 15px;margin-bottom:12px;align-items:center;gap:10px;flex-wrap:wrap;">
-    <div style="flex:1;min-width:0;">
-      <div style="font-size:14px;font-weight:700;color:var(--ac2);margin-bottom:4px;" id="folderStatusText">📁 자동저장 폴더 설정 안됨</div>
-      <div style="font-size:12px;color:var(--mu);line-height:1.4;" id="folderPathText">사진을 찍으면 지정한 폴더에 자동 저장됩니다</div>
+  <div id="folderBar" style="display:none;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:13px 15px;margin-bottom:12px;flex-direction:column;gap:10px;">
+    <div>
+      <div style="font-size:14px;font-weight:700;color:var(--ac2);margin-bottom:3px;" id="folderStatusText">📁 자동저장 폴더 설정 안됨</div>
+      <div style="font-size:12px;color:var(--mu);line-height:1.4;word-break:break-all;" id="folderPathText">아래 버튼을 눌러 저장 위치를 설정해주세요</div>
       <div id="pendingSaveBar" style="display:none;font-size:12px;color:var(--wn);margin-top:6px;font-weight:700;">⏳ 저장 대기 중인 사진: <span id="pendingSaveCount">0</span>장</div>
     </div>
-    <button class="btn b-orange b-xs" id="btnDiagTest" style="flex-shrink:0;display:none;">🔍 테스트</button>
-    <button class="btn b-red b-xs" id="btnResetSaved" style="flex-shrink:0;display:none;">↻ 저장상태 초기화</button>
-    <button class="btn b-gold b-xs" id="btnResumeFolder" style="flex-shrink:0;display:none;">🔓 권한 복구</button>
-    <button class="btn b-green b-xs" id="btnFlushNow" style="flex-shrink:0;display:none;">💾 지금 저장</button>
-    <button class="btn b-ghost b-xs" id="btnSetFolder" style="flex-shrink:0;">📁 폴더 변경</button>
-    <button class="btn b-ghost b-xs" id="btnClearFolder" style="flex-shrink:0;color:var(--dn);display:none;">✕ 해제</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn b-gold b-xs" id="btnResumeFolder" style="flex:1;display:none;">🔓 권한 복구</button>
+      <button class="btn b-green b-xs" id="btnFlushNow" style="flex:1;display:none;">💾 지금 저장</button>
+      <button class="btn b-red b-xs" id="btnResetSaved" style="flex:1;display:none;">↻ 초기화</button>
+      <button class="btn b-ghost b-xs" id="btnSetFolder" style="flex:1;">📁 폴더 변경</button>
+      <button class="btn b-ghost b-xs" id="btnClearFolder" style="flex:1;color:var(--dn);display:none;">✕ 해제</button>
+    </div>
   </div>
 
   <div class="unit-list" id="uList"></div>
@@ -772,7 +779,6 @@ function bindAll() {
   document.getElementById('btnClearFolder').addEventListener('click', clearPhotoFolder);
   document.getElementById('btnFlushNow').addEventListener('click', flushPendingSaves);
   document.getElementById('btnResumeFolder').addEventListener('click', resumeFolderPermission);
-  document.getElementById('btnDiagTest').addEventListener('click', diagnoseWriteTest);
   document.getElementById('btnResetSaved').addEventListener('click', resetSavedState);
   document.getElementById('btnAdd').addEventListener('click', () => addUnit());
   document.getElementById('newName').addEventListener('keydown', e => { if(e.key==='Enter') addUnit(); });
@@ -1829,6 +1835,7 @@ function showSaveStatus(cls, msg) {
 
 async function initPhotoFolder() {
   document.getElementById('folderBar').style.display = 'flex';
+  document.getElementById('folderBar').style.flexDirection = 'column';
 
   if (!('showDirectoryPicker' in window)) {
     document.getElementById('folderStatusText').textContent = '⚠️ 폴더 자동저장 미지원 브라우저';
@@ -1929,37 +1936,33 @@ function updateFolderUI(handle, perm) {
   const clearBtn   = document.getElementById('btnClearFolder');
   const setBtn     = document.getElementById('btnSetFolder');
   const resumeBtn  = document.getElementById('btnResumeFolder');
-  const diagBtn    = document.getElementById('btnDiagTest');
   const resetBtn   = document.getElementById('btnResetSaved');
 
   if (handle) {
     if (perm === 'granted') {
-      statusEl.textContent = `✅ 자동저장 폴더: ${handle.name}`;
+      statusEl.textContent = `✅ 저장 폴더: ${handle.name}`;
       statusEl.style.color = 'var(--ac2)';
-      pathEl.textContent   = `${handle.name}/[날짜]/work01/image01.jpg 형식 · 호수 매핑은 _info.txt 참고`;
+      pathEl.textContent   = `${handle.name}/[날짜]/work01/image01.jpg`;
       clearBtn.style.display = 'inline-flex';
       setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'none';
-      if (diagBtn)   diagBtn.style.display   = 'inline-flex';
       if (resetBtn)  resetBtn.style.display  = 'inline-flex';
     } else {
-      statusEl.textContent = `🔒 ${handle.name} (권한 복구 필요)`;
+      statusEl.textContent = `🔒 ${handle.name}`;
       statusEl.style.color = 'var(--wn)';
-      pathEl.innerHTML     = '▶️ <b>권한 복구</b> 터치 · 매번 묻지 않으려면 <b>⋮ → 앱 설치</b>로 홈에 추가하세요';
+      pathEl.textContent   = '권한 복구가 필요합니다';
       clearBtn.style.display = 'inline-flex';
       setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'inline-flex';
-      if (diagBtn)   diagBtn.style.display   = 'none';
       if (resetBtn)  resetBtn.style.display  = 'none';
     }
   } else {
-    statusEl.textContent = '📁 자동저장 폴더가 설정되지 않았습니다';
+    statusEl.textContent = '📁 자동저장 폴더 미설정';
     statusEl.style.color = 'var(--mu)';
     pathEl.textContent   = '아래 버튼을 눌러 저장 위치를 설정해주세요';
     clearBtn.style.display = 'none';
     setBtn.textContent   = '📁 폴더 설정';
     if (resumeBtn) resumeBtn.style.display = 'none';
-    if (diagBtn)   diagBtn.style.display   = 'none';
     if (resetBtn)  resetBtn.style.display  = 'none';
   }
 }

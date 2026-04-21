@@ -1914,7 +1914,7 @@ function updateFolderUI(handle, perm) {
     if (perm === 'granted') {
       statusEl.textContent = `✅ 자동저장 폴더: ${handle.name}`;
       statusEl.style.color = 'var(--ac2)';
-      pathEl.textContent   = `${handle.name}/ 에 [날짜_아파트_호수_전1.jpg] 형식으로 저장됩니다`;
+      pathEl.textContent   = `${handle.name}/날짜_아파트/호수/[B1.jpg, A1.jpg] 형식 · 매핑은 _info.txt`;
       clearBtn.style.display = 'inline-flex';
       setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'none';
@@ -2069,12 +2069,11 @@ async function tryAutoSave(photo, unitName, typeLabel) {
   updatePendingUI();
 }
 
-// 실제 쓰기 (한 장)
+// 실제 쓰기 (한 장) — Android Chrome 한글 파일명 버그 회피
+// 폴더와 파일명 모두 ASCII(영문)만 사용, 한글 매핑은 _info.txt에 저장
 async function doWriteOne(photo, unitName, typeLabel) {
   const date   = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
-  const apt    = document.getElementById('aptName').value  || '작업';
-  const safe   = unitName.replace(/[\/\\:*?"<>|]/g, '_');
-  const aptSafe = apt.replace(/[\/\\:*?"<>|]/g, '_');
+  const apt    = document.getElementById('aptName').value  || 'site';
 
   let step = 'init';
   try {
@@ -2084,14 +2083,28 @@ async function doWriteOne(photo, unitName, typeLabel) {
 
     // 인덱스 결정 (메모리 카운터)
     step = '인덱스 결정';
-    const idxKey = `${date}_${apt}/${safe}/${typeLabel}`;
+    const idxKey = `${date}/${unitName}/${typeLabel}`;
     let idx = _indexCounter.get(idxKey) || 1;
     _indexCounter.set(idxKey, idx + 1);
 
-    const fname = `${date}_${aptSafe}_${safe}_${typeLabel}${idx}.jpg`;
+    // 영문 코드 생성
+    const typeEn = typeLabel === '전' ? 'B'
+                 : typeLabel === '후' ? 'A'
+                 : typeLabel.replace(/^특이(\d+)_?$/, 'S$1_')
+                            .replace(/[^A-Za-z0-9_]/g, '_');
+    const unitHash = toShortHash(unitName);
+    const aptHash  = toShortHash(apt);
+
+    // 폴더 구조: [선택 폴더] / [날짜_아파트코드] / [호수코드] / [타입번호].jpg
+    step = '날짜폴더';
+    const dateDir = await photoFolderHandle.getDirectoryHandle(`${date}_${aptHash}`, { create: true });
+
+    step = '호수폴더';
+    const unitDir = await dateDir.getDirectoryHandle(unitHash, { create: true });
 
     step = '파일핸들';
-    const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
+    const fname = `${typeEn}${idx}.jpg`;
+    const fh = await unitDir.getFileHandle(fname, { create: true });
 
     step = 'createWritable';
     const w = await fh.createWritable();
@@ -2105,6 +2118,23 @@ async function doWriteOne(photo, unitName, typeLabel) {
   } catch(e) {
     throw new Error(`[${step}] ${e.name||'Error'}: ${e.message}`);
   }
+}
+
+// 한글/유니코드 문자를 ASCII로 안전 변환
+function toShortHash(str) {
+  if (!str) return 'x';
+  const ascii = str.replace(/[^A-Za-z0-9]/g, '');
+  const hasNonAscii = /[^\x00-\x7F]/.test(str);
+  if (!hasNonAscii && ascii.length > 0) {
+    return ascii.substring(0, 20);
+  }
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  const h = Math.abs(hash).toString(36);
+  return ascii ? `${ascii.substring(0, 10)}${h}` : `u${h}`;
 }
 
 // 사용자가 "지금 저장" 버튼 클릭 시 호출 — 사용자 제스처 컨텍스트
@@ -2548,8 +2578,14 @@ async function savePhotosToFolder() {
       skipped++;
       return;
     }
-    const safe  = unitName.replace(/[\/\\:*?"<>|]/g, '_');
-    const fname = `${date}_${aptSafe}_${safe}_${typeLabel}${idx}.jpg`;
+    // 영문 파일명
+    const typeEn = typeLabel === '전' ? 'B'
+                 : typeLabel === '후' ? 'A'
+                 : typeLabel.replace(/^특이(\d+)_?$/, 'S$1_')
+                            .replace(/[^A-Za-z0-9_]/g, '_');
+    const unitHash = toShortHash(unitName);
+    const aptHash  = toShortHash(apt);
+    const fname    = `${typeEn}${idx}.jpg`;
 
     // 최대 3번 재시도
     let lastErr = null;
@@ -2558,19 +2594,14 @@ async function savePhotosToFolder() {
         const blob = dataURLtoBlob(photoUrl(p));
         if (blob.size === 0) throw new Error('Blob 크기 0');
 
-        // ★ 기존 파일 먼저 삭제 (0바이트 덮어쓰기 버그 회피)
-        try { await photoFolderHandle.removeEntry(fname); } catch(e) {}
+        // 폴더 구조: [루트] / [날짜_아파트코드] / [호수코드] / [타입번호].jpg
+        const dateDir = await photoFolderHandle.getDirectoryHandle(`${date}_${aptHash}`, { create: true });
+        const unitDir = await dateDir.getDirectoryHandle(unitHash, { create: true });
 
-        const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
+        const fh = await unitDir.getFileHandle(fname, { create: true });
         const w  = await fh.createWritable();
         await w.write(blob);
         await w.close();
-
-        // 저장 검증
-        const savedFile = await fh.getFile();
-        if (savedFile.size === 0) {
-          throw new Error(`저장됐지만 파일이 0바이트 (blob ${blob.size}B)`);
-        }
 
         if (typeof p === 'object') {
           p.savedToFolder = true;
@@ -2609,6 +2640,36 @@ async function savePhotosToFolder() {
         }
       }
     }
+
+    // 매핑 정보 파일 저장 (어떤 영문코드 = 어떤 한글 호수인지)
+    try {
+      const aptHashI = toShortHash(apt);
+      const lines = [
+        `에어컨 청소 작업 사진 — ${new Date().toLocaleString('ko-KR')}`,
+        `날짜: ${date}`,
+        `아파트명: ${apt}`,
+        `아파트 코드: ${aptHashI}`,
+        '',
+        '── 폴더 구조 ──',
+        `[${date}_${aptHashI}]/[호수코드]/[타입][번호].jpg`,
+        '타입: B=작업전(Before), A=작업후(After), SN_=특이사항N',
+        '',
+        '── 호수 매핑 ──',
+      ];
+      for (const u of units) {
+        const uHash = toShortHash(u.name);
+        lines.push(`${uHash} = ${u.name}  (전 ${u.before.length}장 · 후 ${u.after.length}장 · 특이 ${u.specials.length}건)`);
+      }
+      const infoBlob = new Blob([lines.join('\n')], { type: 'text/plain; charset=utf-8' });
+      const dateDir = await photoFolderHandle.getDirectoryHandle(`${date}_${aptHashI}`, { create: true });
+      const infoFh = await dateDir.getFileHandle('_info.txt', { create: true });
+      const infoW = await infoFh.createWritable();
+      await infoW.write(infoBlob);
+      await infoW.close();
+    } catch(e) {
+      console.warn('정보 파일 저장 실패:', e);
+    }
+
     sessionAutoSave();
     hideOverlay();
     renderAll();

@@ -2090,10 +2090,16 @@ async function doWriteOne(photo, unitName, typeLabel) {
     let idx = _indexCounter.get(idxKey) || 1;
     _indexCounter.set(idxKey, idx + 1);
 
-    // ★ 핵심: 하위 디렉토리 만들지 않고 루트에 직접 저장
-    // 파일명에 모든 경로 정보를 평탄하게 인코딩
-    // 예: 2026-04-20_OO아파트_101동 201호_전1.jpg
     const fname = `${date}_${aptSafe}_${safe}_${typeLabel}${idx}.jpg`;
+
+    // ★ 중요: 기존 파일이 있으면 먼저 삭제
+    // Android Chrome은 기존 0바이트 파일에 덮어쓰기 시 InvalidStateError 발생
+    step = '기존 파일 정리';
+    try {
+      await photoFolderHandle.removeEntry(fname);
+    } catch(e) {
+      // NotFoundError면 정상 (파일이 없음), 다른 에러는 무시하고 진행
+    }
 
     step = '파일핸들';
     const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
@@ -2107,7 +2113,7 @@ async function doWriteOne(photo, unitName, typeLabel) {
     step = 'close';
     await w.close();
 
-    // ★ 저장 검증: 파일이 0바이트인지 확인
+    // 저장 검증: 파일이 0바이트인지 확인
     step = '검증';
     const savedFile = await fh.getFile();
     if (savedFile.size === 0) {
@@ -2398,6 +2404,19 @@ async function diagnoseWriteTest() {
     results.push(`❌ 테스트9: [${e.name}] ${e.message}`);
   }
 
+  // ── 테스트 10: 실제 doWriteOne 함수를 직접 호출 (앱이 실제로 쓰는 함수) ──
+  try {
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      await doWriteOne(firstPhoto, units[0].name, '전');
+      results.push(`🎯 테스트10 (doWriteOne 직접): 성공`);
+    } else {
+      results.push(`⚠️ 테스트10: 사진 없음`);
+    }
+  } catch(e) {
+    results.push(`❌ 테스트10 (doWriteOne): ${e.message}`);
+  }
+
   showDebugPanel(
     '🔍 진단 테스트 결과\n\n' +
     results.join('\n\n') +
@@ -2529,12 +2548,15 @@ async function savePhotosToFolder() {
         const blob = dataURLtoBlob(photoUrl(p));
         if (blob.size === 0) throw new Error('Blob 크기 0');
 
+        // ★ 기존 파일 먼저 삭제 (0바이트 덮어쓰기 버그 회피)
+        try { await photoFolderHandle.removeEntry(fname); } catch(e) {}
+
         const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
         const w  = await fh.createWritable();
         await w.write(blob);
         await w.close();
 
-        // ★ 저장 검증: 파일 크기가 0이 아닌지 확인
+        // 저장 검증
         const savedFile = await fh.getFile();
         if (savedFile.size === 0) {
           throw new Error(`저장됐지만 파일이 0바이트 (blob ${blob.size}B)`);

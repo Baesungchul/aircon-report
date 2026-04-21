@@ -2069,9 +2069,7 @@ async function tryAutoSave(photo, unitName, typeLabel) {
   updatePendingUI();
 }
 
-// 실제 쓰기 (한 장) — Android Chrome의 하위 디렉토리 createWritable 버그 회피
-// crbug.com/376097631: 새로 생성된 디렉토리에서 createWritable이 InvalidStateError 발생
-// 우회: 하위 폴더를 만들지 않고 사용자가 선택한 폴더에 직접 저장 (파일명에 경로 정보 포함)
+// 실제 쓰기 (한 장)
 async function doWriteOne(photo, unitName, typeLabel) {
   const date   = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
   const apt    = document.getElementById('aptName').value  || '작업';
@@ -2092,15 +2090,6 @@ async function doWriteOne(photo, unitName, typeLabel) {
 
     const fname = `${date}_${aptSafe}_${safe}_${typeLabel}${idx}.jpg`;
 
-    // ★ 중요: 기존 파일이 있으면 먼저 삭제
-    // Android Chrome은 기존 0바이트 파일에 덮어쓰기 시 InvalidStateError 발생
-    step = '기존 파일 정리';
-    try {
-      await photoFolderHandle.removeEntry(fname);
-    } catch(e) {
-      // NotFoundError면 정상 (파일이 없음), 다른 에러는 무시하고 진행
-    }
-
     step = '파일핸들';
     const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
 
@@ -2112,13 +2101,6 @@ async function doWriteOne(photo, unitName, typeLabel) {
 
     step = 'close';
     await w.close();
-
-    // 저장 검증: 파일이 0바이트인지 확인
-    step = '검증';
-    const savedFile = await fh.getFile();
-    if (savedFile.size === 0) {
-      throw new Error(`저장됐지만 0바이트 (blob ${blob.size}B)`);
-    }
 
   } catch(e) {
     throw new Error(`[${step}] ${e.name||'Error'}: ${e.message}`);
@@ -2404,17 +2386,45 @@ async function diagnoseWriteTest() {
     results.push(`❌ 테스트9: [${e.name}] ${e.message}`);
   }
 
-  // ── 테스트 10: 실제 doWriteOne 함수를 직접 호출 (앱이 실제로 쓰는 함수) ──
+  // ── 테스트 10: 실제 doWriteOne 함수를 직접 호출 (3번 반복) ──
   try {
     const firstPhoto = units[0]?.before[0];
     if (firstPhoto) {
-      await doWriteOne(firstPhoto, units[0].name, '전');
-      results.push(`🎯 테스트10 (doWriteOne 직접): 성공`);
+      for (let i = 1; i <= 3; i++) {
+        try {
+          await doWriteOne(firstPhoto, units[0].name, '전');
+          results.push(`🎯 테스트10-${i} (doWriteOne): 성공`);
+        } catch(e) {
+          results.push(`❌ 테스트10-${i} (doWriteOne): ${e.message}`);
+        }
+        await sleep(100);
+      }
     } else {
       results.push(`⚠️ 테스트10: 사진 없음`);
     }
   } catch(e) {
-    results.push(`❌ 테스트10 (doWriteOne): ${e.message}`);
+    results.push(`❌ 테스트10: ${e.message}`);
+  }
+
+  // ── 테스트 11: 실제 파일명으로 저장 (doWriteOne 내부와 동일 방식) ──
+  try {
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const date    = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
+      const apt     = document.getElementById('aptName').value  || '작업';
+      const safe    = units[0].name.replace(/[\/\\:*?"<>|]/g, '_');
+      const aptSafe = apt.replace(/[\/\\:*?"<>|]/g, '_');
+      const fname   = `${date}_${aptSafe}_${safe}_전1.jpg`;
+
+      const blob = dataURLtoBlob(firstPhoto.dataUrl);
+      const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
+      const w = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
+      results.push(`🎯 테스트11 (실제파일명 직접): 성공 "${fname}"`);
+    }
+  } catch(e) {
+    results.push(`❌ 테스트11: [${e.name}] ${e.message}`);
   }
 
   showDebugPanel(

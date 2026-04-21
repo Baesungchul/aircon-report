@@ -410,6 +410,7 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
       <div id="pendingSaveBar" style="display:none;font-size:12px;color:var(--wn);margin-top:6px;font-weight:700;">⏳ 저장 대기 중인 사진: <span id="pendingSaveCount">0</span>장</div>
     </div>
     <button class="btn b-orange b-xs" id="btnDiagTest" style="flex-shrink:0;display:none;">🔍 테스트</button>
+    <button class="btn b-red b-xs" id="btnResetSaved" style="flex-shrink:0;display:none;">↻ 저장상태 초기화</button>
     <button class="btn b-gold b-xs" id="btnResumeFolder" style="flex-shrink:0;display:none;">🔓 권한 복구</button>
     <button class="btn b-green b-xs" id="btnFlushNow" style="flex-shrink:0;display:none;">💾 지금 저장</button>
     <button class="btn b-ghost b-xs" id="btnSetFolder" style="flex-shrink:0;">📁 폴더 변경</button>
@@ -768,6 +769,7 @@ function bindAll() {
   document.getElementById('btnFlushNow').addEventListener('click', flushPendingSaves);
   document.getElementById('btnResumeFolder').addEventListener('click', resumeFolderPermission);
   document.getElementById('btnDiagTest').addEventListener('click', diagnoseWriteTest);
+  document.getElementById('btnResetSaved').addEventListener('click', resetSavedState);
   document.getElementById('btnAdd').addEventListener('click', () => addUnit());
   document.getElementById('newName').addEventListener('keydown', e => { if(e.key==='Enter') addUnit(); });
   document.getElementById('btnBulk').addEventListener('click', bulkAdd);
@@ -1906,6 +1908,7 @@ function updateFolderUI(handle, perm) {
   const setBtn     = document.getElementById('btnSetFolder');
   const resumeBtn  = document.getElementById('btnResumeFolder');
   const diagBtn    = document.getElementById('btnDiagTest');
+  const resetBtn   = document.getElementById('btnResetSaved');
 
   if (handle) {
     if (perm === 'granted') {
@@ -1916,6 +1919,7 @@ function updateFolderUI(handle, perm) {
       setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'none';
       if (diagBtn)   diagBtn.style.display   = 'inline-flex';
+      if (resetBtn)  resetBtn.style.display  = 'inline-flex';
     } else {
       statusEl.textContent = `🔒 ${handle.name} (권한 복구 필요)`;
       statusEl.style.color = 'var(--wn)';
@@ -1924,6 +1928,7 @@ function updateFolderUI(handle, perm) {
       setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'inline-flex';
       if (diagBtn)   diagBtn.style.display   = 'none';
+      if (resetBtn)  resetBtn.style.display  = 'none';
     }
   } else {
     statusEl.textContent = '📁 자동저장 폴더가 설정되지 않았습니다';
@@ -1933,6 +1938,7 @@ function updateFolderUI(handle, perm) {
     setBtn.textContent   = '📁 폴더 설정';
     if (resumeBtn) resumeBtn.style.display = 'none';
     if (diagBtn)   diagBtn.style.display   = 'none';
+    if (resetBtn)  resetBtn.style.display  = 'none';
   }
 }
 
@@ -2101,6 +2107,13 @@ async function doWriteOne(photo, unitName, typeLabel) {
     step = 'close';
     await w.close();
 
+    // ★ 저장 검증: 파일이 0바이트인지 확인
+    step = '검증';
+    const savedFile = await fh.getFile();
+    if (savedFile.size === 0) {
+      throw new Error(`저장됐지만 0바이트 (blob ${blob.size}B)`);
+    }
+
   } catch(e) {
     throw new Error(`[${step}] ${e.name||'Error'}: ${e.message}`);
   }
@@ -2220,6 +2233,30 @@ function showDebugPanel(text) {
 // 큐잉 함수 (업로드 핸들러에서 호출)
 function enqueueAutoSave(photo, unitName, typeLabel) {
   return tryAutoSave(photo, unitName, typeLabel);
+}
+
+// 저장됨 상태 초기화 — 모든 사진의 "저장됨" 표시를 지우고 재저장할 수 있게
+function resetSavedState() {
+  if (!confirm('모든 사진의 "저장됨" 표시를 초기화할까요?\n\n그 후 "모든사진저장"을 누르면 전체를 다시 저장합니다.')) return;
+
+  let count = 0;
+  for (const u of units) {
+    for (const p of u.before) {
+      if (typeof p === 'object' && p.savedToFolder) { p.savedToFolder = false; count++; }
+    }
+    for (const p of u.after) {
+      if (typeof p === 'object' && p.savedToFolder) { p.savedToFolder = false; count++; }
+    }
+    for (const sp of u.specials) {
+      for (const p of sp.photos) {
+        if (typeof p === 'object' && p.savedToFolder) { p.savedToFolder = false; count++; }
+      }
+    }
+  }
+  _savedPhotoIds.clear();
+  sessionAutoSave();
+  renderAll();
+  showToast(`↻ ${count}장의 저장 표시를 초기화했습니다`, 'ok');
 }
 
 // 진단 테스트 — 환경에서 어떤 쓰기 방식이 동작하는지 확인
@@ -2426,6 +2463,23 @@ async function savePhotosToFolder() {
     updateFolderUI(photoFolderHandle, 'granted');
   } catch(e) { showToast('권한 요청 실패', 'err'); return; }
 
+  // 이미 저장됐다고 표시된 사진 개수 확인
+  const alreadyMarked = units.reduce((s, u) => {
+    const count = [...u.before, ...u.after, ...u.specials.flatMap(sp => sp.photos)]
+      .filter(p => typeof p === 'object' && p.savedToFolder).length;
+    return s + count;
+  }, 0);
+
+  // 이미 저장됨으로 표시된 게 있으면 재저장 여부 묻기
+  let forceResave = false;
+  if (alreadyMarked > 0) {
+    forceResave = confirm(
+      `💡 ${alreadyMarked}장이 "이미 저장됨"으로 표시되어 있습니다.\n\n` +
+      `확인: 모든 사진을 다시 저장 (파일이 0바이트이거나 깨졌을 경우)\n` +
+      `취소: 새로 추가된 사진만 저장`
+    );
+  }
+
   const date = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
   const apt  = document.getElementById('aptName').value || '작업';
   const aptSafe = apt.replace(/[\/\\:*?"<>|]/g, '_');
@@ -2434,27 +2488,33 @@ async function savePhotosToFolder() {
   let saved = 0, skipped = 0;
   const errors = [];
 
-  // 사진 1장 저장 헬퍼 (재시도 + 대기시간 포함)
+  // 사진 1장 저장 헬퍼
   async function savePhoto(p, unitName, typeLabel, idx) {
-    if (typeof p === 'object' && (p.savedToFolder || _savedPhotoIds.has(p.id))) {
+    // forceResave가 아닐 때만 스킵 체크
+    if (!forceResave && typeof p === 'object' && (p.savedToFolder || _savedPhotoIds.has(p.id))) {
       skipped++;
       return;
     }
     const safe  = unitName.replace(/[\/\\:*?"<>|]/g, '_');
     const fname = `${date}_${aptSafe}_${safe}_${typeLabel}${idx}.jpg`;
 
-    // 최대 3번 재시도 (InvalidStateError가 랜덤하게 발생하므로)
+    // 최대 3번 재시도
     let lastErr = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const blob = dataURLtoBlob(photoUrl(p));
         if (blob.size === 0) throw new Error('Blob 크기 0');
 
-        // 매번 핸들을 새로 가져옴 (캐시 충돌 회피)
         const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
         const w  = await fh.createWritable();
         await w.write(blob);
         await w.close();
+
+        // ★ 저장 검증: 파일 크기가 0이 아닌지 확인
+        const savedFile = await fh.getFile();
+        if (savedFile.size === 0) {
+          throw new Error(`저장됐지만 파일이 0바이트 (blob ${blob.size}B)`);
+        }
 
         if (typeof p === 'object') {
           p.savedToFolder = true;
@@ -2464,7 +2524,6 @@ async function savePhotosToFolder() {
         return;
       } catch(e) {
         lastErr = e;
-        // 재시도 전 대기 (점점 길게)
         await sleep(100 + attempt * 200);
       }
     }
@@ -2477,7 +2536,7 @@ async function savePhotosToFolder() {
         setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
         try { await savePhoto(u.before[i], u.name, '전', i+1); }
         catch(e) { errors.push(`${u.name} 전${i+1}: ${e.message}`); }
-        await sleep(50);  // ★ 각 저장 사이 쿨다운
+        await sleep(50);
       }
       for (let i = 0; i < u.after.length; i++) {
         setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
@@ -2498,7 +2557,7 @@ async function savePhotosToFolder() {
     hideOverlay();
     renderAll();
     if (errors.length > 0) {
-      showDebugPanel(`✅ ${saved}장 저장 완료, ⚠️ ${errors.length}장 실패\n\n실패한 사진은 "💾 지금 저장" 또는 다시 이 버튼을 눌러 재시도하세요.\n\n첫 에러:\n` + errors.slice(0,3).join('\n'));
+      showDebugPanel(`✅ ${saved}장 저장 완료, ⚠️ ${errors.length}장 실패\n\n첫 에러:\n` + errors.slice(0,3).join('\n'));
     } else if (skipped > 0) {
       showToast(`✅ ${saved}장 저장 (${skipped}장 이미 저장됨)`, 'ok');
     } else {

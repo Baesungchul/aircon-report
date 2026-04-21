@@ -2253,75 +2253,112 @@ async function diagnoseWriteTest() {
     const w  = await fh.createWritable();
     await w.write(testBlob);
     await w.close();
-    // 크기 확인
     const f = await fh.getFile();
     results.push(`✅ 테스트1 (text Blob): ${f.size}바이트`);
   } catch(e) {
     results.push(`❌ 테스트1: [${e.name}] ${e.message}`);
   }
 
-  // ── 테스트 2: 텍스트 파일 쓰기 (String) ──
+  // ── 테스트 6: 실제 사진 크기 더미 Blob (400KB) ──
   try {
-    const fh = await photoFolderHandle.getFileHandle('_test2_str.txt', { create: true });
+    // 400KB 더미 데이터 생성
+    const size = 400 * 1024;
+    const bigArr = new Uint8Array(size);
+    for (let i = 0; i < size; i++) bigArr[i] = i & 0xFF;
+    const bigBlob = new Blob([bigArr], { type: 'image/jpeg' });
+
+    const fh = await photoFolderHandle.getFileHandle('_test6_400KB.bin', { create: true });
     const w  = await fh.createWritable();
-    await w.write(testText);
+    await w.write(bigBlob);
     await w.close();
     const f = await fh.getFile();
-    results.push(`✅ 테스트2 (plain string): ${f.size}바이트`);
+    results.push(`📦 테스트6 (더미 400KB): ${f.size}바이트`);
   } catch(e) {
-    results.push(`❌ 테스트2: [${e.name}] ${e.message}`);
+    results.push(`❌ 테스트6: [${e.name}] ${e.message}`);
   }
 
-  // ── 테스트 3: 작은 이미지 Blob 쓰기 ──
+  // ── 테스트 7: 실제 업로드된 첫 사진을 저장 ──
   try {
-    // 1x1 빨간 PNG (base64)
-    const tinyPngB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
-    const bin = atob(tinyPngB64);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    const imgBlob = new Blob([arr], { type: 'image/png' });
-
-    const fh = await photoFolderHandle.getFileHandle('_test3_tiny.png', { create: true });
-    const w  = await fh.createWritable();
-    await w.write(imgBlob);
-    await w.close();
-    const f = await fh.getFile();
-    results.push(`✅ 테스트3 (tiny PNG ${imgBlob.size}B): ${f.size}바이트`);
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const dataUrl = photoUrl(firstPhoto);
+      const blob = dataURLtoBlob(dataUrl);
+      const fh = await photoFolderHandle.getFileHandle('_test7_realphoto.jpg', { create: true });
+      const w  = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
+      const f = await fh.getFile();
+      results.push(`📷 테스트7 (실제 사진 ${Math.round(blob.size/1024)}KB): ${f.size}바이트 저장됨`);
+    } else {
+      results.push(`⚠️ 테스트7: 저장할 사진 없음 (1호 작업전에 사진 추가 후 다시 시도)`);
+    }
   } catch(e) {
-    results.push(`❌ 테스트3: [${e.name}] ${e.message}`);
+    results.push(`❌ 테스트7: [${e.name}] ${e.message}`);
   }
 
-  // ── 테스트 4: ArrayBuffer 쓰기 ──
+  // ── 테스트 8: 연속 5장 저장 (실제 사진으로) ──
   try {
-    const buf = new TextEncoder().encode(testText).buffer;
-    const fh = await photoFolderHandle.getFileHandle('_test4_buf.txt', { create: true });
-    const w  = await fh.createWritable();
-    await w.write(buf);
-    await w.close();
-    const f = await fh.getFile();
-    results.push(`✅ 테스트4 (ArrayBuffer): ${f.size}바이트`);
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const dataUrl = photoUrl(firstPhoto);
+      const blob = dataURLtoBlob(dataUrl);
+      let okCount = 0;
+      let errMsg = '';
+      for (let i = 0; i < 5; i++) {
+        try {
+          const fh = await photoFolderHandle.getFileHandle(`_test8_seq${i+1}.jpg`, { create: true });
+          const w  = await fh.createWritable();
+          await w.write(blob);
+          await w.close();
+          const f = await fh.getFile();
+          if (f.size > 0) okCount++;
+          else { errMsg = `${i+1}번째 0바이트`; break; }
+        } catch(e) {
+          errMsg = `${i+1}번째 실패: [${e.name}] ${e.message}`;
+          break;
+        }
+      }
+      results.push(`🔁 테스트8 (연속 5장): ${okCount}/5 성공${errMsg?' — '+errMsg:''}`);
+    }
   } catch(e) {
-    results.push(`❌ 테스트4: [${e.name}] ${e.message}`);
+    results.push(`❌ 테스트8: [${e.name}] ${e.message}`);
   }
 
-  // ── 테스트 5: write 옵션 형태 ──
+  // ── 테스트 9: 연속 5장 저장 + 각각 50ms 쿨다운 ──
   try {
-    const fh = await photoFolderHandle.getFileHandle('_test5_opt.txt', { create: true });
-    const w  = await fh.createWritable();
-    await w.write({ type: 'write', data: testBlob, position: 0 });
-    await w.close();
-    const f = await fh.getFile();
-    results.push(`✅ 테스트5 (write option): ${f.size}바이트`);
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const dataUrl = photoUrl(firstPhoto);
+      const blob = dataURLtoBlob(dataUrl);
+      let okCount = 0;
+      let errMsg = '';
+      for (let i = 0; i < 5; i++) {
+        try {
+          const fh = await photoFolderHandle.getFileHandle(`_test9_cool${i+1}.jpg`, { create: true });
+          const w  = await fh.createWritable();
+          await w.write(blob);
+          await w.close();
+          const f = await fh.getFile();
+          if (f.size > 0) okCount++;
+          else { errMsg = `${i+1}번째 0바이트`; break; }
+          await sleep(200);  // 200ms 쿨다운
+        } catch(e) {
+          errMsg = `${i+1}번째 실패: [${e.name}] ${e.message}`;
+          break;
+        }
+      }
+      results.push(`❄️ 테스트9 (200ms 쿨다운 5장): ${okCount}/5 성공${errMsg?' — '+errMsg:''}`);
+    }
   } catch(e) {
-    results.push(`❌ 테스트5: [${e.name}] ${e.message}`);
+    results.push(`❌ 테스트9: [${e.name}] ${e.message}`);
   }
 
   showDebugPanel(
-    '🔍 진단 테스트 결과 (폴더에 _test1~5 파일이 생겼는지도 확인해주세요)\n\n' +
+    '🔍 진단 테스트 결과\n\n' +
     results.join('\n\n') +
     '\n\n─────────\n' +
-    `원본 텍스트: ${testText.length}바이트\n` +
-    `브라우저: ${navigator.userAgent.substring(0,80)}`
+    `브라우저: ${navigator.userAgent.substring(0,80)}\n` +
+    '→ 폴더에서 _test1~9 파일들이 모두 제대로 생겼는지 확인해주세요'
   );
 }
 async function saveSinglePhoto(photo, unitName, typeLabel, index) {

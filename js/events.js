@@ -22,6 +22,7 @@ function bindAll() {
   document.getElementById('srch').addEventListener('input', renderAll);
 
   // 저장/불러오기
+  document.getElementById('btnNew').addEventListener('click', newWork);
   document.getElementById('btnSave').addEventListener('click', openSaveDialog);
   document.getElementById('btnLoad').addEventListener('click', openLoadList);
   document.getElementById('saveDlgClose').addEventListener('click', closeSaveDialog);
@@ -269,5 +270,157 @@ function clearAll() {
   document.getElementById('btnPDF').disabled=true;
   document.getElementById('btnJPG').disabled=true;
   renderAll(); updateStats();
+}
+
+// 새 작업 시작
+async function newWork() {
+  // 작업 내용이 없으면 그냥 날짜만 초기화
+  if (units.length === 0) {
+    document.getElementById('workDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('aptName').value  = '';
+    showToast('🆕 새 작업을 시작합니다', 'ok');
+    return;
+  }
+
+  // 작업 내용이 있으면 사진 저장 여부 묻기
+  const totalPhotos = units.reduce((s,u) =>
+    s + u.before.length + u.after.length +
+    u.specials.reduce((a,sp) => a+sp.photos.length, 0), 0);
+
+  const hasUnsavedPhotos = totalPhotos > 0;
+
+  let msg = `📋 현재 작업: 호수 ${units.length}개, 사진 ${totalPhotos}장\n\n`;
+  if (hasUnsavedPhotos && photoFolderHandle) {
+    msg += `▶ 확인: 사진을 폴더에 저장 후 새 작업 시작\n`;
+    msg += `▶ 취소: 그냥 새 작업 시작 (사진 폴더 저장 안 함)\n\n`;
+    msg += `※ 작업 내용은 자동저장되어 "📂 불러오기"로 복원 가능합니다.`;
+  } else {
+    msg += `새 작업을 시작하시겠습니까?\n\n`;
+    msg += `※ 현재 작업은 자동저장되어 "📂 불러오기"로 복원 가능합니다.`;
+  }
+
+  const savePhotos = confirm(msg);
+
+  // 사진 저장 옵션을 선택했고 폴더가 설정되어 있으면
+  if (savePhotos && hasUnsavedPhotos && photoFolderHandle) {
+    showOverlay('사진 저장 중...');
+    try {
+      // 자동 저장 호출 (사용자 확인 없이 즉시 저장)
+      await savePhotosForNewWork();
+      hideOverlay();
+    } catch(e) {
+      hideOverlay();
+      if (!confirm(`사진 저장 중 오류가 발생했습니다.\n${e.message}\n\n그래도 새 작업을 시작할까요?`)) {
+        return;
+      }
+    }
+  } else if (savePhotos === null) {
+    // 취소 (창의 X 버튼)
+    return;
+  }
+
+  // 현재 작업을 자동저장 백업
+  if (units.length > 0) {
+    try {
+      await sessionAutoSaveNow();
+    } catch(e) {}
+  }
+
+  // 초기화
+  units = [];
+  nid = 1;
+  document.getElementById('rpWrap').innerHTML = '';
+  document.getElementById('btnPDF').disabled = true;
+  document.getElementById('btnJPG').disabled = true;
+  document.getElementById('aptName').value = '';
+  document.getElementById('workDate').value = new Date().toISOString().split('T')[0];
+  // 담당자 정보는 유지
+
+  // 사진 인덱스 카운터도 초기화
+  if (typeof _indexCounter !== 'undefined') _indexCounter.clear();
+  if (typeof _unitWorkNumber !== 'undefined') _unitWorkNumber.clear();
+  if (typeof _savedPhotoIds !== 'undefined') _savedPhotoIds.clear();
+  if (typeof pendingSaves !== 'undefined') pendingSaves.length = 0;
+
+  renderAll();
+  updateStats();
+  showToast('🆕 새 작업을 시작합니다', 'ok');
+}
+
+// 새 작업 시작 전 사진 일괄 저장 (확인창 없이)
+async function savePhotosForNewWork() {
+  // 권한 확인
+  let permOk = false;
+  try {
+    const curPerm = await photoFolderHandle.queryPermission({ mode:'readwrite' });
+    if (curPerm === 'granted') permOk = true;
+    else {
+      const newPerm = await photoFolderHandle.requestPermission({ mode:'readwrite' });
+      permOk = (newPerm === 'granted');
+    }
+  } catch(e) { throw new Error('폴더 권한 확인 실패'); }
+
+  if (!permOk) throw new Error('폴더 권한이 없습니다');
+
+  const date = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
+  const apt  = document.getElementById('aptName').value || 'site';
+  let saved = 0;
+
+  // 호수별로 work01, work02... 폴더 생성하여 저장
+  for (const u of units) {
+    const workNum = getWorkNumber(u.name);
+    for (let i = 0; i < u.before.length; i++) {
+      try {
+        await doWriteOne(u.before[i], u.name, '전');
+        saved++;
+        await sleep(50);
+      } catch(e) {}
+    }
+    for (let i = 0; i < u.after.length; i++) {
+      try {
+        await doWriteOne(u.after[i], u.name, '후');
+        saved++;
+        await sleep(50);
+      } catch(e) {}
+    }
+    for (let si = 0; si < u.specials.length; si++) {
+      for (let pi = 0; pi < u.specials[si].photos.length; pi++) {
+        try {
+          await doWriteOne(u.specials[si].photos[pi], u.name, `특이${si+1}_`);
+          saved++;
+          await sleep(50);
+        } catch(e) {}
+      }
+    }
+  }
+
+  // 작업 내용 JSON 백업 (불러오기용)
+  try {
+    const sessionData = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      apt: apt,
+      date: date,
+      worker: document.getElementById('workerName').value || '',
+      coName: document.getElementById('coName')?.value || '',
+      coTel:  document.getElementById('coTel')?.value || '',
+      coBiz:  document.getElementById('coBiz')?.value || '',
+      coDesc: document.getElementById('coDesc')?.value || '',
+      units: units.map(u => ({
+        name: u.name,
+        beforeCount: u.before.length,
+        afterCount: u.after.length,
+        specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length }))
+      }))
+    };
+    const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type:'application/json' });
+    const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create:true });
+    const fh = await dateDir.getFileHandle('_session.json', { create:true });
+    const w = await fh.createWritable();
+    await w.write(blob);
+    await w.close();
+  } catch(e) { console.warn('세션 백업 실패:', e); }
+
+  showToast(`✅ ${saved}장 저장 완료`, 'ok');
 }
 

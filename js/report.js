@@ -450,7 +450,18 @@ async function exportPDF(){
   const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   for(let i=0;i<pages.length;i++){
     setProg((i/pages.length)*100,`${i+1} / ${pages.length} 페이지`);
-    const c=await html2canvas(pages[i],{scale:2,useCORS:true,allowTaint:true,width:794,height:1123,backgroundColor:'#ffffff'});
+    const c=await html2canvas(pages[i],{
+      scale:2,
+      useCORS:true,
+      allowTaint:true,
+      width:794,
+      height:1123,
+      windowWidth:794,
+      windowHeight:1123,
+      backgroundColor:'#ffffff',
+      logging:false,
+      imageTimeout:0
+    });
     if(i>0)pdf.addPage();
     pdf.addImage(c.toDataURL('image/jpeg',.92),'JPEG',0,0,210,297);
     await sleep(40);
@@ -468,7 +479,18 @@ async function exportJPG(){
   const links=[];
   for(let i=0;i<pages.length;i++){
     setProg((i/pages.length)*100,`${i+1} / ${pages.length} 변환 중`);
-    const c=await html2canvas(pages[i],{scale:2,useCORS:true,allowTaint:true,width:794,height:1123,backgroundColor:'#ffffff'});
+    const c=await html2canvas(pages[i],{
+      scale:2,
+      useCORS:true,
+      allowTaint:true,
+      width:794,
+      height:1123,
+      windowWidth:794,
+      windowHeight:1123,
+      backgroundColor:'#ffffff',
+      logging:false,
+      imageTimeout:0
+    });
     links.push({url:c.toDataURL('image/jpeg',.92),name:`에어컨청소보고서_${apt}_${i+1}페이지.jpg`});
     await sleep(40);
   }

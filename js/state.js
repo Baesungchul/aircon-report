@@ -92,24 +92,19 @@ async function init() {
   );
 
   // ── 세션 자동 복원 ──
+  // 마지막 작업을 무조건 자동 복원 (사용자 확인 없이)
   try {
     const s = await dbGet('session_data');
     if (s && s.units && s.units.length > 0) {
-      const ago = Math.round((Date.now() - new Date(s.savedAt).getTime()) / 60000);
-      const msg = ago < 60
-        ? `${ago}분 전 작업이 있습니다 (${s.units.length}개 호수)\n복원할까요?`
-        : `이전 작업이 있습니다 (${s.units.length}개 호수, ${Math.round(ago/60)}시간 전)\n복원할까요?`;
-      if (confirm(msg)) {
-        units = normalizeUnits(s.units);
-        nid   = s.nid || units.length + 1;
-        document.getElementById('aptName').value    = s.apt||'';
-        document.getElementById('workDate').value   = s.date||new Date().toISOString().split('T')[0];
-        document.getElementById('workerName').value = s.worker||'';
-        if (s.companyName) document.getElementById('coName').value = s.companyName;
-        if (s.companyTel)  document.getElementById('coTel').value  = s.companyTel;
-        if (s.companyDesc) document.getElementById('coDesc').value = s.companyDesc;
-        showSaveStatus('saved', '✓ 복원됨');
-      }
+      units = normalizeUnits(s.units);
+      nid   = s.nid || units.length + 1;
+      document.getElementById('aptName').value    = s.apt||'';
+      document.getElementById('workDate').value   = s.date||new Date().toISOString().split('T')[0];
+      document.getElementById('workerName').value = s.worker||'';
+      if (s.companyName) document.getElementById('coName').value = s.companyName;
+      if (s.companyTel)  document.getElementById('coTel').value  = s.companyTel;
+      if (s.companyDesc) document.getElementById('coDesc').value = s.companyDesc;
+      showToast('✓ 이전 작업 이어서 진행', 'ok');
     }
   } catch(e) {}
 
@@ -134,6 +129,7 @@ async function init() {
   // ── 앱 숨김/보임 시 자동저장 (화면 전환 대응) ──
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && units.length > 0) {
+      // 백그라운드로 갈 때 즉시 저장
       sessionAutoSaveNow();
     }
   });
@@ -141,6 +137,19 @@ async function init() {
   // ── 화면 포커스 해제 시 저장 ──
   window.addEventListener('pagehide', () => {
     if (units.length > 0) sessionAutoSaveNow();
+  });
+
+  // ── bfcache에서 복원되는 경우 ──
+  // (백그라운드에서 돌아왔을 때 브라우저가 캐시에서 페이지를 복원하는 경우)
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+      // 페이지가 캐시에서 복원됨 - 상태 그대로 유지 (아무것도 안해도 됨)
+      // 혹시 UI가 이상하면 재렌더
+      if (typeof renderAll === 'function') {
+        renderAll();
+        updateStats();
+      }
+    }
   });
 
   // 자동다운로드 설정 복원

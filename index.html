@@ -32,19 +32,18 @@
     <div class="save-status" id="saveStatus">💾 저장됨</div>
   </div>
   <div class="hdr-fields">
-    <div class="hf"><label>아파트명</label><input id="aptName" placeholder="OO아파트"></div>
+    <div class="hf"><label>작업명</label><input id="aptName" placeholder="작업명을 입력하세요"></div>
     <div class="hf"><label>작업일자</label><input id="workDate" type="date"></div>
     <div class="hf"><label>담당자</label><input id="workerName" placeholder="성함"></div>
   </div>
   <div class="hdr-btns">
-    <!-- 1행: 데이터 관리 -->
+    <!-- 1행: 데이터 관리 (4열) -->
     <button class="co-hdr-btn" id="btnCoInfo">🏢 업체정보</button>
     <button class="btn b-orange" id="btnNew">🆕 새작업</button>
     <button class="btn b-gold" id="btnSave">💾 저장</button>
     <button class="btn b-ghost" id="btnLoad">📂 불러오기</button>
-    <button class="btn b-ghost" id="btnSavePhotos" style="color:var(--ac2);border-color:rgba(0,201,167,.4)">📁 사진저장</button>
     <!-- 2행: 보고서 출력 -->
-    <button class="btn b-blue" id="btnGen" disabled style="grid-column:span 3">📄 미리보기</button>
+    <button class="btn b-blue" id="btnGen" disabled style="grid-column:span 2">📄 미리보기</button>
     <button class="btn b-green" id="btnPDF" disabled>⬇️ PDF</button>
     <button class="btn b-orange" id="btnJPG" disabled>🖼️ JPG</button>
   </div>
@@ -82,11 +81,12 @@
       <div id="pendingSaveBar" style="display:none;font-size:12px;color:var(--wn);margin-top:6px;font-weight:700;">⏳ 저장 대기 중인 사진: <span id="pendingSaveCount">0</span>장</div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      <button class="btn b-gold b-xs" id="btnResumeFolder" style="flex:1;display:none;">🔓 권한 복구</button>
-      <button class="btn b-green b-xs" id="btnFlushNow" style="flex:1;display:none;">💾 지금 저장</button>
-      <button class="btn b-red b-xs" id="btnResetSaved" style="flex:1;display:none;">↻ 초기화</button>
       <button class="btn b-ghost b-xs" id="btnSetFolder" style="flex:1;">📁 폴더 변경</button>
       <button class="btn b-ghost b-xs" id="btnClearFolder" style="flex:1;color:var(--dn);display:none;">✕ 해제</button>
+      <!-- 자동 처리되는 버튼들 (숨김) -->
+      <button class="btn b-gold b-xs" id="btnResumeFolder" style="display:none;">🔓</button>
+      <button class="btn b-green b-xs" id="btnFlushNow" style="display:none;">💾</button>
+      <button class="btn b-red b-xs" id="btnResetSaved" style="display:none;">↻</button>
     </div>
   </div>
 

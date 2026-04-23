@@ -30,22 +30,25 @@
     <div class="logo-ic">❄️</div>
     <div><div class="logo-tx">평택에어컨1004</div><div class="logo-sb">작업 보고서 생성기</div></div>
     <div class="save-status" id="saveStatus">💾 저장됨</div>
+    <button class="hdr-toggle" id="hdrToggle" title="메뉴 접기/펼치기">▲</button>
   </div>
-  <div class="hdr-fields">
-    <div class="hf"><label>작업명</label><input id="aptName" placeholder="작업명을 입력하세요"></div>
-    <div class="hf"><label>작업일자</label><input id="workDate" type="date"></div>
-    <div class="hf"><label>담당자</label><input id="workerName" placeholder="성함"></div>
-  </div>
-  <div class="hdr-btns">
-    <!-- 1행: 데이터 관리 (4열) -->
-    <button class="co-hdr-btn" id="btnCoInfo">🏢 업체정보</button>
-    <button class="btn b-orange" id="btnNew">🆕 새작업</button>
-    <button class="btn b-gold" id="btnSave">💾 저장</button>
-    <button class="btn b-ghost" id="btnLoad">📂 불러오기</button>
-    <!-- 2행: 보고서 출력 -->
-    <button class="btn b-blue" id="btnGen" disabled style="grid-column:span 2">📄 미리보기</button>
-    <button class="btn b-green" id="btnPDF" disabled>⬇️ PDF</button>
-    <button class="btn b-orange" id="btnJPG" disabled>🖼️ JPG</button>
+  <div class="hdr-collapsible" id="hdrCollapsible">
+    <div class="hdr-fields">
+      <div class="hf"><label>작업명</label><input id="aptName" placeholder="작업명을 입력하세요"></div>
+      <div class="hf"><label>작업일자</label><input id="workDate" type="date"></div>
+      <div class="hf"><label>담당자</label><input id="workerName" placeholder="성함"></div>
+    </div>
+    <div class="hdr-btns">
+      <!-- 1행: 데이터 관리 (4열) -->
+      <button class="co-hdr-btn" id="btnCoInfo">🏢 업체정보</button>
+      <button class="btn b-orange" id="btnNew">🆕 새작업</button>
+      <button class="btn b-gold" id="btnSave">💾 저장</button>
+      <button class="btn b-ghost" id="btnLoad">📂 불러오기</button>
+      <!-- 2행: 보고서 출력 -->
+      <button class="btn b-blue" id="btnGen" disabled style="grid-column:span 2">📄 미리보기</button>
+      <button class="btn b-green" id="btnPDF" disabled>⬇️ PDF</button>
+      <button class="btn b-orange" id="btnJPG" disabled>🖼️ JPG</button>
+    </div>
   </div>
 </div>
 

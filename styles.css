@@ -4,11 +4,19 @@
 html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);font-size:15px;overscroll-behavior-y:contain;}
 
 /* HEADER - S22 친화적 */
-.hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:10px;}
-.logo{display:flex;align-items:center;gap:10px;flex-shrink:0;}
-.logo-ic{width:40px;height:40px;background:linear-gradient(135deg,var(--ac),var(--ac2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:12px 14px;display:flex;flex-direction:column;gap:10px;position:sticky;top:0;z-index:100;}
+.logo{display:flex;align-items:center;gap:10px;flex-shrink:0;width:100%;}
+.logo-ic{width:40px;height:40px;background:linear-gradient(135deg,var(--ac),var(--ac2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+.logo > div:nth-child(2){flex:1;min-width:0;}
 .logo-tx{font-size:15px;font-weight:700;}.logo-sb{font-size:11px;color:var(--mu);margin-top:2px;}
 .save-status{font-size:11px;padding:3px 9px;border-radius:12px;font-weight:600;opacity:0;transition:opacity .4s;}
+
+/* 헤더 접기/펼치기 */
+.hdr-toggle{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:14px;flex-shrink:0;transition:transform .3s;display:flex;align-items:center;justify-content:center;}
+.hdr-toggle:active{background:var(--sf3);}
+.hdr-collapsible{display:flex;flex-direction:column;gap:10px;width:100%;max-height:500px;overflow:hidden;transition:max-height .35s ease,opacity .25s;opacity:1;}
+.hdr.collapsed .hdr-collapsible{max-height:0;opacity:0;gap:0;}
+.hdr.collapsed .hdr-toggle{transform:rotate(180deg);}
 .save-status.saving{background:rgba(240,180,41,.2);color:var(--wn);opacity:1;}
 .save-status.saved{background:rgba(0,201,167,.15);color:var(--ac2);opacity:1;}
 .save-status.hide{opacity:0;}
@@ -244,6 +252,34 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 .rp-wtbl tbody td{padding:14px 14px;font-size:15px;color:#0a1628;border-bottom:1px solid rgba(10,22,40,.06);}
 .rp-wtbl tbody tr:last-child td{border-bottom:none;}
 .rp-wtbl tbody td.tc{text-align:center;}
+
+/* 호수 많을 때 자동 축소 - 6~10건 */
+.rp-wtbl.compact thead th{padding:9px 12px;font-size:12px;}
+.rp-wtbl.compact tbody td{padding:8px 12px;font-size:13px;}
+.rp-wtbl.compact .rp-wnum{width:22px;height:22px;font-size:11px;}
+.rp-wtbl.compact .rp-ho{font-size:13px;}
+.rp-wtbl.compact .rp-pst{width:26px;height:26px;font-size:13px;}
+.rp-wtbl.compact .rp-pill{padding:3px 10px;font-size:11px;}
+
+/* 호수 매우 많을 때 - 11~20건 */
+.rp-wtbl.compact2 thead th{padding:6px 10px;font-size:11px;}
+.rp-wtbl.compact2 tbody td{padding:5px 10px;font-size:12px;}
+.rp-wtbl.compact2 .rp-wnum{width:20px;height:20px;font-size:10px;}
+.rp-wtbl.compact2 .rp-ho{font-size:12px;}
+.rp-wtbl.compact2 .rp-pst{width:22px;height:22px;font-size:11px;}
+.rp-wtbl.compact2 .rp-pill{padding:2px 8px;font-size:10px;}
+
+/* 호수 극단적으로 많을 때 - 21건 이상 (2열 그리드로) */
+.rp-wtbl.compact3{display:grid;grid-template-columns:1fr 1fr;gap:0;}
+.rp-wtbl.compact3 thead{display:none;}
+.rp-wtbl.compact3 tbody{display:contents;}
+.rp-wtbl.compact3 tbody tr{display:grid;grid-template-columns:28px 1fr 28px 28px 54px;gap:6px;align-items:center;padding:4px 8px;border-bottom:1px solid rgba(10,22,40,.06);}
+.rp-wtbl.compact3 tbody tr:nth-child(even){background:#fafbfc;}
+.rp-wtbl.compact3 tbody td{padding:0;font-size:11px;border:none;}
+.rp-wtbl.compact3 .rp-wnum{width:18px;height:18px;font-size:9px;}
+.rp-wtbl.compact3 .rp-ho{font-size:11px;}
+.rp-wtbl.compact3 .rp-pst{width:18px;height:18px;font-size:9px;border-radius:4px;}
+.rp-wtbl.compact3 .rp-pill{padding:1px 6px;font-size:9px;}
 .rp-wnum{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:#f1f5f9;color:#475569;border-radius:50%;font-size:13px;font-weight:700;}
 .rp-ho{font-weight:700;font-size:16px;letter-spacing:-.01em;}
 .rp-pst{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;font-size:16px;font-weight:700;}

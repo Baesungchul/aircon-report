@@ -26,6 +26,20 @@ function bindAll() {
   document.getElementById('btnNew').addEventListener('click', newWork);
   document.getElementById('btnSave').addEventListener('click', handleSaveClick);
   document.getElementById('btnLoad').addEventListener('click', openLoadList);
+
+  // 헤더 접기/펼치기
+  const hdr = document.querySelector('.hdr');
+  const hdrToggle = document.getElementById('hdrToggle');
+  if (hdrToggle && hdr) {
+    // 상태 복원
+    if (localStorage.getItem('ac_hdr_collapsed') === '1') {
+      hdr.classList.add('collapsed');
+    }
+    hdrToggle.addEventListener('click', () => {
+      hdr.classList.toggle('collapsed');
+      localStorage.setItem('ac_hdr_collapsed', hdr.classList.contains('collapsed') ? '1' : '0');
+    });
+  }
   document.getElementById('saveDlgClose').addEventListener('click', closeSaveDialog);
   document.getElementById('saveDlgCancel').addEventListener('click', closeSaveDialog);
   document.getElementById('saveDlgOk').addEventListener('click', doSave);

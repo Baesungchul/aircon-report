@@ -149,7 +149,7 @@ function buildReportHTML(){
         <div class="rp-list-txt">작업 상세 목록</div>
         <div class="rp-list-cnt">총 ${total}건</div>
       </div>
-      <table class="rp-wtbl">
+      <table class="rp-wtbl ${total<=5?'':total<=10?'compact':total<=20?'compact2':'compact3'}">
         <thead>
           <tr>
             <th style="width:44px" class="tc">#</th>

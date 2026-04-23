@@ -91,10 +91,22 @@ async function init() {
     })
   );
 
-  // ── 세션 자동 복원 ──
-  // 마지막 작업을 무조건 자동 복원 (사용자 확인 없이)
+  // ── 세션 자동 복원 (이중 백업) ──
+  // 1순위: IndexedDB / 2순위: localStorage
   try {
-    const s = await dbGet('session_data');
+    let s = null;
+    try {
+      s = await dbGet('session_data');
+    } catch(e) {}
+
+    // IndexedDB에 없거나 units이 비었으면 localStorage 확인
+    if (!s || !s.units || s.units.length === 0) {
+      try {
+        const ls = localStorage.getItem('ac_session_backup');
+        if (ls) s = JSON.parse(ls);
+      } catch(e) {}
+    }
+
     if (s && s.units && s.units.length > 0) {
       units = normalizeUnits(s.units);
       nid   = s.nid || units.length + 1;
@@ -104,7 +116,7 @@ async function init() {
       if (s.companyName) document.getElementById('coName').value = s.companyName;
       if (s.companyTel)  document.getElementById('coTel').value  = s.companyTel;
       if (s.companyDesc) document.getElementById('coDesc').value = s.companyDesc;
-      showToast('✓ 이전 작업 이어서 진행', 'ok');
+      // 토스트 제거 - 사용자가 세션을 의식하지 않도록 조용히 복원
     }
   } catch(e) {}
 

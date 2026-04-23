@@ -1,6 +1,113 @@
 /* ═══════════════════════════════
    SAVE DIALOG
 ═══════════════════════════════ */
+// 저장 버튼 메인 핸들러 - 상황에 맞게 자동 분기
+async function handleSaveClick() {
+  if (units.length === 0) {
+    showToast('저장할 호수가 없습니다', 'err');
+    return;
+  }
+
+  // 폴더가 설정되어 있으면 → 폴더 저장 (사진 + 세션)
+  if (photoFolderHandle) {
+    await saveToFolder();
+    return;
+  }
+
+  // 폴더 미설정 → IndexedDB 저장 (이름 입력)
+  openSaveDialog();
+}
+
+// 폴더 저장 - 사진 + 세션 정보를 한번에
+async function saveToFolder() {
+  // 권한 확인 (자동 요청)
+  let permOk = false;
+  try {
+    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (curPerm === 'granted') {
+      permOk = true;
+    } else {
+      // 권한이 없으면 자동 요청
+      showToast('저장 권한을 요청합니다...', 'ok');
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      permOk = (newPerm === 'granted');
+    }
+  } catch(e) {
+    showToast('폴더 권한 확인 실패: ' + e.message, 'err');
+    return;
+  }
+
+  if (!permOk) {
+    showToast('폴더 권한이 거부되었습니다', 'err');
+    return;
+  }
+
+  showOverlay('저장 중...');
+  let saved = 0;
+  let failed = 0;
+
+  try {
+    // 1) 모든 사진을 폴더에 저장
+    for (const u of units) {
+      for (let i = 0; i < u.before.length; i++) {
+        try { await doWriteOne(u.before[i], u.name, '전'); saved++; await sleep(30); }
+        catch(e) { failed++; }
+      }
+      for (let i = 0; i < u.after.length; i++) {
+        try { await doWriteOne(u.after[i], u.name, '후'); saved++; await sleep(30); }
+        catch(e) { failed++; }
+      }
+      for (let si = 0; si < u.specials.length; si++) {
+        for (let pi = 0; pi < u.specials[si].photos.length; pi++) {
+          try { await doWriteOne(u.specials[si].photos[pi], u.name, `특이${si+1}_`); saved++; await sleep(30); }
+          catch(e) { failed++; }
+        }
+      }
+    }
+
+    // 2) _session.json (불러오기용 메타) 저장
+    const date = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
+    const apt  = document.getElementById('aptName').value || 'site';
+    const sessionData = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      apt, date,
+      worker:  document.getElementById('workerName').value || '',
+      coName:  document.getElementById('coName')?.value || '',
+      coTel:   document.getElementById('coTel')?.value || '',
+      coBiz:   document.getElementById('coBiz')?.value || '',
+      coDesc:  document.getElementById('coDesc')?.value || '',
+      units: units.map(u => ({
+        name: u.name,
+        beforeCount: u.before.length,
+        afterCount: u.after.length,
+        specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length }))
+      }))
+    };
+    try {
+      const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type:'application/json' });
+      const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
+      const fh = await dateDir.getFileHandle('_session.json', { create: true });
+      const w = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
+    } catch(e) { console.warn('세션 파일 저장 실패:', e); }
+
+    // 3) 자동저장도 함께
+    try { await sessionAutoSaveNow(); } catch(e) {}
+
+    hideOverlay();
+    if (failed > 0) {
+      showToast(`💾 ${saved}장 저장 완료 (${failed}장 실패)`, 'ok');
+    } else {
+      showToast(`💾 ${saved}장 저장 완료 ✓`, 'ok');
+    }
+  } catch(e) {
+    hideOverlay();
+    showToast('저장 실패: ' + e.message, 'err');
+  }
+}
+
 function openSaveDialog() {
   if(units.length===0){ showToast('저장할 호수가 없습니다','err'); return; }
   const apt=document.getElementById('aptName').value||'';

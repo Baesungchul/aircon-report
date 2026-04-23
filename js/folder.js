@@ -13,25 +13,39 @@ function sessionAutoSave() {
 async function sessionAutoSaveNow() {
   if (units.length === 0) return;
   clearTimeout(_autoSaveTimer);
+  const obj = {
+    saveId:      'session_data',
+    label:       '[세션]',
+    apt:         document.getElementById('aptName').value,
+    date:        document.getElementById('workDate').value || new Date().toISOString().split('T')[0],
+    savedAt:     new Date().toISOString(),
+    worker:      document.getElementById('workerName').value,
+    companyName: document.getElementById('coName').value,
+    companyTel:  document.getElementById('coTel').value,
+    companyDesc: document.getElementById('coDesc').value,
+    units:       JSON.parse(JSON.stringify(units)),
+    nid
+  };
+  // 1차: IndexedDB
   try {
-    const obj = {
-      saveId:      'session_data',
-      label:       '[세션]',
-      apt:         document.getElementById('aptName').value,
-      date:        document.getElementById('workDate').value || new Date().toISOString().split('T')[0],
-      savedAt:     new Date().toISOString(),
-      worker:      document.getElementById('workerName').value,
-      companyName: document.getElementById('coName').value,
-      companyTel:  document.getElementById('coTel').value,
-      companyDesc: document.getElementById('coDesc').value,
-      units:       JSON.parse(JSON.stringify(units)),
-      nid
-    };
     await dbPut(obj);
     showSaveStatus('saved', '✓ 자동저장됨');
   } catch(e) {
     showSaveStatus('saving', '저장 실패');
   }
+  // 2차: localStorage 백업 (사진 dataURL 제외하여 크기 줄임)
+  try {
+    const backup = {
+      ...obj,
+      units: obj.units.map(u => ({
+        ...u,
+        before: u.before.map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
+        after:  u.after.map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
+        specials: u.specials.map(s => ({ desc: s.desc, photos: s.photos.map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })) }))
+      }))
+    };
+    localStorage.setItem('ac_session_backup', JSON.stringify(backup));
+  } catch(e) {}
 }
 
 function showSaveStatus(cls, msg) {

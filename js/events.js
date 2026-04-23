@@ -3,7 +3,8 @@
 ═══════════════════════════════ */
 function bindAll() {
   // 헤더 버튼
-  document.getElementById('btnCoInfo').addEventListener('click', openCoModal);
+  const btnCo = document.getElementById('btnCoInfo');
+  if (btnCo) btnCo.addEventListener('click', openCoModal);  // 구버전 호환
   document.getElementById('coModalClose').addEventListener('click', closeCoModal);
   document.getElementById('coModalCancel').addEventListener('click', closeCoModal);
   document.getElementById('coModalSave').addEventListener('click', saveCoInfo);

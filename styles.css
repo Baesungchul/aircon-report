@@ -1,7 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=DM+Mono:wght@400;500&display=swap');
-:root{--bg:#0d0f18;--sf:#161924;--sf2:#1e2235;--sf3:#252a40;--bd:#2a2f47;--ac:#3d8ef0;--ac2:#00c9a7;--tx:#dde2f5;--mu:#7880a0;--dn:#f06060;--wn:#f0b429;}
+
+/* 기본 테마: 다크 블루 */
+:root{--bg:#0d0f18;--sf:#161924;--sf2:#1e2235;--sf3:#252a40;--bd:#2a2f47;--ac:#3d8ef0;--ac2:#00c9a7;--tx:#dde2f5;--mu:#7880a0;--dn:#f06060;--wn:#f0b429;--fs-base:15px;}
+
+/* 미드나잇 (퍼플) */
+[data-theme="midnight"]{--bg:#12101e;--sf:#1a1a2e;--sf2:#252142;--sf3:#342c56;--bd:#3a3260;--ac:#a855f7;--ac2:#ec4899;--tx:#e0dcf5;--mu:#8b85a8;}
+
+/* 포레스트 (그린) */
+[data-theme="forest"]{--bg:#0d1a15;--sf:#142821;--sf2:#1c3a2e;--sf3:#254d3d;--bd:#2c5545;--ac:#10b981;--ac2:#34d399;--tx:#d5e8df;--mu:#7a9185;}
+
+/* 라이트 */
+[data-theme="light"]{--bg:#f5f7fa;--sf:#ffffff;--sf2:#f1f5f9;--sf3:#e2e8f0;--bd:#cbd5e1;--ac:#3b82f6;--ac2:#10b981;--tx:#1e293b;--mu:#64748b;--dn:#dc2626;--wn:#f59e0b;}
+
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);font-size:15px;overscroll-behavior-y:contain;}
+html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);font-size:var(--fs-base);overscroll-behavior-y:contain;}
 
 /* HEADER - S22 친화적 */
 .hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:12px 14px;display:flex;flex-direction:column;gap:10px;position:sticky;top:0;z-index:100;}
@@ -402,3 +414,26 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 .co-hdr-btn.set{border-color:rgba(0,201,167,.4);color:var(--ac2);background:rgba(0,201,167,.08);}
 /* 기존 인라인 cmp-sec 숨김 */
 .cmp-sec{display:none !important;}
+
+/* ═══════════════════════════════
+   설정 모달
+═══════════════════════════════ */
+.set-sec{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--bd);}
+.set-sec:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+.set-sec-title{font-size:13px;font-weight:700;color:var(--tx);margin-bottom:10px;letter-spacing:-.01em;}
+
+/* 테마 선택 */
+.theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.theme-btn{background:var(--sf2);border:2px solid var(--bd);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;color:var(--tx);font-size:13px;font-weight:600;transition:border-color .2s,transform .1s;}
+.theme-btn:active{transform:scale(.97);}
+.theme-btn.active{border-color:var(--ac);background:rgba(61,142,240,.1);}
+.theme-preview{width:34px;height:34px;border-radius:8px;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.2);}
+
+/* 글자 크기 */
+.fs-control{display:flex;align-items:center;gap:10px;}
+.fs-preview{flex:1;text-align:center;background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:12px;font-weight:700;color:var(--tx);}
+
+/* 라이트 테마 전용 보정 */
+[data-theme="light"] .theme-btn.active{background:rgba(59,130,246,.12);}
+[data-theme="light"] .btn.b-ghost{color:var(--tx);border-color:var(--bd);}
+[data-theme="light"] .unit,[data-theme="light"] .unit-hd{background:var(--sf);}

@@ -40,7 +40,7 @@
     </div>
     <div class="hdr-btns">
       <!-- 1행: 데이터 관리 (4열) -->
-      <button class="co-hdr-btn" id="btnCoInfo">🏢 업체정보</button>
+      <button class="co-hdr-btn" id="btnSettings">⚙️ 설정</button>
       <button class="btn b-orange" id="btnNew">🆕 새작업</button>
       <button class="btn b-gold" id="btnSave">💾 저장</button>
       <button class="btn b-ghost" id="btnLoad">📂 불러오기</button>
@@ -94,6 +94,84 @@
   </div>
 
   <div class="unit-list" id="uList"></div>
+</div>
+
+<!-- 설정 모달 -->
+<div class="co-modal" id="settingsModal">
+  <div class="co-dlg" style="max-width:500px;">
+    <div class="co-head">
+      <div class="co-head-title">⚙️ 설정</div>
+      <button class="btn b-ghost b-xs" id="settingsClose">✕</button>
+    </div>
+    <div class="co-body" style="padding:16px;">
+
+      <!-- 업체정보 -->
+      <div class="set-sec">
+        <div class="set-sec-title">🏢 업체정보</div>
+        <button class="btn b-blue" id="setOpenCoInfo" style="width:100%;justify-content:center;">업체정보 편집</button>
+      </div>
+
+      <!-- 저장 폴더 -->
+      <div class="set-sec">
+        <div class="set-sec-title">📁 저장 폴더</div>
+        <div id="setFolderStatus" style="font-size:13px;color:var(--mu);margin-bottom:8px;word-break:break-all;">폴더 미설정</div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn b-ghost" id="setChangeFolder" style="flex:1;justify-content:center;">폴더 선택/변경</button>
+          <button class="btn b-red" id="setClearFolder" style="flex:1;justify-content:center;display:none;">해제</button>
+        </div>
+      </div>
+
+      <!-- 테마 -->
+      <div class="set-sec">
+        <div class="set-sec-title">🎨 테마</div>
+        <div class="theme-grid" id="themeGrid">
+          <button class="theme-btn active" data-theme="dark">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#0d0f18,#3d8ef0);"></div>
+            <span>다크 블루</span>
+          </button>
+          <button class="theme-btn" data-theme="midnight">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#1a1a2e,#a855f7);"></div>
+            <span>미드나잇</span>
+          </button>
+          <button class="theme-btn" data-theme="forest">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#0d1f1a,#10b981);"></div>
+            <span>포레스트</span>
+          </button>
+          <button class="theme-btn" data-theme="light">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#f5f7fa,#3b82f6);"></div>
+            <span>라이트</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 글자 크기 -->
+      <div class="set-sec">
+        <div class="set-sec-title">🔤 글자 크기</div>
+        <div class="fs-control">
+          <button class="btn b-ghost" id="fsDown" style="min-width:48px;font-size:18px;">－</button>
+          <div class="fs-preview" id="fsPreview">가나다 ABC</div>
+          <button class="btn b-ghost" id="fsUp" style="min-width:48px;font-size:18px;">＋</button>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;text-align:center;">
+          현재: <span id="fsLabel">보통</span>
+        </div>
+      </div>
+
+      <!-- 언어 (준비 중 표시) -->
+      <div class="set-sec">
+        <div class="set-sec-title">🌐 언어</div>
+        <select class="co-input" id="langSelect">
+          <option value="ko">한국어</option>
+          <option value="en" disabled>English (준비 중)</option>
+          <option value="ja" disabled>日本語 (준비 중)</option>
+        </select>
+      </div>
+
+    </div>
+    <div class="co-foot">
+      <button class="btn b-blue" id="settingsCloseBtn" style="width:100%;justify-content:center;">완료</button>
+    </div>
+  </div>
 </div>
 
 <!-- 업체 정보 설정 모달 -->
@@ -281,6 +359,7 @@
 <script src="./js/dialogs.js"></script>
 <script src="./js/report.js"></script>
 <script src="./js/folder.js"></script>
+<script src="./js/settings.js"></script>
 <script src="./js/app.js"></script>
 
 </body>

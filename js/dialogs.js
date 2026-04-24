@@ -44,79 +44,96 @@ async function saveToFolder() {
   showOverlay('저장 중...');
   let saved = 0;
   let failed = 0;
+  let sessionFileSaved = false;
+
+  // 날짜와 작업명을 미리 확정 (사진 저장 실패해도 _session.json은 저장하도록)
+  const date = document.getElementById('workDate').value || getLocalDateStr();
+  const apt  = document.getElementById('aptName').value || 'site';
 
   try {
     // 1) 모든 사진을 폴더에 저장
     for (const u of units) {
       for (let i = 0; i < u.before.length; i++) {
         try { await doWriteOne(u.before[i], u.name, '전'); saved++; await sleep(30); }
-        catch(e) { failed++; }
+        catch(e) { failed++; console.warn('사진 저장 실패:', e.message); }
       }
       for (let i = 0; i < u.after.length; i++) {
         try { await doWriteOne(u.after[i], u.name, '후'); saved++; await sleep(30); }
-        catch(e) { failed++; }
+        catch(e) { failed++; console.warn('사진 저장 실패:', e.message); }
       }
       for (let si = 0; si < u.specials.length; si++) {
         for (let pi = 0; pi < u.specials[si].photos.length; pi++) {
           try { await doWriteOne(u.specials[si].photos[pi], u.name, `특이${si+1}_`); saved++; await sleep(30); }
-          catch(e) { failed++; }
+          catch(e) { failed++; console.warn('사진 저장 실패:', e.message); }
         }
       }
     }
+  } catch(eOuter) {
+    console.warn('사진 저장 루프 에러:', eOuter);
+  }
 
-    // 2) 불러오기용 JSON 파일 저장 (작업명 기반 파일명)
-    const date = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
-    const apt  = document.getElementById('aptName').value || 'site';
-    const sessionData = {
-      version: 1,
-      type: 'aircon-report',  // 식별용
-      savedAt: new Date().toISOString(),
-      apt, date,
-      worker:  document.getElementById('workerName').value || '',
-      coName:  document.getElementById('coName')?.value || '',
-      coTel:   document.getElementById('coTel')?.value || '',
-      coBiz:   document.getElementById('coBiz')?.value || '',
-      coDesc:  document.getElementById('coDesc')?.value || '',
-      units: units.map(u => ({
-        name: u.name,
-        beforeCount: u.before.length,
-        afterCount: u.after.length,
-        specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length }))
-      }))
-    };
-    try {
-      const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type:'application/json' });
-      const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
+  // 2) 불러오기용 JSON 파일 저장 (사진 저장 실패와 무관하게 무조건 시도)
+  const sessionData = {
+    version: 1,
+    type: 'aircon-report',
+    savedAt: new Date().toISOString(),
+    apt, date,
+    worker:  document.getElementById('workerName').value || '',
+    coName:  document.getElementById('coName')?.value || '',
+    coTel:   document.getElementById('coTel')?.value || '',
+    coBiz:   document.getElementById('coBiz')?.value || '',
+    coDesc:  document.getElementById('coDesc')?.value || '',
+    units: units.map(u => ({
+      name: u.name,
+      beforeCount: u.before.length,
+      afterCount: u.after.length,
+      specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length }))
+    }))
+  };
 
-      // 파일명: 작업명 기준, 기존 호환용 _session.json도 함께 저장
-      const safeApt = (apt || 'work').replace(/[\\/:*?"<>|]/g, '_').slice(0, 50);
-      const fileName = `${safeApt}_${date}.acreport.json`;
+  try {
+    const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type:'application/json' });
+    const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
 
-      // 메인 파일 (사용자가 선택할 파일)
-      const fh = await dateDir.getFileHandle(fileName, { create: true });
-      const w = await fh.createWritable();
-      await w.write(blob);
-      await w.close();
+    // 파일명: 작업명 기반
+    const safeApt = (apt || 'work').replace(/[\\/:*?"<>|]/g, '_').slice(0, 50);
+    const fileName = `${safeApt}_${date}.acreport.json`;
 
-      // 호환용 (기존 코드가 찾는 위치)
-      const fh2 = await dateDir.getFileHandle('_session.json', { create: true });
-      const w2 = await fh2.createWritable();
-      await w2.write(blob);
-      await w2.close();
-    } catch(e) { console.warn('세션 파일 저장 실패:', e); }
+    // 메인 파일
+    const fh = await dateDir.getFileHandle(fileName, { create: true });
+    const w = await fh.createWritable();
+    await w.write(blob);
+    await w.close();
 
-    // 3) 자동저장도 함께
-    try { await sessionAutoSaveNow(); } catch(e) {}
+    // 호환용 _session.json (불러오기 목록이 이걸 찾음)
+    const fh2 = await dateDir.getFileHandle('_session.json', { create: true });
+    const w2 = await fh2.createWritable();
+    await w2.write(blob);
+    await w2.close();
 
-    hideOverlay();
-    if (failed > 0) {
-      showToast(`💾 ${saved}장 저장 완료 (${failed}장 실패)`, 'ok');
-    } else {
-      showToast(`💾 ${saved}장 저장 완료 ✓`, 'ok');
-    }
+    sessionFileSaved = true;
+    console.log('✓ _session.json 저장 완료:', date);
   } catch(e) {
-    hideOverlay();
-    showToast('저장 실패: ' + e.message, 'err');
+    console.error('❌ 세션 파일 저장 실패:', e);
+    showToast('세션 파일 저장 실패: ' + e.message, 'err');
+  }
+
+  // 3) 자동저장도 함께
+  try { await sessionAutoSaveNow(); } catch(e) {}
+
+  hideOverlay();
+
+  // 결과 토스트
+  if (sessionFileSaved) {
+    if (failed > 0) {
+      showToast(`💾 사진 ${saved}장 저장 (${failed}장 실패) ✓ 작업 정보 저장됨`, 'ok');
+    } else if (saved === 0) {
+      showToast(`💾 작업 정보 저장 완료 (사진은 이미 저장됨)`, 'ok');
+    } else {
+      showToast(`💾 사진 ${saved}장 + 작업 정보 저장 완료 ✓`, 'ok');
+    }
+  } else {
+    showToast('저장 실패: 작업 정보를 저장하지 못했습니다', 'err');
   }
 }
 
@@ -172,13 +189,22 @@ async function doSave() {
 let _loadDateFrom = null;  // 기간 필터 시작
 let _loadDateTo = null;    // 기간 필터 종료
 
+// 로컬 시간대 기준 YYYY-MM-DD 반환 (UTC 변환 방지)
+function getLocalDateStr(d) {
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 async function openLoadList() {
-  // 기본: 최근 30일
+  // 기본: 최근 30일 (로컬 기준)
   const today = new Date();
   const thirtyDaysAgo = new Date(today);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  _loadDateFrom = thirtyDaysAgo.toISOString().split('T')[0];
-  _loadDateTo = today.toISOString().split('T')[0];
+  _loadDateFrom = getLocalDateStr(thirtyDaysAgo);
+  _loadDateTo   = getLocalDateStr(today);
 
   document.getElementById('slModal').classList.add('open');
   await renderLoadList();
@@ -247,24 +273,36 @@ async function renderLoadList() {
 
   // 날짜 폴더들 스캔 (기간 필터 적용)
   const sessions = [];
+  const debugInfo = { totalFolders: 0, dateFolders: 0, inRange: 0, withSession: 0, errors: [] };
   try {
     for await (const [name, handle] of photoFolderHandle.entries()) {
+      debugInfo.totalFolders++;
       if (handle.kind !== 'directory') continue;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(name)) continue;
+      debugInfo.dateFolders++;
 
       // 기간 필터
       if (_loadDateFrom && name < _loadDateFrom) continue;
       if (_loadDateTo && name > _loadDateTo) continue;
+      debugInfo.inRange++;
 
       try {
         const fh = await handle.getFileHandle('_session.json');
         const file = await fh.getFile();
-        const data = JSON.parse(await file.text());
+        const text = await file.text();
+        const data = JSON.parse(text);
         sessions.push({ name, data, dirHandle: handle });
-      } catch(e) { /* _session.json 없으면 스킵 */ }
+        debugInfo.withSession++;
+      } catch(e) {
+        debugInfo.errors.push(`${name}: ${e.message}`);
+      }
     }
     sessions.sort((a,b) => new Date(b.data.savedAt) - new Date(a.data.savedAt));
+
+    // 콘솔 로그 (F12로 확인 가능)
+    console.log('📂 불러오기 스캔 결과:', debugInfo);
   } catch(e) {
+    body = freshSlBody();
     body.innerHTML = `<div class="sl-empty">폴더 읽기 실패: ${e.message}</div>`;
     return;
   }
@@ -284,10 +322,19 @@ async function renderLoadList() {
   `;
 
   if (sessions.length === 0) {
+    let debugMsg = '';
+    if (debugInfo.dateFolders === 0) {
+      debugMsg = `폴더 안에 날짜 형식(YYYY-MM-DD) 폴더가 없습니다`;
+    } else if (debugInfo.inRange === 0) {
+      debugMsg = `날짜 폴더 ${debugInfo.dateFolders}개 발견 → 모두 기간 범위 밖<br><span style="font-size:10px;">기간을 넓혀보세요</span>`;
+    } else if (debugInfo.withSession === 0) {
+      debugMsg = `폴더 ${debugInfo.inRange}개 → _session.json 파일 없음<br><span style="font-size:10px;">에러: ${debugInfo.errors.slice(0,3).join('; ').slice(0,200)}</span>`;
+    }
     html += `
       <div class="sl-empty" style="padding:30px 14px;">
         <div style="font-size:14px;margin-bottom:8px;">해당 기간에 저장된 작업이 없습니다</div>
-        <div style="font-size:11px;color:var(--mu);">🔍 기간 변경 버튼을 눌러 범위를 넓혀보세요</div>
+        <div style="font-size:11px;color:var(--mu);margin-bottom:12px;">🔍 기간 변경 버튼을 눌러 범위를 넓혀보세요</div>
+        ${debugMsg ? `<div style="font-size:10px;color:var(--wn);background:var(--sf2);padding:8px 12px;border-radius:6px;margin-top:10px;line-height:1.5;">${debugMsg}</div>` : ''}
       </div>
     `;
   } else {
@@ -390,8 +437,8 @@ function showDateRangeDialog() {
   const threeMonthsAgo = new Date(today);
   threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
 
-  const fromDefault = _loadDateFrom || threeMonthsAgo.toISOString().split('T')[0];
-  const toDefault   = _loadDateTo   || today.toISOString().split('T')[0];
+  const fromDefault = _loadDateFrom || getLocalDateStr(threeMonthsAgo);
+  const toDefault   = _loadDateTo   || getLocalDateStr(today);
 
   const body = freshSlBody();
   body.innerHTML = `
@@ -432,13 +479,13 @@ function showDateRangeDialog() {
       const toEl = document.getElementById('rangeTo');
       if (type === 'all') {
         fromEl.value = '2020-01-01';
-        toEl.value = now.toISOString().split('T')[0];
+        toEl.value = getLocalDateStr(now);
       } else {
         const days = parseInt(type);
         const from = new Date(now);
         from.setDate(from.getDate() - days);
-        fromEl.value = from.toISOString().split('T')[0];
-        toEl.value = now.toISOString().split('T')[0];
+        fromEl.value = getLocalDateStr(from);
+        toEl.value = getLocalDateStr(now);
       }
       return;
     }

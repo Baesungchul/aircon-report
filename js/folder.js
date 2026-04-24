@@ -65,13 +65,9 @@ function showSaveStatus(cls, msg) {
 ═══════════════════════════════ */
 
 async function initPhotoFolder() {
-  document.getElementById('folderBar').style.display = 'flex';
-  document.getElementById('folderBar').style.flexDirection = 'column';
+  // folderBar는 display:none!important로 숨김 처리됨 - 설정 모달에서만 관리
 
   if (!('showDirectoryPicker' in window)) {
-    document.getElementById('folderStatusText').textContent = '⚠️ 폴더 자동저장 미지원 브라우저';
-    document.getElementById('folderPathText').textContent = '크롬(Chrome) 브라우저에서 사용해 주세요';
-    document.getElementById('btnSetFolder').style.display = 'none';
     return;
   }
 
@@ -162,6 +158,7 @@ async function clearPhotoFolder() {
 }
 
 function updateFolderUI(handle, perm) {
+  // folderBar는 숨겨져 있으므로 DOM 요소가 없을 수 있음 - 안전하게 처리
   const statusEl   = document.getElementById('folderStatusText');
   const pathEl     = document.getElementById('folderPathText');
   const clearBtn   = document.getElementById('btnClearFolder');
@@ -169,30 +166,29 @@ function updateFolderUI(handle, perm) {
   const resumeBtn  = document.getElementById('btnResumeFolder');
   const resetBtn   = document.getElementById('btnResetSaved');
 
+  if (!statusEl && !pathEl) return;  // folderBar 완전 제거된 경우
+
   if (handle) {
     if (perm === 'granted') {
-      statusEl.textContent = `✅ 저장 폴더: ${handle.name}`;
-      statusEl.style.color = 'var(--ac2)';
-      pathEl.textContent   = `${handle.name}/[날짜]/work01/image01.jpg`;
-      clearBtn.style.display = 'inline-flex';
-      setBtn.textContent   = '📁 폴더 변경';
+      if (statusEl) { statusEl.textContent = `✅ 저장 폴더: ${handle.name}`; statusEl.style.color = 'var(--ac2)'; }
+      if (pathEl)   pathEl.textContent   = `${handle.name}/[날짜]/work01/image01.jpg`;
+      if (clearBtn) clearBtn.style.display = 'inline-flex';
+      if (setBtn)   setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'none';
       if (resetBtn)  resetBtn.style.display  = 'inline-flex';
     } else {
-      statusEl.textContent = `🔒 ${handle.name}`;
-      statusEl.style.color = 'var(--wn)';
-      pathEl.textContent   = '권한 복구가 필요합니다';
-      clearBtn.style.display = 'inline-flex';
-      setBtn.textContent   = '📁 폴더 변경';
+      if (statusEl) { statusEl.textContent = `🔒 ${handle.name}`; statusEl.style.color = 'var(--wn)'; }
+      if (pathEl)   pathEl.textContent   = '권한 복구가 필요합니다';
+      if (clearBtn) clearBtn.style.display = 'inline-flex';
+      if (setBtn)   setBtn.textContent   = '📁 폴더 변경';
       if (resumeBtn) resumeBtn.style.display = 'inline-flex';
       if (resetBtn)  resetBtn.style.display  = 'none';
     }
   } else {
-    statusEl.textContent = '📁 자동저장 폴더 미설정';
-    statusEl.style.color = 'var(--mu)';
-    pathEl.textContent   = '아래 버튼을 눌러 저장 위치를 설정해주세요';
-    clearBtn.style.display = 'none';
-    setBtn.textContent   = '📁 폴더 설정';
+    if (statusEl) { statusEl.textContent = '📁 자동저장 폴더 미설정'; statusEl.style.color = 'var(--mu)'; }
+    if (pathEl)   pathEl.textContent   = '아래 버튼을 눌러 저장 위치를 설정해주세요';
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (setBtn)   setBtn.textContent   = '📁 폴더 설정';
     if (resumeBtn) resumeBtn.style.display = 'none';
     if (resetBtn)  resetBtn.style.display  = 'none';
   }

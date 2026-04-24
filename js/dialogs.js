@@ -170,53 +170,32 @@ async function doSave() {
    LOAD LIST
 ═══════════════════════════════ */
 async function openLoadList() {
-  // 브라우저 지원 확인
-  if (!('showOpenFilePicker' in window)) {
-    // 지원 안 하면 기존 다이얼로그 표시 (IndexedDB 목록)
-    openSavedList();
-    return;
-  }
+  // 시스템 파일 탐색기를 여는 방식 (모든 기기에서 동작)
+  // 사용자가 파일 탐색기에서 직접 날짜 폴더 이동 → json 파일 선택
 
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+
+  input.addEventListener('change', async () => {
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    await loadWorkFromFile(file);
+  });
+
+  // 파일 선택창 열기
+  input.click();
+}
+
+// 파일에서 작업 불러오기
+async function loadWorkFromFile(file) {
   try {
-    // 저장 폴더가 있으면 그 안에서 시작, 없으면 기본 위치
-    const pickerOpts = {
-      types: [{
-        description: '에어컨 작업 보고서',
-        accept: { 'application/json': ['.json'] }
-      }],
-      multiple: false,
-      excludeAcceptAllOption: false
-    };
-
-    // 저장 폴더가 설정되어 있으면 시작 위치를 거기로 설정
-    if (photoFolderHandle) {
-      try {
-        // 권한 확인
-        const perm = await photoFolderHandle.queryPermission({ mode: 'read' });
-        if (perm !== 'granted') {
-          await photoFolderHandle.requestPermission({ mode: 'read' });
-        }
-        // startIn에 디렉토리 핸들 전달
-        pickerOpts.startIn = photoFolderHandle;
-      } catch(e) { /* 무시하고 기본 위치에서 시작 */ }
-    }
-
-    let fileHandles;
-    try {
-      fileHandles = await window.showOpenFilePicker(pickerOpts);
-    } catch(e) {
-      if (e.name === 'AbortError') return;  // 사용자 취소
-      throw e;
-    }
-
-    const fileHandle = fileHandles[0];
-    const file = await fileHandle.getFile();
     const text = await file.text();
     let data;
     try {
       data = JSON.parse(text);
     } catch(e) {
-      showToast('올바른 작업 파일이 아닙니다', 'err');
+      showToast('올바른 작업 파일이 아닙니다 (.json)', 'err');
       return;
     }
 
@@ -225,13 +204,13 @@ async function openLoadList() {
       return;
     }
 
-    // 파일의 부모 폴더(날짜 폴더) 찾기 - 사진 복원을 위해
-    // fileHandle은 부모 디렉토리를 알 수 없으므로 photoFolderHandle에서 찾아야 함
+    // 파일 경로에서 날짜 폴더 유추 시도 (사진 복원용)
+    // input[type=file]은 부모 폴더 접근 불가 → photoFolderHandle이 있고 권한 있으면 사용
     let dateDir = null;
     if (photoFolderHandle && data.date) {
       try {
         const perm = await photoFolderHandle.queryPermission({ mode: 'read' });
-        if (perm === 'granted') {
+        if (perm === 'granted' || (await photoFolderHandle.requestPermission({mode:'read'})) === 'granted') {
           dateDir = await photoFolderHandle.getDirectoryHandle(data.date);
         }
       } catch(e) {}
@@ -241,17 +220,19 @@ async function openLoadList() {
     const totalPhotos = data.units.reduce((s,u)=>s+(u.beforeCount||0)+(u.afterCount||0),0);
     let restorePhotos = false;
 
+    let msg = `📋 ${data.apt||'작업'} · ${data.date||''}\n` +
+              `${data.units.length}개 호수, 사진 ${totalPhotos}장\n\n`;
+
     if (dateDir && totalPhotos > 0) {
-      restorePhotos = confirm(
-        `📋 ${escPlain(data.apt||'작업')} · ${data.date||''}\n` +
-        `${data.units.length}개 호수, 사진 ${totalPhotos}장\n\n` +
-        `▶ 확인: 사진까지 모두 복원 (오래 걸림)\n` +
-        `▶ 취소: 호수 정보만 복원`
-      );
+      msg += `▶ 확인: 사진까지 모두 복원 (오래 걸림)\n` +
+             `▶ 취소: 호수 정보만 복원`;
+      restorePhotos = confirm(msg);
     } else if (totalPhotos > 0) {
-      alert(`📋 ${escPlain(data.apt||'작업')} · ${data.date||''}\n` +
-            `${data.units.length}개 호수, 사진 ${totalPhotos}장\n\n` +
-            `※ 사진 폴더에 접근 권한이 없어 호수 정보만 복원됩니다.`);
+      msg += `※ 저장 폴더 접근 권한이 없어 호수 정보만 복원됩니다.\n` +
+             `사진까지 복원하려면 설정에서 해당 저장 폴더를 먼저 선택해주세요.`;
+      alert(msg);
+    } else {
+      if (!confirm(msg + '불러올까요?')) return;
     }
 
     if (units.length > 0 && !confirm('현재 작업이 사라집니다.\n불러올까요?')) return;

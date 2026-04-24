@@ -149,7 +149,9 @@ function buildReportHTML(){
         <div class="rp-list-txt">작업 상세 목록</div>
         <div class="rp-list-cnt">총 ${total}건</div>
       </div>
-      <table class="rp-wtbl ${total<=5?'':total<=10?'compact':total<=20?'compact2':'compact3'}">
+      ${total <= 7 ? `
+      <!-- 1단: 기본 테이블 -->
+      <table class="rp-wtbl">
         <thead>
           <tr>
             <th style="width:44px" class="tc">#</th>
@@ -173,6 +175,24 @@ function buildReportHTML(){
           }).join('')}
         </tbody>
       </table>
+      ` : `
+      <!-- 다단 그리드 레이아웃 (8개 이상) -->
+      <div class="rp-grid rp-grid-${total<=14?2:3}">
+        ${units.map((u,i)=>{
+          const ok=u.before.length>0&&u.after.length>0;
+          const bOk=u.before.length>0, aOk=u.after.length>0;
+          return`<div class="rp-gitem">
+            <span class="rp-wnum">${i+1}</span>
+            <span class="rp-ho">${escH(u.name)}</span>
+            <div class="rp-gstatus">
+              <span class="rp-gpst ${bOk?'d':'e'}" title="작업 전">${bOk?'✓':'✕'}</span>
+              <span class="rp-gpst ${aOk?'d':'e'}" title="작업 후">${aOk?'✓':'✕'}</span>
+              <span class="rp-pill ${ok?'don':'pnd'}">${ok?'완료':'미완'}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      `}
     </div>
 
     <!-- 특이사항 -->

@@ -158,42 +158,23 @@ async function doSave() {
 ═══════════════════════════════ */
 async function openLoadList() {
   document.getElementById('slModal').classList.add('open');
-  const body=document.getElementById('slBody');
-  body.innerHTML=`<div class="sl-empty">⏳ 불러오는 중...</div>`;
+  const body = document.getElementById('slBody');
+  body.innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
   try {
     const saves = await dbGetAll();
-    const folderSessions = await loadFolderSessions();  // 폴더에서 세션 읽기
-
-    if (saves.length === 0 && folderSessions.length === 0) {
-      body.innerHTML=`<div class="sl-empty">💾 저장된 작업이 없습니다<br><small style="color:var(--mu);font-size:10px;margin-top:8px;display:block">저장 버튼을 눌러 작업을 저장해보세요</small></div>`;
-      return;
-    }
 
     let html = '';
 
-    // 1. 폴더 세션 (있을 때만)
-    if (folderSessions.length > 0) {
-      html += `<div style="font-size:11px;color:var(--ac2);font-weight:700;margin:4px 0 8px;padding:0 4px;">📁 저장 폴더 (${folderSessions.length}개)</div>`;
-      html += folderSessions.map(s => {
-        const d = new Date(s.savedAt);
-        const ts = d.toLocaleString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-        const uc = (s.units||[]).length;
-        const phc = (s.units||[]).reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
-        return `<div class="sl-item" data-fid="${s.dateKey}" style="border-left:3px solid var(--ac2);">
-          <div class="sl-info" data-fload="${s.dateKey}">
-            <div class="sl-name">📁 ${escH(s.apt)} · ${s.date}</div>
-            <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장 (폴더)</div>
-          </div>
-          <div class="sl-btns">
-            <button class="btn b-green b-xs" data-fload="${s.dateKey}">폴더복원</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
+    // 1. 폴더에서 직접 선택 (가장 위, 강조)
+    html += `<div style="background:linear-gradient(135deg,rgba(77,208,225,.1),rgba(0,201,167,.08));border:1px solid rgba(0,201,167,.3);border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:700;color:var(--ac2);margin-bottom:4px;">📁 저장 폴더에서 열기</div>
+      <div style="font-size:11px;color:var(--mu);margin-bottom:10px;line-height:1.5;">저장 폴더를 열어서 원하는 날짜의 작업을 직접 선택합니다</div>
+      <button class="btn b-green" id="btnPickFolder" style="width:100%;justify-content:center;">📂 저장 폴더 열기</button>
+    </div>`;
 
-    // 2. IndexedDB 저장
+    // 2. IndexedDB 저장 (있을 때만)
     if (saves.length > 0) {
-      html += `<div style="font-size:11px;color:var(--mu);font-weight:700;margin:12px 0 8px;padding:0 4px;">💾 앱 저장 (${saves.length}개)</div>`;
+      html += `<div style="font-size:11px;color:var(--mu);font-weight:700;margin:4px 0 8px;padding:0 4px;">💾 앱 저장 (${saves.length}개)</div>`;
       html += saves.map(s=>{
         const d=new Date(s.savedAt);
         const ts=d.toLocaleString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
@@ -213,73 +194,119 @@ async function openLoadList() {
       }).join('');
     }
 
-    body.innerHTML = html + `<div class="sl-count">앱 ${saves.length}개 · 폴더 ${folderSessions.length}개</div>`;
+    body.innerHTML = html;
 
     // 이벤트
-    body.addEventListener('click', async e=>{
+    body.addEventListener('click', async e => {
       const loadEl  = e.target.closest('[data-load]');
       const delEl   = e.target.closest('[data-del]');
-      const floadEl = e.target.closest('[data-fload]');
-      if(loadEl)  { await doLoad(loadEl.dataset.load); return; }
-      if(delEl)   { await doDelSave(delEl.dataset.del); return; }
-      if(floadEl) { await doLoadFromFolder(floadEl.dataset.fload); return; }
+      const pickBtn = e.target.closest('#btnPickFolder');
+      if (loadEl)  { await doLoad(loadEl.dataset.load); return; }
+      if (delEl)   { await doDelSave(delEl.dataset.del); return; }
+      if (pickBtn) { await pickAndLoadFromFolder(); return; }
     });
   } catch(e) {
-    body.innerHTML=`<div class="sl-empty">오류: ${e.message}</div>`;
+    body.innerHTML = `<div class="sl-empty">오류: ${e.message}</div>`;
   }
 }
 
-// 폴더에서 세션 목록 읽기
-async function loadFolderSessions() {
-  if (!photoFolderHandle) return [];
+// 폴더 선택 → 날짜 폴더 → _session.json 읽어서 복원
+async function pickAndLoadFromFolder() {
+  if (!('showDirectoryPicker' in window)) {
+    showToast('이 브라우저에서 지원하지 않습니다', 'err');
+    return;
+  }
 
-  const sessions = [];
   try {
-    // 권한 확인
-    const perm = await photoFolderHandle.queryPermission({ mode:'read' });
-    if (perm !== 'granted') return [];
+    // 먼저 저장된 photoFolderHandle 사용, 없으면 선택하게 함
+    let rootHandle = photoFolderHandle;
 
-    // 폴더 안의 날짜 폴더들을 순회
-    for await (const [name, handle] of photoFolderHandle.entries()) {
-      if (handle.kind !== 'directory') continue;
-      // 날짜 형식 폴더만 (YYYY-MM-DD)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(name)) continue;
-
+    if (!rootHandle) {
       try {
-        const fh = await handle.getFileHandle('_session.json');
-        const file = await fh.getFile();
-        const text = await file.text();
-        const data = JSON.parse(text);
-        sessions.push({
-          ...data,
-          dateKey: name,
-          dirHandle: handle
-        });
+        rootHandle = await window.showDirectoryPicker({ mode:'read' });
       } catch(e) {
-        // _session.json 없으면 스킵
+        if (e.name === 'AbortError') return;
+        throw e;
+      }
+    } else {
+      // 권한 확인
+      const perm = await rootHandle.queryPermission({ mode:'read' });
+      if (perm !== 'granted') {
+        const newPerm = await rootHandle.requestPermission({ mode:'read' });
+        if (newPerm !== 'granted') {
+          // 권한 거부되면 새로 선택
+          rootHandle = await window.showDirectoryPicker({ mode:'read' });
+        }
       }
     }
 
+    // 날짜 폴더 목록 수집
+    const dates = [];
+    for await (const [name, handle] of rootHandle.entries()) {
+      if (handle.kind !== 'directory') continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(name)) continue;
+      try {
+        const fh = await handle.getFileHandle('_session.json');
+        const file = await fh.getFile();
+        const data = JSON.parse(await file.text());
+        dates.push({ name, data, dirHandle: handle });
+      } catch(e) {}
+    }
+
+    if (dates.length === 0) {
+      showToast('저장된 작업이 없습니다', 'err');
+      return;
+    }
+
     // 최신순 정렬
-    sessions.sort((a,b) => new Date(b.savedAt) - new Date(a.savedAt));
+    dates.sort((a,b) => new Date(b.data.savedAt) - new Date(a.data.savedAt));
+
+    // 목록 표시 (body에 덮어쓰기)
+    const body = document.getElementById('slBody');
+    body.innerHTML = `
+      <div style="margin-bottom:10px;">
+        <button class="btn b-ghost b-xs" id="backToLoad">← 뒤로</button>
+      </div>
+      <div style="font-size:12px;color:var(--mu);margin-bottom:10px;padding:0 4px;">총 ${dates.length}개 작업 · 선택하여 불러오기</div>
+      ${dates.map(d => {
+        const ds = new Date(d.data.savedAt);
+        const ts = ds.toLocaleString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const uc = (d.data.units||[]).length;
+        const phc = (d.data.units||[]).reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
+        return `<div class="sl-item" data-fload="${d.name}" style="cursor:pointer;border-left:3px solid var(--ac2);">
+          <div class="sl-info">
+            <div class="sl-name">📁 ${escH(d.data.apt||'작업')} · ${d.data.date||d.name}</div>
+            <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장</div>
+          </div>
+        </div>`;
+      }).join('')}
+    `;
+
+    // 클릭 이벤트
+    body.addEventListener('click', async e => {
+      const backBtn = e.target.closest('#backToLoad');
+      if (backBtn) { await openLoadList(); return; }
+      const itemEl = e.target.closest('[data-fload]');
+      if (itemEl) {
+        const dateKey = itemEl.dataset.fload;
+        const target = dates.find(d => d.name === dateKey);
+        if (target) await loadFromDateFolder(target.dirHandle, target.data);
+      }
+    });
+
   } catch(e) {
-    console.warn('폴더 세션 로드 실패:', e);
+    console.error(e);
+    showToast('폴더 열기 실패: ' + e.message, 'err');
   }
-  return sessions;
 }
 
-// 폴더 세션 복원 (사진 메타정보 + 호수 구조만 복원, 사진은 폴더에 그대로 있음)
-async function doLoadFromFolder(dateKey) {
-  if (units.length > 0 && !confirm('현재 작업이 사라집니다.\n폴더에서 불러올까요?')) return;
+// 특정 날짜 폴더에서 작업 복원
+async function loadFromDateFolder(dateDir, data) {
+  if (units.length > 0 && !confirm('현재 작업이 사라집니다.\n불러올까요?')) return;
 
-  showOverlay('폴더에서 불러오는 중...');
+  showOverlay('불러오는 중...');
   try {
-    const dateDir = await photoFolderHandle.getDirectoryHandle(dateKey);
-    const fh = await dateDir.getFileHandle('_session.json');
-    const file = await fh.getFile();
-    const data = JSON.parse(await file.text());
-
-    // 메타 정보 복원
+    // 메타 복원
     document.getElementById('aptName').value    = data.apt || '';
     document.getElementById('workDate').value   = data.date || '';
     document.getElementById('workerName').value = data.worker || '';
@@ -288,14 +315,17 @@ async function doLoadFromFolder(dateKey) {
     if (data.coBiz)  document.getElementById('coBiz').value  = data.coBiz;
     if (data.coDesc) document.getElementById('coDesc').value = data.coDesc;
 
-    const restorePhotos = confirm(
-      `📋 ${data.units.length}개 호수, 총 ${data.units.reduce((s,u)=>s+u.beforeCount+u.afterCount,0)}장 사진\n\n` +
-      `▶ 확인: 사진까지 모두 복원 (오래 걸림)\n` +
-      `▶ 취소: 호수 정보만 복원 (사진은 폴더에 있음)`
-    );
-
     units = [];
     nid = 1;
+
+    // 사진 포함 여부 선택
+    hideOverlay();
+    const restorePhotos = confirm(
+      `📋 ${data.units.length}개 호수, 사진 ${data.units.reduce((s,u)=>s+(u.beforeCount||0)+(u.afterCount||0),0)}장\n\n` +
+      `▶ 확인: 사진까지 모두 복원 (오래 걸림)\n` +
+      `▶ 취소: 호수 정보만 복원`
+    );
+    showOverlay('불러오는 중...');
 
     for (let ui = 0; ui < data.units.length; ui++) {
       const u = data.units[ui];
@@ -313,33 +343,27 @@ async function doLoadFromFolder(dateKey) {
           const workNum = String(ui+1).padStart(2,'0');
           const workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
 
-          // before 사진들
-          for (let i = 1; i <= u.beforeCount; i++) {
+          for (let i = 1; i <= (u.beforeCount||0); i++) {
             try {
               const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
               const pf = await pfh.getFile();
-              const dataUrl = await blobToDataURL(pf);
-              newUnit.before.push({ id: photoId(), dataUrl, savedToFolder:true });
+              newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
             } catch(e) {}
           }
-          // after 사진들
-          for (let i = 1; i <= u.afterCount; i++) {
+          for (let i = 1; i <= (u.afterCount||0); i++) {
             try {
               const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
               const pf = await pfh.getFile();
-              const dataUrl = await blobToDataURL(pf);
-              newUnit.after.push({ id: photoId(), dataUrl, savedToFolder:true });
+              newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
             } catch(e) {}
           }
-          // 특이사항 사진들
           for (let si = 0; si < newUnit.specials.length; si++) {
             const sp = u.specials[si];
             for (let pi = 1; pi <= (sp.photoCount||0); pi++) {
               try {
                 const pfh = await workDir.getFileHandle(`S${si+1}_image${String(pi).padStart(2,'0')}.jpg`);
                 const pf = await pfh.getFile();
-                const dataUrl = await blobToDataURL(pf);
-                newUnit.specials[si].photos.push({ id: photoId(), dataUrl, savedToFolder:true });
+                newUnit.specials[si].photos.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
               } catch(e) {}
             }
           }
@@ -353,14 +377,13 @@ async function doLoadFromFolder(dateKey) {
     renderAll();
     updateStats();
     hideOverlay();
-    showToast(`✓ 폴더에서 복원 완료 (${units.length}호수)`, 'ok');
+    showToast(`✓ ${units.length}호수 불러옴`, 'ok');
   } catch(e) {
     hideOverlay();
-    showToast('폴더 복원 실패: ' + e.message, 'err');
+    showToast('불러오기 실패: ' + e.message, 'err');
   }
 }
 
-// Blob → dataURL
 function blobToDataURL(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -370,6 +393,11 @@ function blobToDataURL(blob) {
   });
 }
 
+function photoId() {
+  return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+// 폴더에서 세션 목록 읽기
 async function doLoad(saveId) {
   if(units.length>0&&!confirm('현재 작업이 사라집니다.\n불러올까요?')) return;
   showOverlay('불러오는 중...');

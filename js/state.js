@@ -99,24 +99,33 @@ async function init() {
       s = await dbGet('session_data');
     } catch(e) {}
 
-    // IndexedDB에 없거나 units이 비었으면 localStorage 확인
-    if (!s || !s.units || s.units.length === 0) {
+    // IndexedDB에 없으면 localStorage 확인
+    if (!s) {
       try {
         const ls = localStorage.getItem('ac_session_backup');
         if (ls) s = JSON.parse(ls);
       } catch(e) {}
     }
 
-    if (s && s.units && s.units.length > 0) {
-      units = normalizeUnits(s.units);
-      nid   = s.nid || units.length + 1;
-      document.getElementById('aptName').value    = s.apt||'';
-      document.getElementById('workDate').value   = s.date||new Date().toISOString().split('T')[0];
-      document.getElementById('workerName').value = s.worker||'';
+    if (s) {
+      // isEmpty가 true면 빈 새 작업 상태 (작업명/날짜는 저장된 값 유지)
+      if (s.isEmpty) {
+        units = [];
+        nid = 1;
+        document.getElementById('aptName').value    = s.apt||'';
+        document.getElementById('workDate').value   = s.date||new Date().toISOString().split('T')[0];
+        document.getElementById('workerName').value = s.worker||'';
+      } else if (s.units && s.units.length > 0) {
+        units = normalizeUnits(s.units);
+        nid   = s.nid || units.length + 1;
+        document.getElementById('aptName').value    = s.apt||'';
+        document.getElementById('workDate').value   = s.date||new Date().toISOString().split('T')[0];
+        document.getElementById('workerName').value = s.worker||'';
+      }
+      // 업체정보는 항상 복원
       if (s.companyName) document.getElementById('coName').value = s.companyName;
       if (s.companyTel)  document.getElementById('coTel').value  = s.companyTel;
       if (s.companyDesc) document.getElementById('coDesc').value = s.companyDesc;
-      // 토스트 제거 - 사용자가 세션을 의식하지 않도록 조용히 복원
     }
   } catch(e) {}
 
@@ -129,14 +138,7 @@ async function init() {
     }
   });
 
-  // ── 페이지 이탈 경고 ──
-  window.addEventListener('beforeunload', e => {
-    if (units.length > 0) {
-      e.preventDefault();
-      e.returnValue = '작업 중인 내용이 있습니다. 페이지를 떠나면 저장되지 않은 내용이 사라질 수 있습니다.';
-      return e.returnValue;
-    }
-  });
+  // beforeunload 경고는 사용자 친화성 위해 제거 (자동저장으로 충분)
 
   // ── 앱 숨김/보임 시 자동저장 (화면 전환 대응) ──
   document.addEventListener('visibilitychange', () => {

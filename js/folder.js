@@ -11,7 +11,6 @@ function sessionAutoSave() {
 }
 
 async function sessionAutoSaveNow() {
-  if (units.length === 0) return;
   clearTimeout(_autoSaveTimer);
   const obj = {
     saveId:      'session_data',
@@ -24,14 +23,16 @@ async function sessionAutoSaveNow() {
     companyTel:  document.getElementById('coTel').value,
     companyDesc: document.getElementById('coDesc').value,
     units:       JSON.parse(JSON.stringify(units)),
-    nid
+    nid,
+    // 명시적 플래그: 빈 작업인지 표시
+    isEmpty: (units.length === 0)
   };
   // 1차: IndexedDB
   try {
     await dbPut(obj);
-    showSaveStatus('saved', '✓ 자동저장됨');
+    if (units.length > 0) showSaveStatus('saved', '✓ 자동저장됨');
   } catch(e) {
-    showSaveStatus('saving', '저장 실패');
+    if (units.length > 0) showSaveStatus('saving', '저장 실패');
   }
   // 2차: localStorage 백업 (사진 dataURL 제외하여 크기 줄임)
   try {

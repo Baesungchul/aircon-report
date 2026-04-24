@@ -339,11 +339,12 @@ async function newWork() {
   if (typeof _savedPhotoIds !== 'undefined') _savedPhotoIds.clear();
   if (typeof pendingSaves !== 'undefined') pendingSaves.length = 0;
 
-  // localStorage 백업도 삭제
-  try { localStorage.removeItem('ac_session_backup'); } catch(e) {}
-
   renderAll();
   updateStats();
+
+  // 빈 상태 명시적 저장 (다음 번 열 때 빈 화면 유지됨)
+  try { await sessionAutoSaveNow(); } catch(e) {}
+
   showToast('🆕 새 작업을 시작합니다', 'ok');
 }
 

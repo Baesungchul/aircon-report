@@ -265,33 +265,24 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 .rp-wtbl tbody tr:last-child td{border-bottom:none;}
 .rp-wtbl tbody td.tc{text-align:center;}
 
-/* 호수 많을 때 자동 축소 - 6~10건 */
-.rp-wtbl.compact thead th{padding:9px 12px;font-size:12px;}
-.rp-wtbl.compact tbody td{padding:8px 12px;font-size:13px;}
-.rp-wtbl.compact .rp-wnum{width:22px;height:22px;font-size:11px;}
-.rp-wtbl.compact .rp-ho{font-size:13px;}
-.rp-wtbl.compact .rp-pst{width:26px;height:26px;font-size:13px;}
-.rp-wtbl.compact .rp-pill{padding:3px 10px;font-size:11px;}
+/* 다단 그리드 레이아웃 (8건 이상) */
+.rp-grid{display:grid;gap:6px;}
+.rp-grid-2{grid-template-columns:1fr 1fr;}
+.rp-grid-3{grid-template-columns:1fr 1fr 1fr;gap:5px;}
+.rp-gitem{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid rgba(10,22,40,.08);border-radius:8px;padding:8px 10px;}
+.rp-gitem .rp-wnum{flex-shrink:0;}
+.rp-gitem .rp-ho{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;}
+.rp-gstatus{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.rp-gpst{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;font-size:11px;font-weight:800;}
+.rp-gpst.d{background:#f0fdf4;color:#16a34a;}
+.rp-gpst.e{background:#fef2f2;color:#dc2626;}
 
-/* 호수 매우 많을 때 - 11~20건 */
-.rp-wtbl.compact2 thead th{padding:6px 10px;font-size:11px;}
-.rp-wtbl.compact2 tbody td{padding:5px 10px;font-size:12px;}
-.rp-wtbl.compact2 .rp-wnum{width:20px;height:20px;font-size:10px;}
-.rp-wtbl.compact2 .rp-ho{font-size:12px;}
-.rp-wtbl.compact2 .rp-pst{width:22px;height:22px;font-size:11px;}
-.rp-wtbl.compact2 .rp-pill{padding:2px 8px;font-size:10px;}
-
-/* 호수 극단적으로 많을 때 - 21건 이상 (2열 그리드로) */
-.rp-wtbl.compact3{display:grid;grid-template-columns:1fr 1fr;gap:0;}
-.rp-wtbl.compact3 thead{display:none;}
-.rp-wtbl.compact3 tbody{display:contents;}
-.rp-wtbl.compact3 tbody tr{display:grid;grid-template-columns:28px 1fr 28px 28px 54px;gap:6px;align-items:center;padding:4px 8px;border-bottom:1px solid rgba(10,22,40,.06);}
-.rp-wtbl.compact3 tbody tr:nth-child(even){background:#fafbfc;}
-.rp-wtbl.compact3 tbody td{padding:0;font-size:11px;border:none;}
-.rp-wtbl.compact3 .rp-wnum{width:18px;height:18px;font-size:9px;}
-.rp-wtbl.compact3 .rp-ho{font-size:11px;}
-.rp-wtbl.compact3 .rp-pst{width:18px;height:18px;font-size:9px;border-radius:4px;}
-.rp-wtbl.compact3 .rp-pill{padding:1px 6px;font-size:9px;}
+/* 3단일 때 더 컴팩트하게 */
+.rp-grid-3 .rp-gitem{padding:6px 8px;gap:5px;}
+.rp-grid-3 .rp-wnum{width:20px;height:20px;font-size:10px;}
+.rp-grid-3 .rp-ho{font-size:11px;}
+.rp-grid-3 .rp-gpst{width:17px;height:17px;font-size:9px;}
+.rp-grid-3 .rp-pill{padding:1px 6px;font-size:9px;}
 .rp-wnum{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:#f1f5f9;color:#475569;border-radius:50%;font-size:13px;font-weight:700;}
 .rp-ho{font-weight:700;font-size:16px;letter-spacing:-.01em;}
 .rp-pst{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;font-size:16px;font-weight:700;}
@@ -314,8 +305,8 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 .rp-co-card-title{font-size:14px;font-weight:800;color:#0369a1;margin-bottom:10px;letter-spacing:-.01em;}
 .rp-co-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 20px;}
 .rp-co-card-row{display:flex;align-items:baseline;gap:10px;font-size:13px;line-height:1.55;}
-.rp-co-card-lbl{color:#64748b;font-weight:600;flex-shrink:0;min-width:85px;}
-.rp-co-card-val{color:#0a1628;font-weight:700;word-break:break-all;}
+.rp-co-card-lbl{color:#64748b;font-weight:600;flex-shrink:0;width:95px;letter-spacing:-.02em;}
+.rp-co-card-val{color:#0a1628;font-weight:700;word-break:break-all;flex:1;min-width:0;}
 
 /* 표지 푸터 */
 .rp-cv-foot{padding:14px 48px;background:#f8fafc;border-top:1px solid rgba(10,22,40,.08);display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#64748b;flex-shrink:0;}

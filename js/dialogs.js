@@ -169,25 +169,246 @@ async function doSave() {
 /* ═══════════════════════════════
    LOAD LIST
 ═══════════════════════════════ */
-async function openLoadList() {
-  // 시스템 파일 탐색기를 여는 방식 (모든 기기에서 동작)
-  // 사용자가 파일 탐색기에서 직접 날짜 폴더 이동 → json 파일 선택
+// 불러오기 - 저장 폴더에서 기간별 작업 목록 표시
+let _loadDateFrom = null;  // 기간 필터 시작
+let _loadDateTo = null;    // 기간 필터 종료
 
+async function openLoadList() {
+  // 기본: 최근 30일
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  _loadDateFrom = thirtyDaysAgo.toISOString().split('T')[0];
+  _loadDateTo = today.toISOString().split('T')[0];
+
+  document.getElementById('slModal').classList.add('open');
+  await renderLoadList();
+}
+
+async function renderLoadList() {
+  const body = document.getElementById('slBody');
+  body.innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
+
+  // 폴더 없으면 파일 탐색기로 대체
+  if (!photoFolderHandle) {
+    body.innerHTML = `
+      <div style="padding:14px;text-align:center;">
+        <div style="font-size:13px;color:var(--mu);margin-bottom:14px;line-height:1.6;">
+          저장 폴더가 설정되지 않았습니다.<br>
+          파일 탐색기에서 직접 선택하시거나<br>
+          설정에서 저장 폴더를 먼저 선택해주세요.
+        </div>
+        <button class="btn b-blue" id="btnPickFileFallback" style="width:100%;justify-content:center;margin-bottom:8px;">📂 파일 탐색기로 선택</button>
+        <button class="btn b-ghost" id="btnGoSettings" style="width:100%;justify-content:center;">⚙️ 설정에서 폴더 선택</button>
+      </div>
+    `;
+    body.addEventListener('click', e => {
+      if (e.target.closest('#btnPickFileFallback')) { openFilePickerFallback(); return; }
+      if (e.target.closest('#btnGoSettings'))       {
+        document.getElementById('slModal').classList.remove('open');
+        if (typeof openSettings === 'function') openSettings();
+      }
+    });
+    return;
+  }
+
+  // 권한 확인 (필요 시 자동 요청)
+  try {
+    const perm = await photoFolderHandle.queryPermission({ mode: 'read' });
+    if (perm !== 'granted') {
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'read' });
+      if (newPerm !== 'granted') {
+        body.innerHTML = `
+          <div style="padding:14px;text-align:center;">
+            <div style="font-size:13px;color:var(--wn);margin-bottom:14px;">저장 폴더 접근 권한이 거부되었습니다.</div>
+            <button class="btn b-blue" id="btnPickFileFallback" style="width:100%;justify-content:center;">📂 파일 탐색기로 선택</button>
+          </div>
+        `;
+        body.addEventListener('click', e => {
+          if (e.target.closest('#btnPickFileFallback')) openFilePickerFallback();
+        });
+        return;
+      }
+    }
+  } catch(e) {
+    body.innerHTML = `<div class="sl-empty">폴더 접근 실패: ${e.message}</div>`;
+    return;
+  }
+
+  // 날짜 폴더들 스캔 (기간 필터 적용)
+  const sessions = [];
+  try {
+    for await (const [name, handle] of photoFolderHandle.entries()) {
+      if (handle.kind !== 'directory') continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(name)) continue;
+
+      // 기간 필터
+      if (_loadDateFrom && name < _loadDateFrom) continue;
+      if (_loadDateTo && name > _loadDateTo) continue;
+
+      try {
+        const fh = await handle.getFileHandle('_session.json');
+        const file = await fh.getFile();
+        const data = JSON.parse(await file.text());
+        sessions.push({ name, data, dirHandle: handle });
+      } catch(e) { /* _session.json 없으면 스킵 */ }
+    }
+    sessions.sort((a,b) => new Date(b.data.savedAt) - new Date(a.data.savedAt));
+  } catch(e) {
+    body.innerHTML = `<div class="sl-empty">폴더 읽기 실패: ${e.message}</div>`;
+    return;
+  }
+
+  // 날짜 범위 라벨
+  const fromLabel = _loadDateFrom || '처음';
+  const toLabel = _loadDateTo || '오늘';
+
+  let html = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px 12px;background:var(--sf2);border-radius:8px;">
+      <div style="font-size:12px;color:var(--tx);flex:1;line-height:1.4;">
+        <div style="font-weight:700;">📅 ${fromLabel} ~ ${toLabel}</div>
+        <div style="font-size:11px;color:var(--mu);margin-top:2px;">${sessions.length}개 작업</div>
+      </div>
+      <button class="btn b-ghost b-xs" id="btnChangeDateRange">🔍 기간 변경</button>
+    </div>
+  `;
+
+  if (sessions.length === 0) {
+    html += `
+      <div class="sl-empty" style="padding:30px 14px;">
+        <div style="font-size:14px;margin-bottom:8px;">해당 기간에 저장된 작업이 없습니다</div>
+        <div style="font-size:11px;color:var(--mu);">🔍 기간 변경 버튼을 눌러 범위를 넓혀보세요</div>
+      </div>
+    `;
+  } else {
+    html += sessions.map(s => {
+      const d = new Date(s.data.savedAt);
+      const ts = d.toLocaleString('ko-KR', { year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+      const uc = (s.data.units||[]).length;
+      const phc = (s.data.units||[]).reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
+      return `<div class="sl-item" data-fload="${s.name}" style="cursor:pointer;border-left:3px solid var(--ac2);">
+        <div class="sl-info">
+          <div class="sl-name">📁 ${escH(s.data.apt || '작업')} <span style="font-size:11px;color:var(--mu);font-weight:500;">· ${s.data.date || s.name}</span></div>
+          <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // 하단 파일 탐색기 옵션
+  html += `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bd);">
+      <button class="btn b-ghost" id="btnPickFileFallback" style="width:100%;justify-content:center;font-size:12px;">📂 파일 탐색기에서 직접 선택</button>
+    </div>
+  `;
+
+  body.innerHTML = html;
+
+  // 이벤트
+  body.addEventListener('click', async e => {
+    const itemEl = e.target.closest('[data-fload]');
+    const dateBtn = e.target.closest('#btnChangeDateRange');
+    const fileBtn = e.target.closest('#btnPickFileFallback');
+
+    if (itemEl) {
+      const target = sessions.find(s => s.name === itemEl.dataset.fload);
+      if (target) await loadFromDateFolder(target.dirHandle, target.data);
+    } else if (dateBtn) {
+      showDateRangeDialog();
+    } else if (fileBtn) {
+      openFilePickerFallback();
+    }
+  });
+}
+
+// 기간 설정 다이얼로그
+function showDateRangeDialog() {
+  // 기본값: 지난 3개월
+  const today = new Date();
+  const threeMonthsAgo = new Date(today);
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+  const fromDefault = _loadDateFrom || threeMonthsAgo.toISOString().split('T')[0];
+  const toDefault   = _loadDateTo   || today.toISOString().split('T')[0];
+
+  const body = document.getElementById('slBody');
+  body.innerHTML = `
+    <div style="padding:14px;">
+      <div style="font-size:14px;font-weight:700;color:var(--tx);margin-bottom:14px;">🔍 기간 설정</div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+        <div>
+          <label style="font-size:11px;color:var(--mu);font-weight:600;display:block;margin-bottom:4px;">시작 날짜</label>
+          <input type="date" id="rangeFrom" value="${fromDefault}" style="width:100%;padding:10px;background:var(--sf2);border:1px solid var(--bd);border-radius:7px;color:var(--tx);font-size:14px;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--mu);font-weight:600;display:block;margin-bottom:4px;">종료 날짜</label>
+          <input type="date" id="rangeTo" value="${toDefault}" style="width:100%;padding:10px;background:var(--sf2);border:1px solid var(--bd);border-radius:7px;color:var(--tx);font-size:14px;">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
+        <button class="btn b-ghost b-xs" data-preset="30">최근 30일</button>
+        <button class="btn b-ghost b-xs" data-preset="90">최근 3개월</button>
+        <button class="btn b-ghost b-xs" data-preset="365">최근 1년</button>
+        <button class="btn b-ghost b-xs" data-preset="all" style="grid-column:span 3;">전체 기간</button>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="btn b-ghost" id="rangeCancel" style="flex:1;justify-content:center;">취소</button>
+        <button class="btn b-blue" id="rangeApply" style="flex:1;justify-content:center;">적용</button>
+      </div>
+    </div>
+  `;
+
+  body.addEventListener('click', e => {
+    const preset = e.target.closest('[data-preset]');
+    if (preset) {
+      const type = preset.dataset.preset;
+      const now = new Date();
+      const fromEl = document.getElementById('rangeFrom');
+      const toEl = document.getElementById('rangeTo');
+      if (type === 'all') {
+        fromEl.value = '2020-01-01';
+        toEl.value = now.toISOString().split('T')[0];
+      } else {
+        const days = parseInt(type);
+        const from = new Date(now);
+        from.setDate(from.getDate() - days);
+        fromEl.value = from.toISOString().split('T')[0];
+        toEl.value = now.toISOString().split('T')[0];
+      }
+      return;
+    }
+
+    if (e.target.closest('#rangeCancel')) {
+      renderLoadList();
+      return;
+    }
+
+    if (e.target.closest('#rangeApply')) {
+      _loadDateFrom = document.getElementById('rangeFrom').value;
+      _loadDateTo   = document.getElementById('rangeTo').value;
+      renderLoadList();
+      return;
+    }
+  });
+}
+
+// 파일 탐색기 대체 (폴더 권한 없을 때)
+function openFilePickerFallback() {
+  document.getElementById('slModal').classList.remove('open');
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json,application/json';
-
   input.addEventListener('change', async () => {
     if (!input.files || input.files.length === 0) return;
-    const file = input.files[0];
-    await loadWorkFromFile(file);
+    await loadWorkFromFile(input.files[0]);
   });
-
-  // 파일 선택창 열기
   input.click();
 }
 
-// 파일에서 작업 불러오기
+// 파일에서 작업 불러오기 (파일 탐색기용)
 async function loadWorkFromFile(file) {
   try {
     const text = await file.text();
@@ -198,14 +419,12 @@ async function loadWorkFromFile(file) {
       showToast('올바른 작업 파일이 아닙니다 (.json)', 'err');
       return;
     }
-
     if (!data.units) {
       showToast('작업 데이터가 없는 파일입니다', 'err');
       return;
     }
 
-    // 파일 경로에서 날짜 폴더 유추 시도 (사진 복원용)
-    // input[type=file]은 부모 폴더 접근 불가 → photoFolderHandle이 있고 권한 있으면 사용
+    // 사진 복원용 날짜 폴더 찾기
     let dateDir = null;
     if (photoFolderHandle && data.date) {
       try {
@@ -216,97 +435,103 @@ async function loadWorkFromFile(file) {
       } catch(e) {}
     }
 
-    // 사진 복원 여부 확인
-    const totalPhotos = data.units.reduce((s,u)=>s+(u.beforeCount||0)+(u.afterCount||0),0);
-    let restorePhotos = false;
-
-    let msg = `📋 ${data.apt||'작업'} · ${data.date||''}\n` +
-              `${data.units.length}개 호수, 사진 ${totalPhotos}장\n\n`;
-
-    if (dateDir && totalPhotos > 0) {
-      msg += `▶ 확인: 사진까지 모두 복원 (오래 걸림)\n` +
-             `▶ 취소: 호수 정보만 복원`;
-      restorePhotos = confirm(msg);
-    } else if (totalPhotos > 0) {
-      msg += `※ 저장 폴더 접근 권한이 없어 호수 정보만 복원됩니다.\n` +
-             `사진까지 복원하려면 설정에서 해당 저장 폴더를 먼저 선택해주세요.`;
-      alert(msg);
-    } else {
-      if (!confirm(msg + '불러올까요?')) return;
-    }
-
-    if (units.length > 0 && !confirm('현재 작업이 사라집니다.\n불러올까요?')) return;
-
-    showOverlay('불러오는 중...');
-
-    // 메타 복원
-    document.getElementById('aptName').value    = data.apt || '';
-    document.getElementById('workDate').value   = data.date || '';
-    document.getElementById('workerName').value = data.worker || '';
-    if (data.coName) document.getElementById('coName').value = data.coName;
-    if (data.coTel)  document.getElementById('coTel').value  = data.coTel;
-    if (data.coBiz)  document.getElementById('coBiz').value  = data.coBiz;
-    if (data.coDesc) document.getElementById('coDesc').value = data.coDesc;
-
-    units = [];
-    nid = 1;
-
-    for (let ui = 0; ui < data.units.length; ui++) {
-      const u = data.units[ui];
-      const newUnit = {
-        id: nid++,
-        name: u.name,
-        before: [],
-        after: [],
-        specials: (u.specials||[]).map(s => ({ desc:s.desc||'', photos:[] })),
-        open: false
-      };
-
-      if (restorePhotos && dateDir) {
-        try {
-          const workNum = String(ui+1).padStart(2,'0');
-          const workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
-
-          for (let i = 1; i <= (u.beforeCount||0); i++) {
-            try {
-              const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
-              const pf = await pfh.getFile();
-              newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-            } catch(e) {}
-          }
-          for (let i = 1; i <= (u.afterCount||0); i++) {
-            try {
-              const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
-              const pf = await pfh.getFile();
-              newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-            } catch(e) {}
-          }
-          for (let si = 0; si < newUnit.specials.length; si++) {
-            const sp = u.specials[si];
-            for (let pi = 1; pi <= (sp.photoCount||0); pi++) {
-              try {
-                const pfh = await workDir.getFileHandle(`S${si+1}_image${String(pi).padStart(2,'0')}.jpg`);
-                const pf = await pfh.getFile();
-                newUnit.specials[si].photos.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-              } catch(e) {}
-            }
-          }
-        } catch(e) {}
-      }
-
-      units.push(newUnit);
-    }
-
-    renderAll();
-    updateStats();
-    hideOverlay();
-    showToast(`✓ ${units.length}호수 불러옴`, 'ok');
-
+    await restoreFromData(data, dateDir);
   } catch(e) {
-    hideOverlay();
-    console.error(e);
     showToast('불러오기 실패: ' + e.message, 'err');
   }
+}
+
+// 날짜 폴더에서 작업 복원 (목록에서 선택한 경우)
+async function loadFromDateFolder(dateDir, data) {
+  await restoreFromData(data, dateDir);
+}
+
+// 공통 복원 로직
+async function restoreFromData(data, dateDir) {
+  const totalPhotos = (data.units||[]).reduce((s,u)=>s+(u.beforeCount||0)+(u.afterCount||0),0);
+  let restorePhotos = false;
+
+  let msg = `📋 ${data.apt||'작업'} · ${data.date||''}\n` +
+            `${(data.units||[]).length}개 호수, 사진 ${totalPhotos}장\n\n`;
+
+  if (dateDir && totalPhotos > 0) {
+    msg += `▶ 확인: 사진까지 모두 복원 (오래 걸림)\n` +
+           `▶ 취소: 호수 정보만 복원`;
+    restorePhotos = confirm(msg);
+  } else if (totalPhotos > 0) {
+    msg += `※ 사진 폴더 접근 권한이 없어 호수 정보만 복원됩니다.`;
+    if (!confirm(msg + '\n\n계속할까요?')) return;
+  } else {
+    if (!confirm(msg + '불러올까요?')) return;
+  }
+
+  if (units.length > 0 && !confirm('현재 작업이 사라집니다.\n불러올까요?')) return;
+
+  showOverlay('불러오는 중...');
+
+  // 메타 복원
+  document.getElementById('aptName').value    = data.apt || '';
+  document.getElementById('workDate').value   = data.date || '';
+  document.getElementById('workerName').value = data.worker || '';
+  if (data.coName) document.getElementById('coName').value = data.coName;
+  if (data.coTel)  document.getElementById('coTel').value  = data.coTel;
+  if (data.coBiz)  document.getElementById('coBiz').value  = data.coBiz;
+  if (data.coDesc) document.getElementById('coDesc').value = data.coDesc;
+
+  units = [];
+  nid = 1;
+
+  for (let ui = 0; ui < data.units.length; ui++) {
+    const u = data.units[ui];
+    const newUnit = {
+      id: nid++,
+      name: u.name,
+      before: [],
+      after: [],
+      specials: (u.specials||[]).map(s => ({ desc:s.desc||'', photos:[] })),
+      open: false
+    };
+
+    if (restorePhotos && dateDir) {
+      try {
+        const workNum = String(ui+1).padStart(2,'0');
+        const workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
+
+        for (let i = 1; i <= (u.beforeCount||0); i++) {
+          try {
+            const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
+            const pf = await pfh.getFile();
+            newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+          } catch(e) {}
+        }
+        for (let i = 1; i <= (u.afterCount||0); i++) {
+          try {
+            const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
+            const pf = await pfh.getFile();
+            newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+          } catch(e) {}
+        }
+        for (let si = 0; si < newUnit.specials.length; si++) {
+          const sp = u.specials[si];
+          for (let pi = 1; pi <= (sp.photoCount||0); pi++) {
+            try {
+              const pfh = await workDir.getFileHandle(`S${si+1}_image${String(pi).padStart(2,'0')}.jpg`);
+              const pf = await pfh.getFile();
+              newUnit.specials[si].photos.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+            } catch(e) {}
+          }
+        }
+      } catch(e) {}
+    }
+
+    units.push(newUnit);
+  }
+
+  document.getElementById('slModal').classList.remove('open');
+  renderAll();
+  updateStats();
+  hideOverlay();
+  showToast(`✓ ${units.length}호수 불러옴`, 'ok');
 }
 
 // 평문 이스케이프

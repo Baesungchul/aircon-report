@@ -184,12 +184,22 @@ async function openLoadList() {
   await renderLoadList();
 }
 
+// slBody의 이벤트 리스너를 모두 제거하고 깨끗한 새 요소 반환
+function freshSlBody() {
+  const old = document.getElementById('slBody');
+  const fresh = old.cloneNode(false);  // 자식 X, 속성만 복제 → 리스너 모두 제거
+  old.parentNode.replaceChild(fresh, old);
+  return fresh;
+}
+
 async function renderLoadList() {
-  const body = document.getElementById('slBody');
+  // 매번 깨끗한 body로 초기화 (중복 리스너 방지)
+  let body = freshSlBody();
   body.innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
 
   // 폴더 없으면 파일 탐색기로 대체
   if (!photoFolderHandle) {
+    body = freshSlBody();
     body.innerHTML = `
       <div style="padding:14px;text-align:center;">
         <div style="font-size:13px;color:var(--mu);margin-bottom:14px;line-height:1.6;">
@@ -217,6 +227,7 @@ async function renderLoadList() {
     if (perm !== 'granted') {
       const newPerm = await photoFolderHandle.requestPermission({ mode: 'read' });
       if (newPerm !== 'granted') {
+        body = freshSlBody();
         body.innerHTML = `
           <div style="padding:14px;text-align:center;">
             <div style="font-size:13px;color:var(--wn);margin-bottom:14px;">저장 폴더 접근 권한이 거부되었습니다.</div>
@@ -305,9 +316,10 @@ async function renderLoadList() {
     </div>
   `;
 
+  body = freshSlBody();
   body.innerHTML = html;
 
-  // 이벤트
+  // 이벤트 (한 번만 등록 - body가 새 요소이므로 중복 없음)
   body.addEventListener('click', async e => {
     const loadEl = e.target.closest('[data-fload]');
     const delEl  = e.target.closest('[data-fdel]');
@@ -381,7 +393,7 @@ function showDateRangeDialog() {
   const fromDefault = _loadDateFrom || threeMonthsAgo.toISOString().split('T')[0];
   const toDefault   = _loadDateTo   || today.toISOString().split('T')[0];
 
-  const body = document.getElementById('slBody');
+  const body = freshSlBody();
   body.innerHTML = `
     <div style="padding:14px;">
       <div style="font-size:14px;font-weight:700;color:var(--tx);margin-bottom:14px;">🔍 기간 설정</div>
@@ -588,14 +600,16 @@ function escPlain(s) {
 // IndexedDB 저장 목록 (백업용 - 폴더 지원 안 하는 브라우저)
 async function openSavedList() {
   document.getElementById('slModal').classList.add('open');
-  const body = document.getElementById('slBody');
+  let body = freshSlBody();
   body.innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
   try {
     const saves = await dbGetAll();
     if (saves.length === 0) {
+      body = freshSlBody();
       body.innerHTML = `<div class="sl-empty">저장된 작업이 없습니다</div>`;
       return;
     }
+    body = freshSlBody();
     body.innerHTML = saves.map(s=>{
       const d=new Date(s.savedAt);
       const ts=d.toLocaleString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});

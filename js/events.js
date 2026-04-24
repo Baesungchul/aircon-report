@@ -290,36 +290,36 @@ function clearAll() {
 
 // 새 작업 시작
 async function newWork() {
-  // 작업 내용이 없으면 그냥 날짜만 초기화
+  // 작업 내용이 없으면 확인 없이 바로 초기화
   if (units.length === 0) {
     document.getElementById('workDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
-    showToast('🆕 새 작업을 시작합니다', 'ok');
+    showToast('🆕 새 작업', 'ok');
     return;
   }
 
-  // 작업 내용이 있으면 저장 여부 묻기
+  // 작업 내용이 있으면 확인 1번만
   const totalPhotos = units.reduce((s,u) =>
     s + u.before.length + u.after.length +
     u.specials.reduce((a,sp) => a+sp.photos.length, 0), 0);
 
   let msg = `📋 현재 작업: 호수 ${units.length}개, 사진 ${totalPhotos}장\n\n`;
   if (photoFolderHandle) {
-    msg += `▶ 확인: 저장 후 새 작업 시작\n`;
-    msg += `▶ 취소: 저장하지 않고 새 작업 시작`;
+    msg += `저장 폴더에 자동 저장 후 새 작업을 시작합니다.\n계속할까요?`;
   } else {
-    msg += `새 작업을 시작하시겠습니까?\n(폴더가 설정되지 않아 저장 없이 초기화됩니다)`;
+    msg += `새 작업을 시작합니다.\n(저장 폴더가 없어 사진은 저장되지 않습니다)`;
   }
 
-  const shouldSave = confirm(msg);
+  if (!confirm(msg)) return;
 
-  // 폴더가 있고 사용자가 저장 선택 시 자동으로 폴더 저장
-  if (shouldSave && photoFolderHandle) {
+  // 폴더 있으면 자동으로 저장 (사용자 추가 확인 없이)
+  if (photoFolderHandle) {
     try {
       await saveToFolder();
     } catch(e) {
-      if (!confirm(`저장 중 오류 발생: ${e.message}\n\n그래도 새 작업을 시작할까요?`)) return;
+      console.warn('자동 저장 실패:', e);
+      // 저장 실패해도 새 작업은 진행 (세션은 IndexedDB에 백업되어 있음)
     }
   }
 
@@ -332,7 +332,6 @@ async function newWork() {
   document.getElementById('aptName').value = '';
   document.getElementById('aptName').placeholder = '작업명을 입력하세요';
   document.getElementById('workDate').value = new Date().toISOString().split('T')[0];
-  // 담당자 정보는 유지
 
   if (typeof _indexCounter !== 'undefined') _indexCounter.clear();
   if (typeof _unitWorkNumber !== 'undefined') _unitWorkNumber.clear();
@@ -341,11 +340,9 @@ async function newWork() {
 
   renderAll();
   updateStats();
-
-  // 빈 상태 명시적 저장 (다음 번 열 때 빈 화면 유지됨)
   try { await sessionAutoSaveNow(); } catch(e) {}
 
-  showToast('🆕 새 작업을 시작합니다', 'ok');
+  showToast('🆕 새 작업', 'ok');
 }
 
 // (이전 savePhotosForNewWork 함수는 saveToFolder로 통합되어 제거)

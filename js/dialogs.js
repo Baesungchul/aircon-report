@@ -27,8 +27,7 @@ async function saveToFolder() {
     if (curPerm === 'granted') {
       permOk = true;
     } else {
-      // 권한이 없으면 자동 요청
-      showToast('저장 권한을 요청합니다...', 'ok');
+      // 권한이 없으면 조용히 자동 요청 (토스트 없음)
       const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
       permOk = (newPerm === 'granted');
     }
@@ -286,10 +285,14 @@ async function renderLoadList() {
       const ts = d.toLocaleString('ko-KR', { year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
       const uc = (s.data.units||[]).length;
       const phc = (s.data.units||[]).reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
-      return `<div class="sl-item" data-fload="${s.name}" style="cursor:pointer;border-left:3px solid var(--ac2);">
-        <div class="sl-info">
+      return `<div class="sl-item" data-sname="${s.name}" style="border-left:3px solid var(--ac2);">
+        <div class="sl-info" data-fload="${s.name}" style="cursor:pointer;">
           <div class="sl-name">📁 ${escH(s.data.apt || '작업')} <span style="font-size:11px;color:var(--mu);font-weight:500;">· ${s.data.date || s.name}</span></div>
           <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장</div>
+        </div>
+        <div class="sl-btns">
+          <button class="btn b-blue b-xs" data-fload="${s.name}">불러오기</button>
+          <button class="btn b-red b-xs" data-fdel="${s.name}">삭제</button>
         </div>
       </div>`;
     }).join('');
@@ -306,12 +309,19 @@ async function renderLoadList() {
 
   // 이벤트
   body.addEventListener('click', async e => {
-    const itemEl = e.target.closest('[data-fload]');
+    const loadEl = e.target.closest('[data-fload]');
+    const delEl  = e.target.closest('[data-fdel]');
     const dateBtn = e.target.closest('#btnChangeDateRange');
     const fileBtn = e.target.closest('#btnPickFileFallback');
 
-    if (itemEl) {
-      const target = sessions.find(s => s.name === itemEl.dataset.fload);
+    if (delEl) {
+      e.stopPropagation();
+      const target = sessions.find(s => s.name === delEl.dataset.fdel);
+      if (target) await deleteDateFolder(target);
+      return;
+    }
+    if (loadEl) {
+      const target = sessions.find(s => s.name === loadEl.dataset.fload);
       if (target) await loadFromDateFolder(target.dirHandle, target.data);
     } else if (dateBtn) {
       showDateRangeDialog();
@@ -319,6 +329,46 @@ async function renderLoadList() {
       openFilePickerFallback();
     }
   });
+}
+
+// 날짜 폴더 삭제 (작업 전체 삭제)
+async function deleteDateFolder(target) {
+  const apt = target.data.apt || '작업';
+  const dateStr = target.data.date || target.name;
+
+  if (!confirm(
+    `🗑️ 다음 작업을 삭제할까요?\n\n` +
+    `${apt} · ${dateStr}\n` +
+    `${(target.data.units||[]).length}개 호수\n\n` +
+    `※ 폴더의 사진과 모든 파일이 삭제됩니다.\n` +
+    `이 작업은 되돌릴 수 없습니다.`
+  )) return;
+
+  showOverlay('삭제 중...');
+  try {
+    // 쓰기 권한 필요
+    const perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      if (newPerm !== 'granted') {
+        hideOverlay();
+        showToast('쓰기 권한이 없어 삭제할 수 없습니다', 'err');
+        return;
+      }
+    }
+
+    // 폴더 전체 삭제 (recursive)
+    await photoFolderHandle.removeEntry(target.name, { recursive: true });
+
+    hideOverlay();
+    showToast(`✓ "${apt}" 삭제됨`, 'ok');
+
+    // 목록 새로고침
+    await renderLoadList();
+  } catch(e) {
+    hideOverlay();
+    showToast('삭제 실패: ' + e.message, 'err');
+  }
 }
 
 // 기간 설정 다이얼로그
@@ -449,23 +499,19 @@ async function loadFromDateFolder(dateDir, data) {
 // 공통 복원 로직
 async function restoreFromData(data, dateDir) {
   const totalPhotos = (data.units||[]).reduce((s,u)=>s+(u.beforeCount||0)+(u.afterCount||0),0);
+
+  // 확인창 1번 - 사진까지 복원할지 여부만 묻기
+  // (현재 작업은 IndexedDB에 자동저장되어 있으므로 사라져도 복구 가능)
   let restorePhotos = false;
 
-  let msg = `📋 ${data.apt||'작업'} · ${data.date||''}\n` +
-            `${(data.units||[]).length}개 호수, 사진 ${totalPhotos}장\n\n`;
-
   if (dateDir && totalPhotos > 0) {
-    msg += `▶ 확인: 사진까지 모두 복원 (오래 걸림)\n` +
-           `▶ 취소: 호수 정보만 복원`;
+    const msg = `📋 ${data.apt||'작업'} · ${data.date||''}\n` +
+                `${(data.units||[]).length}개 호수, 사진 ${totalPhotos}장\n\n` +
+                `▶ 확인: 사진까지 복원 (느림)\n` +
+                `▶ 취소: 호수 정보만 복원 (빠름)`;
     restorePhotos = confirm(msg);
-  } else if (totalPhotos > 0) {
-    msg += `※ 사진 폴더 접근 권한이 없어 호수 정보만 복원됩니다.`;
-    if (!confirm(msg + '\n\n계속할까요?')) return;
-  } else {
-    if (!confirm(msg + '불러올까요?')) return;
   }
-
-  if (units.length > 0 && !confirm('현재 작업이 사라집니다.\n불러올까요?')) return;
+  // 사진 없거나 폴더 권한 없으면 그냥 진행 (확인 없음)
 
   showOverlay('불러오는 중...');
 

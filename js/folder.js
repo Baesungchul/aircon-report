@@ -333,8 +333,14 @@ function getWorkNumber(unitName) {
 
 // 실제 쓰기 (한 장) — 간결한 영문 폴더/파일명
 // 구조: [선택폴더]/[YYYY-MM-DD]/workNN/imageNN.jpg
+// 저장 시 사용할 날짜 폴더명 (saveToFolder에서 설정, doWriteOne에서 사용)
+let _currentSaveDateFolderName = null;
+
 async function doWriteOne(photo, unitName, typeLabel) {
-  const date = document.getElementById('workDate').value || new Date().toISOString().split('T')[0];
+  // saveToFolder가 설정한 폴더명 우선, 없으면 기본 날짜
+  const dateFolderName = _currentSaveDateFolderName ||
+                         document.getElementById('workDate').value ||
+                         getLocalDateStr();
 
   let step = 'init';
   try {
@@ -344,7 +350,7 @@ async function doWriteOne(photo, unitName, typeLabel) {
 
     // 인덱스 결정 (타입별 카운터)
     step = '인덱스 결정';
-    const idxKey = `${date}/${unitName}/${typeLabel}`;
+    const idxKey = `${dateFolderName}/${unitName}/${typeLabel}`;
     let idx = _indexCounter.get(idxKey) || 1;
     _indexCounter.set(idxKey, idx + 1);
 
@@ -356,9 +362,9 @@ async function doWriteOne(photo, unitName, typeLabel) {
                      : typeLabel === '후' ? 'A'
                      : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
 
-    // 폴더 구조: [루트] / [날짜] / workNN / [타입]imageNN.jpg
+    // 폴더 구조: [루트] / [날짜폴더] / workNN / [타입]imageNN.jpg
     step = '날짜폴더';
-    const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
+    const dateDir = await photoFolderHandle.getDirectoryHandle(dateFolderName, { create: true });
 
     step = '작업폴더';
     const workDir = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });

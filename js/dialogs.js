@@ -50,6 +50,41 @@ async function saveToFolder() {
   const date = document.getElementById('workDate').value || getLocalDateStr();
   const apt  = document.getElementById('aptName').value || 'site';
 
+  // 폴더명 결정: 같은 날짜에 다른 작업이 이미 있으면 시간 추가
+  let dateFolderName = date;
+  try {
+    // 기존 폴더가 있는지 확인
+    const existingDir = await photoFolderHandle.getDirectoryHandle(date).catch(() => null);
+    if (existingDir) {
+      // 기존 폴더의 _session.json을 읽어서 같은 작업인지 확인
+      let existingApt = null;
+      try {
+        const fh = await existingDir.getFileHandle('_session.json');
+        const file = await fh.getFile();
+        const buffer = await file.arrayBuffer();
+        let text = new TextDecoder('utf-8').decode(buffer);
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        const parsed = JSON.parse(text.trim());
+        existingApt = (parsed.apt || '').trim();
+      } catch(e) {}
+
+      // 다른 작업이면 시간 추가한 폴더 사용
+      const currentApt = (apt || '').trim();
+      if (existingApt && existingApt !== currentApt) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2,'0');
+        const mm = String(now.getMinutes()).padStart(2,'0');
+        dateFolderName = `${date}_${hh}${mm}`;
+        console.log(`📁 같은 날짜 다른 작업 감지 → ${dateFolderName} 폴더 사용 (기존: ${existingApt}, 신규: ${currentApt})`);
+      }
+    }
+  } catch(e) {
+    console.warn('폴더명 결정 중 오류:', e.message);
+  }
+
+  // 글로벌 변수에 설정 (doWriteOne이 이걸 보고 저장)
+  _currentSaveDateFolderName = dateFolderName;
+
   try {
     // 1) 모든 사진을 폴더에 저장
     for (const u of units) {
@@ -141,11 +176,12 @@ async function saveToFolder() {
   }
 
   try {
-    const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
+    // 새 폴더명으로 저장 (시간 추가된 경우 시간 폴더에 저장)
+    const dateDir = await photoFolderHandle.getDirectoryHandle(dateFolderName, { create: true });
 
     // 파일명: 한글 제거하고 영문/숫자만 사용 (안드로이드 크롬 호환성)
     // 작업명 정보는 파일 내부 데이터(apt 필드)에 저장됨
-    const fileName = `report_${date}.acreport.json`;
+    const fileName = `report_${dateFolderName}.acreport.json`;
 
     // 메인 파일 (재시도 포함)
     const ok1 = await writeJsonFile(dateDir, fileName, jsonText);
@@ -155,7 +191,7 @@ async function saveToFolder() {
     if (ok1 || ok2) {
       saveOk = true;
       sessionFileSaved = true;
-      console.log('✓ 세션 파일 저장 완료:', { date, mainFile: ok1, sessionJson: ok2 });
+      console.log('✓ 세션 파일 저장 완료:', { folder: dateFolderName, mainFile: ok1, sessionJson: ok2 });
     } else {
       console.error('❌ 모든 시도 실패. 마지막 에러:', lastError);
     }
@@ -163,6 +199,9 @@ async function saveToFolder() {
     console.error('❌ 세션 파일 저장 실패:', e);
     lastError = e.message;
   }
+
+  // 글로벌 변수 정리
+  _currentSaveDateFolderName = null;
 
   if (!sessionFileSaved) {
     showToast('세션 파일 저장 실패: ' + lastError, 'err');
@@ -328,12 +367,14 @@ async function renderLoadList() {
     for await (const [name, handle] of photoFolderHandle.entries()) {
       debugInfo.totalFolders++;
       if (handle.kind !== 'directory') continue;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(name)) continue;
+      // YYYY-MM-DD 또는 YYYY-MM-DD_HHMM 형식 허용
+      if (!/^\d{4}-\d{2}-\d{2}(_\d{4})?$/.test(name)) continue;
       debugInfo.dateFolders++;
 
-      // 기간 필터
-      if (_loadDateFrom && name < _loadDateFrom) continue;
-      if (_loadDateTo && name > _loadDateTo) continue;
+      // 기간 필터 (시간 부분 제외하고 날짜만 비교)
+      const dateOnly = name.substring(0, 10);  // YYYY-MM-DD
+      if (_loadDateFrom && dateOnly < _loadDateFrom) continue;
+      if (_loadDateTo && dateOnly > _loadDateTo) continue;
       debugInfo.inRange++;
 
       let data = null;

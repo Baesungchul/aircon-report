@@ -333,36 +333,54 @@ async function renderLoadList() {
       const filesToCleanup = [];
       const folderDebug = { name, files: [], result: '' };
 
-      // 1차: _session.json (0바이트 무시)
+      // 안정적인 파일 읽기 헬퍼 (재시도 포함, 안드로이드 크롬 호환)
+      async function readJsonFile(fhandle) {
+        let lastErr = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const file = await fhandle.getFile();
+            // file.text() 대신 arrayBuffer로 읽기 (더 안정적)
+            const buffer = await file.arrayBuffer();
+            const decoder = new TextDecoder('utf-8');
+            let text = decoder.decode(buffer);
+            // BOM 제거
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            // 끝 공백/제어문자 제거
+            text = text.trim();
+            if (!text) throw new Error('빈 문자열');
+            return { text, size: file.size, parsed: JSON.parse(text) };
+          } catch(e) {
+            lastErr = e;
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 100 * attempt));
+            }
+          }
+        }
+        throw lastErr;
+      }
+
+      // 1차: _session.json
       try {
         const fh = await handle.getFileHandle('_session.json');
-        const file = await fh.getFile();
-        folderDebug.files.push(`_session.json(${file.size}B)`);
-        if (file.size > 10) {
-          try {
-            const text = await file.text();
-            const parsed = JSON.parse(text);
-            if (parsed && Array.isArray(parsed.units)) {
-              data = parsed;
-              foundFile = '_session.json';
-              folderDebug.result = `OK from _session.json (${parsed.units.length} units)`;
-            } else {
-              folderDebug.result = `_session.json: units 배열 없음`;
-            }
-          } catch(parseErr) {
-            console.warn(`${name}/_session.json 파싱 실패:`, parseErr.message);
-            folderDebug.result = `_session.json 파싱 실패: ${parseErr.message}`;
-            filesToCleanup.push('_session.json');
+        try {
+          const result = await readJsonFile(fh);
+          folderDebug.files.push(`_session.json(${result.size}B)`);
+          if (result.parsed && Array.isArray(result.parsed.units)) {
+            data = result.parsed;
+            foundFile = '_session.json';
+            folderDebug.result = `OK from _session.json (${result.parsed.units.length} units)`;
+          } else {
+            folderDebug.result = `_session.json: units 배열 없음`;
           }
-        } else {
-          filesToCleanup.push('_session.json');
-          folderDebug.result = `_session.json 0바이트`;
+        } catch(readErr) {
+          folderDebug.files.push(`_session.json(읽기실패)`);
+          folderDebug.result = `_session.json 읽기 실패: ${readErr.message}`;
         }
       } catch(e) {
         folderDebug.files.push('_session.json: 없음');
       }
 
-      // 2차: *.acreport.json 찾기 (0바이트 무시)
+      // 2차: *.acreport.json 찾기
       if (!data) {
         try {
           for await (const [fname, fhandle] of handle.entries()) {
@@ -371,23 +389,22 @@ async function renderLoadList() {
             if (fname === '_session.json') continue;
 
             try {
-              const file = await fhandle.getFile();
-              folderDebug.files.push(`${fname}(${file.size}B)`);
-              if (file.size <= 10) {
+              const result = await readJsonFile(fhandle);
+              folderDebug.files.push(`${fname}(${result.size}B)`);
+              if (result.size <= 10) {
                 filesToCleanup.push(fname);
                 continue;
               }
-              const text = await file.text();
-              const parsed = JSON.parse(text);
-              if (parsed && Array.isArray(parsed.units)) {
-                data = parsed;
+              if (result.parsed && Array.isArray(result.parsed.units)) {
+                data = result.parsed;
                 foundFile = fname;
-                folderDebug.result = `OK from ${fname} (${parsed.units.length} units)`;
+                folderDebug.result = `OK from ${fname} (${result.parsed.units.length} units)`;
                 break;
               } else {
                 folderDebug.result = `${fname}: units 배열 없음`;
               }
             } catch(e2) {
+              folderDebug.files.push(`${fname}(읽기실패)`);
               folderDebug.result = `${fname} 처리 실패: ${e2.message}`;
               console.warn(`${name}/${fname} 처리 실패:`, e2.message);
             }

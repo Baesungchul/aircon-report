@@ -91,31 +91,73 @@ async function saveToFolder() {
     }))
   };
 
+  // JSON 텍스트 (쓰기 검증용)
+  const jsonText = JSON.stringify(sessionData, null, 2);
+
+  let saveOk = false;
+  let lastError = '';
+
+  // 안정적인 파일 쓰기 함수 (재시도 포함)
+  async function writeJsonFile(dirHandle, fileName, content) {
+    let attempts = 0;
+    const maxAttempts = 3;
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const fh = await dirHandle.getFileHandle(fileName, { create: true });
+        const writable = await fh.createWritable();
+        // Blob 대신 직접 텍스트 사용 (안드로이드 안정성)
+        await writable.write({ type: 'write', position: 0, data: content });
+        await writable.truncate(content.length);
+        await writable.close();
+
+        // 검증: 즉시 다시 읽어서 크기 확인
+        await new Promise(r => setTimeout(r, 50));
+        const verifyFh = await dirHandle.getFileHandle(fileName);
+        const verifyFile = await verifyFh.getFile();
+        if (verifyFile.size > 0) {
+          // 내용도 검증
+          const verifyText = await verifyFile.text();
+          if (verifyText.includes('"units"')) {
+            return true;
+          }
+        }
+        console.warn(`쓰기 검증 실패 (${attempts}/${maxAttempts}): ${fileName} - 크기 ${verifyFile.size}`);
+      } catch(e) {
+        lastError = e.message;
+        console.warn(`쓰기 시도 ${attempts}/${maxAttempts} 실패:`, e.message);
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+    return false;
+  }
+
   try {
-    const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type:'application/json' });
     const dateDir = await photoFolderHandle.getDirectoryHandle(date, { create: true });
 
-    // 파일명: 작업명 기반
-    const safeApt = (apt || 'work').replace(/[\\/:*?"<>|]/g, '_').slice(0, 50);
-    const fileName = `${safeApt}_${date}.acreport.json`;
+    // 파일명: 한글 제거하고 영문/숫자만 사용 (안드로이드 크롬 호환성)
+    // 작업명 정보는 파일 내부 데이터(apt 필드)에 저장됨
+    const fileName = `report_${date}.acreport.json`;
 
-    // 메인 파일
-    const fh = await dateDir.getFileHandle(fileName, { create: true });
-    const w = await fh.createWritable();
-    await w.write(blob);
-    await w.close();
+    // 메인 파일 (재시도 포함)
+    const ok1 = await writeJsonFile(dateDir, fileName, jsonText);
+    // 호환용 _session.json
+    const ok2 = await writeJsonFile(dateDir, '_session.json', jsonText);
 
-    // 호환용 _session.json (불러오기 목록이 이걸 찾음)
-    const fh2 = await dateDir.getFileHandle('_session.json', { create: true });
-    const w2 = await fh2.createWritable();
-    await w2.write(blob);
-    await w2.close();
-
-    sessionFileSaved = true;
-    console.log('✓ _session.json 저장 완료:', date);
+    if (ok1 || ok2) {
+      saveOk = true;
+      sessionFileSaved = true;
+      console.log('✓ 세션 파일 저장 완료:', { date, mainFile: ok1, sessionJson: ok2 });
+    } else {
+      console.error('❌ 모든 시도 실패. 마지막 에러:', lastError);
+    }
   } catch(e) {
     console.error('❌ 세션 파일 저장 실패:', e);
-    showToast('세션 파일 저장 실패: ' + e.message, 'err');
+    lastError = e.message;
+  }
+
+  if (!sessionFileSaved) {
+    showToast('세션 파일 저장 실패: ' + lastError, 'err');
   }
 
   // 3) 자동저장도 함께
@@ -286,15 +328,97 @@ async function renderLoadList() {
       if (_loadDateTo && name > _loadDateTo) continue;
       debugInfo.inRange++;
 
+      let data = null;
+      let foundFile = null;
+
+      // 1차: _session.json (0바이트 무시)
       try {
         const fh = await handle.getFileHandle('_session.json');
         const file = await fh.getFile();
-        const text = await file.text();
-        const data = JSON.parse(text);
-        sessions.push({ name, data, dirHandle: handle });
+        if (file.size > 10) {  // 빈 파일 무시
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.units) {
+            data = parsed;
+            foundFile = '_session.json';
+          }
+        }
+      } catch(e) {}
+
+      // 2차: *.acreport.json 찾기 (0바이트 무시)
+      if (!data) {
+        try {
+          for await (const [fname, fhandle] of handle.entries()) {
+            if (fhandle.kind !== 'file') continue;
+            if (!fname.endsWith('.acreport.json') && !fname.endsWith('.json')) continue;
+            try {
+              const file = await fhandle.getFile();
+              if (file.size <= 10) continue;  // 0바이트 무시
+              const parsed = JSON.parse(await file.text());
+              if (parsed && parsed.units) {
+                data = parsed;
+                foundFile = fname;
+                break;
+              }
+            } catch(e2) {}
+          }
+        } catch(e3) {}
+      }
+
+      if (data) {
+        sessions.push({ name, data, dirHandle: handle, sourceFile: foundFile });
         debugInfo.withSession++;
-      } catch(e) {
-        debugInfo.errors.push(`${name}: ${e.message}`);
+
+        // _session.json이 없었으면 자동 생성 (다음번 빠른 로딩용)
+        if (foundFile && foundFile !== '_session.json') {
+          try {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const fh = await handle.getFileHandle('_session.json', { create: true });
+            const w = await fh.createWritable();
+            await w.write(blob);
+            await w.close();
+            console.log(`✓ _session.json 자동 생성: ${name} (from ${foundFile})`);
+          } catch(e) {}
+        }
+      } else {
+        // 작업 정보 파일이 없는 폴더 → 사진 카운트로 임시 정보 생성
+        let workCount = 0;
+        let photoCount = 0;
+        try {
+          for await (const [wname, whandle] of handle.entries()) {
+            if (whandle.kind === 'directory' && /^work\d+/.test(wname)) {
+              workCount++;
+              try {
+                for await (const [pname, phandle] of whandle.entries()) {
+                  if (phandle.kind === 'file' && /\.jpg$/i.test(pname)) photoCount++;
+                }
+              } catch(e) {}
+            }
+          }
+        } catch(e) {}
+
+        if (workCount > 0) {
+          // 사진은 있지만 정보 파일이 없는 경우 → 임시 데이터로 표시
+          sessions.push({
+            name,
+            data: {
+              apt: '⚠️ 작업명 없음',
+              date: name,
+              savedAt: name + 'T00:00:00.000Z',
+              units: Array(workCount).fill(0).map((_, i) => ({
+                name: `work${String(i+1).padStart(2,'0')}`,
+                beforeCount: 0,
+                afterCount: 0,
+                specials: []
+              }))
+            },
+            dirHandle: handle,
+            isLegacy: true
+          });
+          debugInfo.withSession++;
+        } else {
+          debugInfo.errors.push(`${name}: 작업 정보 파일 없음`);
+        }
       }
     }
     sessions.sort((a,b) => new Date(b.data.savedAt) - new Date(a.data.savedAt));

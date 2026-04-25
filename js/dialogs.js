@@ -483,14 +483,20 @@ async function renderLoadList() {
   const fromLabel = _loadDateFrom || '처음';
   const toLabel = _loadDateTo || '오늘';
 
+  // 항상 표시되는 진단 정보 (모든 폴더의 분석 결과)
+  const allDetails = debugInfo.details.map(d =>
+    `<b>${d.name}</b><br>· 파일: ${d.files.join(', ') || '없음'}<br>· 결과: ${d.result || '처리 안됨'}`
+  ).join('<br><br>');
+
   let html = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px 12px;background:var(--sf2);border-radius:8px;">
       <div style="font-size:12px;color:var(--tx);flex:1;line-height:1.4;">
         <div style="font-weight:700;">📅 ${fromLabel} ~ ${toLabel}</div>
-        <div style="font-size:11px;color:var(--mu);margin-top:2px;">${sessions.length}개 작업</div>
+        <div style="font-size:11px;color:var(--mu);margin-top:2px;">${sessions.length}개 작업 · 통계: 전체${debugInfo.totalFolders}/날짜${debugInfo.dateFolders}/범위${debugInfo.inRange}/인식${debugInfo.withSession}</div>
       </div>
       <button class="btn b-ghost b-xs" id="btnChangeDateRange">🔍 기간 변경</button>
     </div>
+    ${allDetails ? `<div style="font-size:10px;color:var(--tx);background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);padding:8px 10px;border-radius:6px;margin-bottom:10px;line-height:1.6;word-break:break-all;">🔍 폴더 분석:<br><br>${allDetails}</div>` : ''}
   `;
 
   if (sessions.length === 0) {
@@ -519,10 +525,23 @@ async function renderLoadList() {
       const ts = d.toLocaleString('ko-KR', { year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
       const uc = (s.data.units||[]).length;
       const phc = (s.data.units||[]).reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
-      return `<div class="sl-item" data-sname="${s.name}" style="border-left:3px solid var(--ac2);">
+
+      // legacy 항목이면 디버그 정보 추가
+      let debugLine = '';
+      if (s.isLegacy) {
+        const folderInfo = debugInfo.details.find(d => d.name === s.name);
+        if (folderInfo) {
+          debugLine = `<div style="font-size:9px;color:var(--wn);background:rgba(255,200,0,.1);padding:4px 6px;border-radius:4px;margin-top:6px;line-height:1.4;">
+            🔍 진단: ${folderInfo.result || '데이터 파일 없음'}<br>📁 파일: ${folderInfo.files.join(', ') || '없음'}
+          </div>`;
+        }
+      }
+
+      return `<div class="sl-item" data-sname="${s.name}" style="border-left:3px solid ${s.isLegacy?'#fbbf24':'var(--ac2)'};">
         <div class="sl-info" data-fload="${s.name}" style="cursor:pointer;">
           <div class="sl-name">📁 ${escH(s.data.apt || '작업')} <span style="font-size:11px;color:var(--mu);font-weight:500;">· ${s.data.date || s.name}</span></div>
           <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장</div>
+          ${debugLine}
         </div>
         <div class="sl-btns">
           <button class="btn b-blue b-xs" data-fload="${s.name}">불러오기</button>

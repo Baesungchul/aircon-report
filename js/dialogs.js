@@ -677,8 +677,16 @@ async function deleteDateFolder(target) {
       }
     }
 
-    // 폴더 전체 삭제 (recursive)
-    await photoFolderHandle.removeEntry(target.name, { recursive: true });
+    // 폴더 전체 삭제 시도
+    try {
+      // 1차: recursive 옵션 (데스크톱 크롬에서 잘 됨)
+      await photoFolderHandle.removeEntry(target.name, { recursive: true });
+    } catch(e1) {
+      // 2차: 수동 재귀 삭제 (안드로이드용)
+      console.warn('recursive 삭제 실패, 수동 삭제 시도:', e1.message);
+      await deleteDirectoryContents(target.dirHandle);
+      await photoFolderHandle.removeEntry(target.name);
+    }
 
     hideOverlay();
     showToast(`✓ "${apt}" 삭제됨`, 'ok');
@@ -688,6 +696,32 @@ async function deleteDateFolder(target) {
   } catch(e) {
     hideOverlay();
     showToast('삭제 실패: ' + e.message, 'err');
+  }
+}
+
+// 디렉토리 내부 모든 파일/폴더 재귀적으로 삭제
+async function deleteDirectoryContents(dirHandle) {
+  const entries = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    entries.push({ name, handle });
+  }
+  for (const { name, handle } of entries) {
+    if (handle.kind === 'directory') {
+      // 하위 폴더 → 내용 비우고 삭제
+      await deleteDirectoryContents(handle);
+      try {
+        await dirHandle.removeEntry(name);
+      } catch(e) {
+        try { await dirHandle.removeEntry(name, { recursive: true }); } catch(e2) {
+          console.warn(`폴더 삭제 실패: ${name}`, e2.message);
+        }
+      }
+    } else {
+      // 파일 → 직접 삭제
+      try { await dirHandle.removeEntry(name); } catch(e) {
+        console.warn(`파일 삭제 실패: ${name}`, e.message);
+      }
+    }
   }
 }
 

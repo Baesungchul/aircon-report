@@ -106,23 +106,31 @@ async function saveToFolder() {
       try {
         const fh = await dirHandle.getFileHandle(fileName, { create: true });
         const writable = await fh.createWritable();
-        // Blob 대신 직접 텍스트 사용 (안드로이드 안정성)
-        await writable.write({ type: 'write', position: 0, data: content });
-        await writable.truncate(content.length);
+        // Blob으로 쓰기 (UTF-8 인코딩 자동 처리, 한글 안정성)
+        const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+        await writable.write(blob);
+        // truncate 제거 - Blob.size로 자동 결정됨 (한글 바이트 수 문제 해결)
         await writable.close();
 
         // 검증: 즉시 다시 읽어서 크기 확인
-        await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 100));
         const verifyFh = await dirHandle.getFileHandle(fileName);
         const verifyFile = await verifyFh.getFile();
-        if (verifyFile.size > 0) {
-          // 내용도 검증
-          const verifyText = await verifyFile.text();
+        if (verifyFile.size >= blob.size) {
+          // 내용도 검증 (arrayBuffer로 안정적으로)
+          const buffer = await verifyFile.arrayBuffer();
+          const decoder = new TextDecoder('utf-8');
+          const verifyText = decoder.decode(buffer);
           if (verifyText.includes('"units"')) {
-            return true;
+            try {
+              JSON.parse(verifyText.charCodeAt(0) === 0xFEFF ? verifyText.slice(1) : verifyText);
+              return true;
+            } catch(parseE) {
+              console.warn(`쓰기 검증 - JSON 파싱 실패: ${parseE.message}`);
+            }
           }
         }
-        console.warn(`쓰기 검증 실패 (${attempts}/${maxAttempts}): ${fileName} - 크기 ${verifyFile.size}`);
+        console.warn(`쓰기 검증 실패 (${attempts}/${maxAttempts}): ${fileName} - 크기 ${verifyFile.size}/${blob.size}`);
       } catch(e) {
         lastError = e.message;
         console.warn(`쓰기 시도 ${attempts}/${maxAttempts} 실패:`, e.message);
@@ -437,10 +445,10 @@ async function renderLoadList() {
         if (foundFile && foundFile !== '_session.json') {
           try {
             const jsonText = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
             const fh = await handle.getFileHandle('_session.json', { create: true });
             const w = await fh.createWritable();
-            await w.write({ type: 'write', position: 0, data: jsonText });
-            await w.truncate(jsonText.length);
+            await w.write(blob);
             await w.close();
             console.log(`✓ _session.json 자동 생성: ${name} (from ${foundFile})`);
           } catch(e) {}

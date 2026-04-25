@@ -315,7 +315,7 @@ async function renderLoadList() {
 
   // 날짜 폴더들 스캔 (기간 필터 적용)
   const sessions = [];
-  const debugInfo = { totalFolders: 0, dateFolders: 0, inRange: 0, withSession: 0, errors: [] };
+  const debugInfo = { totalFolders: 0, dateFolders: 0, inRange: 0, withSession: 0, errors: [], details: [] };
   try {
     for await (const [name, handle] of photoFolderHandle.entries()) {
       debugInfo.totalFolders++;
@@ -330,20 +330,37 @@ async function renderLoadList() {
 
       let data = null;
       let foundFile = null;
+      const filesToCleanup = [];
+      const folderDebug = { name, files: [], result: '' };
 
       // 1차: _session.json (0바이트 무시)
       try {
         const fh = await handle.getFileHandle('_session.json');
         const file = await fh.getFile();
-        if (file.size > 10) {  // 빈 파일 무시
-          const text = await file.text();
-          const parsed = JSON.parse(text);
-          if (parsed && parsed.units) {
-            data = parsed;
-            foundFile = '_session.json';
+        folderDebug.files.push(`_session.json(${file.size}B)`);
+        if (file.size > 10) {
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            if (parsed && Array.isArray(parsed.units)) {
+              data = parsed;
+              foundFile = '_session.json';
+              folderDebug.result = `OK from _session.json (${parsed.units.length} units)`;
+            } else {
+              folderDebug.result = `_session.json: units 배열 없음`;
+            }
+          } catch(parseErr) {
+            console.warn(`${name}/_session.json 파싱 실패:`, parseErr.message);
+            folderDebug.result = `_session.json 파싱 실패: ${parseErr.message}`;
+            filesToCleanup.push('_session.json');
           }
+        } else {
+          filesToCleanup.push('_session.json');
+          folderDebug.result = `_session.json 0바이트`;
         }
-      } catch(e) {}
+      } catch(e) {
+        folderDebug.files.push('_session.json: 없음');
+      }
 
       // 2차: *.acreport.json 찾기 (0바이트 무시)
       if (!data) {
@@ -351,18 +368,48 @@ async function renderLoadList() {
           for await (const [fname, fhandle] of handle.entries()) {
             if (fhandle.kind !== 'file') continue;
             if (!fname.endsWith('.acreport.json') && !fname.endsWith('.json')) continue;
+            if (fname === '_session.json') continue;
+
             try {
               const file = await fhandle.getFile();
-              if (file.size <= 10) continue;  // 0바이트 무시
-              const parsed = JSON.parse(await file.text());
-              if (parsed && parsed.units) {
+              folderDebug.files.push(`${fname}(${file.size}B)`);
+              if (file.size <= 10) {
+                filesToCleanup.push(fname);
+                continue;
+              }
+              const text = await file.text();
+              const parsed = JSON.parse(text);
+              if (parsed && Array.isArray(parsed.units)) {
                 data = parsed;
                 foundFile = fname;
+                folderDebug.result = `OK from ${fname} (${parsed.units.length} units)`;
                 break;
+              } else {
+                folderDebug.result = `${fname}: units 배열 없음`;
               }
-            } catch(e2) {}
+            } catch(e2) {
+              folderDebug.result = `${fname} 처리 실패: ${e2.message}`;
+              console.warn(`${name}/${fname} 처리 실패:`, e2.message);
+            }
           }
         } catch(e3) {}
+      }
+
+      debugInfo.details.push(folderDebug);
+
+      // 0바이트 / 손상된 파일 자동 삭제
+      if (filesToCleanup.length > 0) {
+        try {
+          const perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+          if (perm === 'granted') {
+            for (const f of filesToCleanup) {
+              try {
+                await handle.removeEntry(f);
+                console.log(`🗑️ 손상된 파일 삭제: ${name}/${f}`);
+              } catch(e) {}
+            }
+          }
+        } catch(e) {}
       }
 
       if (data) {
@@ -372,10 +419,11 @@ async function renderLoadList() {
         // _session.json이 없었으면 자동 생성 (다음번 빠른 로딩용)
         if (foundFile && foundFile !== '_session.json') {
           try {
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const jsonText = JSON.stringify(data, null, 2);
             const fh = await handle.getFileHandle('_session.json', { create: true });
             const w = await fh.createWritable();
-            await w.write(blob);
+            await w.write({ type: 'write', position: 0, data: jsonText });
+            await w.truncate(jsonText.length);
             await w.close();
             console.log(`✓ _session.json 자동 생성: ${name} (from ${foundFile})`);
           } catch(e) {}
@@ -450,15 +498,19 @@ async function renderLoadList() {
     if (debugInfo.dateFolders === 0) {
       debugMsg = `폴더 안에 날짜 형식(YYYY-MM-DD) 폴더가 없습니다`;
     } else if (debugInfo.inRange === 0) {
-      debugMsg = `날짜 폴더 ${debugInfo.dateFolders}개 발견 → 모두 기간 범위 밖<br><span style="font-size:10px;">기간을 넓혀보세요</span>`;
+      debugMsg = `날짜 폴더 ${debugInfo.dateFolders}개 발견 → 모두 기간 범위 밖`;
     } else if (debugInfo.withSession === 0) {
-      debugMsg = `폴더 ${debugInfo.inRange}개 → _session.json 파일 없음<br><span style="font-size:10px;">에러: ${debugInfo.errors.slice(0,3).join('; ').slice(0,200)}</span>`;
+      // 상세 정보: 각 폴더에서 무슨 일이 있었는지
+      const detailLines = debugInfo.details.slice(0, 5).map(d =>
+        `<b>${d.name}</b><br>· 파일: ${d.files.join(', ') || '없음'}<br>· 결과: ${d.result || '처리 안됨'}`
+      ).join('<br><br>');
+      debugMsg = `폴더 ${debugInfo.inRange}개 분석:<br><br>${detailLines}`;
     }
     html += `
       <div class="sl-empty" style="padding:30px 14px;">
         <div style="font-size:14px;margin-bottom:8px;">해당 기간에 저장된 작업이 없습니다</div>
         <div style="font-size:11px;color:var(--mu);margin-bottom:12px;">🔍 기간 변경 버튼을 눌러 범위를 넓혀보세요</div>
-        ${debugMsg ? `<div style="font-size:10px;color:var(--wn);background:var(--sf2);padding:8px 12px;border-radius:6px;margin-top:10px;line-height:1.5;">${debugMsg}</div>` : ''}
+        ${debugMsg ? `<div style="font-size:10px;color:var(--wn);background:var(--sf2);padding:10px 14px;border-radius:6px;margin-top:10px;line-height:1.6;text-align:left;word-break:break-all;">${debugMsg}</div>` : ''}
       </div>
     `;
   } else {

@@ -1,5 +1,5 @@
-// 서비스워커 v6 - 항상 최신
-const CACHE = 'ac1004-v6';
+// 서비스워커 v7 - 항상 최신
+const CACHE = 'ac1004-v7';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

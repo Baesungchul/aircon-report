@@ -129,9 +129,11 @@ async function init() {
     }
   } catch(e) {}
 
-  // ── 뒤로가기 차단 해제 ──
+  // ── 뒤로가기 처리 ──
+  // 모달이 열려있으면 모달 닫기 (메인 화면으로)
+  // 메인 화면에서 뒤로가기는 종료 확인
   // 자동저장(visibilitychange + IndexedDB + localStorage)으로 데이터 유실 위험 없음
-  // 사용자가 자유롭게 페이지 이동 가능
+  setupBackButtonHandler();
 
   // beforeunload 경고는 사용자 친화성 위해 제거 (자동저장으로 충분)
 
@@ -182,3 +184,46 @@ async function init() {
   updateStats();
 }
 
+
+// ═══════════════════════════════
+// 뒤로가기 처리: 모달 닫기 → 메인 → 종료 확인
+// ═══════════════════════════════
+function setupBackButtonHandler() {
+  // history에 더미 상태 추가
+  history.pushState({ page: 'main' }, '', location.href);
+
+  window.addEventListener('popstate', (e) => {
+    // 1) 열린 모달 찾기
+    const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal'];
+    let openModal = null;
+    for (const id of modalIds) {
+      const el = document.getElementById(id);
+      if (el && el.classList.contains('open')) {
+        openModal = el;
+        break;
+      }
+    }
+
+    if (openModal) {
+      // 모달 닫기 (메인으로)
+      openModal.classList.remove('open');
+      // history 상태 다시 추가 (뒤로가기 다시 가능하게)
+      history.pushState({ page: 'main' }, '', location.href);
+      return;
+    }
+
+    // 2) 메인 화면에서 뒤로가기 = 종료 확인
+    const confirmExit = confirm('앱을 종료하시겠습니까?\n\n작업 내용은 자동으로 저장되어 있어 다음에 다시 열 수 있습니다.');
+
+    if (confirmExit) {
+      // 자동저장 후 종료
+      try { sessionAutoSaveNow(); } catch(e) {}
+      // 페이지 닫기 시도 (window.close는 일반적으로 작동 안함)
+      // 대신 history 더 뒤로 이동하여 브라우저가 자연스럽게 처리
+      window.history.back();
+    } else {
+      // 취소 → 현재 페이지 유지 (history 상태 다시 추가)
+      history.pushState({ page: 'main' }, '', location.href);
+    }
+  });
+}

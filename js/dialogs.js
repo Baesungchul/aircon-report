@@ -288,11 +288,11 @@ function getLocalDateStr(d) {
 }
 
 async function openLoadList() {
-  // 기본: 최근 30일 (로컬 기준)
+  // 기본: 최근 3일 (로컬 기준)
   const today = new Date();
-  const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  _loadDateFrom = getLocalDateStr(thirtyDaysAgo);
+  const threeDaysAgo = new Date(today);
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  _loadDateFrom = getLocalDateStr(threeDaysAgo);
   _loadDateTo   = getLocalDateStr(today);
 
   document.getElementById('slModal').classList.add('open');
@@ -535,7 +535,14 @@ async function renderLoadList() {
         }
       }
     }
-    sessions.sort((a,b) => new Date(b.data.savedAt) - new Date(a.data.savedAt));
+    // 정렬: savedAt 최신 우선, 같으면 폴더명(YYYY-MM-DD_HHMM)으로 시간 비교
+    sessions.sort((a,b) => {
+      const ta = new Date(a.data.savedAt).getTime();
+      const tb = new Date(b.data.savedAt).getTime();
+      if (tb !== ta) return tb - ta;
+      // 같은 시각이면 폴더명 내림차순 (시간 포함된 폴더가 더 뒤)
+      return b.name.localeCompare(a.name);
+    });
 
     // 콘솔 로그 (F12로 확인 가능)
     console.log('📂 불러오기 스캔 결과:', debugInfo);
@@ -549,40 +556,21 @@ async function renderLoadList() {
   const fromLabel = _loadDateFrom || '처음';
   const toLabel = _loadDateTo || '오늘';
 
-  // 항상 표시되는 진단 정보 (모든 폴더의 분석 결과)
-  const allDetails = debugInfo.details.map(d =>
-    `<b>${d.name}</b><br>· 파일: ${d.files.join(', ') || '없음'}<br>· 결과: ${d.result || '처리 안됨'}`
-  ).join('<br><br>');
-
   let html = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px 12px;background:var(--sf2);border-radius:8px;">
       <div style="font-size:12px;color:var(--tx);flex:1;line-height:1.4;">
         <div style="font-weight:700;">📅 ${fromLabel} ~ ${toLabel}</div>
-        <div style="font-size:11px;color:var(--mu);margin-top:2px;">${sessions.length}개 작업 · 통계: 전체${debugInfo.totalFolders}/날짜${debugInfo.dateFolders}/범위${debugInfo.inRange}/인식${debugInfo.withSession}</div>
+        <div style="font-size:11px;color:var(--mu);margin-top:2px;">${sessions.length}개 작업</div>
       </div>
       <button class="btn b-ghost b-xs" id="btnChangeDateRange">🔍 기간 변경</button>
     </div>
-    ${allDetails ? `<div style="font-size:10px;color:var(--tx);background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);padding:8px 10px;border-radius:6px;margin-bottom:10px;line-height:1.6;word-break:break-all;">🔍 폴더 분석:<br><br>${allDetails}</div>` : ''}
   `;
 
   if (sessions.length === 0) {
-    let debugMsg = '';
-    if (debugInfo.dateFolders === 0) {
-      debugMsg = `폴더 안에 날짜 형식(YYYY-MM-DD) 폴더가 없습니다`;
-    } else if (debugInfo.inRange === 0) {
-      debugMsg = `날짜 폴더 ${debugInfo.dateFolders}개 발견 → 모두 기간 범위 밖`;
-    } else if (debugInfo.withSession === 0) {
-      // 상세 정보: 각 폴더에서 무슨 일이 있었는지
-      const detailLines = debugInfo.details.slice(0, 5).map(d =>
-        `<b>${d.name}</b><br>· 파일: ${d.files.join(', ') || '없음'}<br>· 결과: ${d.result || '처리 안됨'}`
-      ).join('<br><br>');
-      debugMsg = `폴더 ${debugInfo.inRange}개 분석:<br><br>${detailLines}`;
-    }
     html += `
       <div class="sl-empty" style="padding:30px 14px;">
         <div style="font-size:14px;margin-bottom:8px;">해당 기간에 저장된 작업이 없습니다</div>
-        <div style="font-size:11px;color:var(--mu);margin-bottom:12px;">🔍 기간 변경 버튼을 눌러 범위를 넓혀보세요</div>
-        ${debugMsg ? `<div style="font-size:10px;color:var(--wn);background:var(--sf2);padding:10px 14px;border-radius:6px;margin-top:10px;line-height:1.6;text-align:left;word-break:break-all;">${debugMsg}</div>` : ''}
+        <div style="font-size:11px;color:var(--mu);">🔍 기간 변경 버튼을 눌러 범위를 넓혀보세요</div>
       </div>
     `;
   } else {
@@ -592,22 +580,10 @@ async function renderLoadList() {
       const uc = (s.data.units||[]).length;
       const phc = (s.data.units||[]).reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
 
-      // legacy 항목이면 디버그 정보 추가
-      let debugLine = '';
-      if (s.isLegacy) {
-        const folderInfo = debugInfo.details.find(d => d.name === s.name);
-        if (folderInfo) {
-          debugLine = `<div style="font-size:9px;color:var(--wn);background:rgba(255,200,0,.1);padding:4px 6px;border-radius:4px;margin-top:6px;line-height:1.4;">
-            🔍 진단: ${folderInfo.result || '데이터 파일 없음'}<br>📁 파일: ${folderInfo.files.join(', ') || '없음'}
-          </div>`;
-        }
-      }
-
       return `<div class="sl-item" data-sname="${s.name}" style="border-left:3px solid ${s.isLegacy?'#fbbf24':'var(--ac2)'};">
         <div class="sl-info" data-fload="${s.name}" style="cursor:pointer;">
           <div class="sl-name">📁 ${escH(s.data.apt || '작업')} <span style="font-size:11px;color:var(--mu);font-weight:500;">· ${s.data.date || s.name}</span></div>
           <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장</div>
-          ${debugLine}
         </div>
         <div class="sl-btns">
           <button class="btn b-blue b-xs" data-fload="${s.name}">불러오기</button>
@@ -751,11 +727,12 @@ function showDateRangeDialog() {
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:14px;">
+        <button class="btn b-ghost b-xs" data-preset="3">최근 3일</button>
         <button class="btn b-ghost b-xs" data-preset="30">최근 30일</button>
         <button class="btn b-ghost b-xs" data-preset="90">최근 3개월</button>
         <button class="btn b-ghost b-xs" data-preset="365">최근 1년</button>
-        <button class="btn b-ghost b-xs" data-preset="all" style="grid-column:span 3;">전체 기간</button>
+        <button class="btn b-ghost b-xs" data-preset="all" style="grid-column:span 2;">전체 기간</button>
       </div>
 
       <div style="display:flex;gap:8px;">
@@ -897,20 +874,40 @@ async function restoreFromData(data, dateDir) {
         const workNum = String(ui+1).padStart(2,'0');
         const workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
 
+        // 작업 전: A_imageNN.jpg (신규) 또는 B_imageNN.jpg (구버전 호환)
         for (let i = 1; i <= (u.beforeCount||0); i++) {
-          try {
-            const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
-            const pf = await pfh.getFile();
-            newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-          } catch(e) {}
-        }
-        for (let i = 1; i <= (u.afterCount||0); i++) {
+          let pf = null;
           try {
             const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
-            const pf = await pfh.getFile();
-            newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-          } catch(e) {}
+            pf = await pfh.getFile();
+          } catch(e) {
+            try {
+              const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
+              pf = await pfh.getFile();
+            } catch(e2) {}
+          }
+          if (pf) {
+            newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+          }
         }
+
+        // 작업 후: B_imageNN.jpg (신규) 또는 A_imageNN.jpg (구버전 호환)
+        for (let i = 1; i <= (u.afterCount||0); i++) {
+          let pf = null;
+          try {
+            const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
+            pf = await pfh.getFile();
+          } catch(e) {
+            try {
+              const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
+              pf = await pfh.getFile();
+            } catch(e2) {}
+          }
+          if (pf) {
+            newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+          }
+        }
+
         for (let si = 0; si < newUnit.specials.length; si++) {
           const sp = u.specials[si];
           for (let pi = 1; pi <= (sp.photoCount||0); pi++) {

@@ -358,8 +358,8 @@ async function doWriteOne(photo, unitName, typeLabel) {
     const workNum = getWorkNumber(unitName);
 
     // 타입 프리픽스: B=before, A=after, S1=special1, ...
-    const typePrefix = typeLabel === '전' ? 'B'
-                     : typeLabel === '후' ? 'A'
+    const typePrefix = typeLabel === '전' ? 'A'
+                     : typeLabel === '후' ? 'B'
                      : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
 
     // 폴더 구조: [루트] / [날짜폴더] / workNN / [타입]imageNN.jpg
@@ -847,8 +847,8 @@ async function savePhotosToFolder() {
     }
     // 영문 폴더/파일명
     const workNum = getWorkNumber(unitName);
-    const typePrefix = typeLabel === '전' ? 'B'
-                     : typeLabel === '후' ? 'A'
+    const typePrefix = typeLabel === '전' ? 'A'
+                     : typeLabel === '후' ? 'B'
                      : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
     const fname = `${typePrefix}_image${String(idx).padStart(2, '0')}.jpg`;
 

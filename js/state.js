@@ -129,14 +129,9 @@ async function init() {
     }
   } catch(e) {}
 
-  // ── 뒤로가기 차단 ──
-  history.pushState(null, '', location.href);
-  window.addEventListener('popstate', () => {
-    history.pushState(null, '', location.href);
-    if (units.length > 0) {
-      showToast('뒤로가기는 차단됩니다 — 💾 저장 버튼을 이용해주세요', 'err');
-    }
-  });
+  // ── 뒤로가기 차단 해제 ──
+  // 자동저장(visibilitychange + IndexedDB + localStorage)으로 데이터 유실 위험 없음
+  // 사용자가 자유롭게 페이지 이동 가능
 
   // beforeunload 경고는 사용자 친화성 위해 제거 (자동저장으로 충분)
 

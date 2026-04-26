@@ -46,20 +46,36 @@ async function saveToFolder() {
   let failed = 0;
   let sessionFileSaved = false;
 
+  // 인덱스 카운터 초기화 (사진 번호가 1번부터 시작하도록)
+  if (typeof _indexCounter !== 'undefined' && _indexCounter.clear) _indexCounter.clear();
+  if (typeof _savedPhotoIds !== 'undefined' && _savedPhotoIds.clear) _savedPhotoIds.clear();
+
   // 날짜와 작업명을 미리 확정 (사진 저장 실패해도 _session.json은 저장하도록)
   const date = document.getElementById('workDate').value || getLocalDateStr();
   const apt  = document.getElementById('aptName').value || 'site';
 
-  // 폴더명 결정: 같은 날짜에 다른 작업이 이미 있으면 시간 추가
+  // 폴더명 결정: 같은 날짜에 같은 작업명이 있으면 그 폴더 사용 (덮어쓰기)
+  // 같은 날짜에 다른 작업명이 있으면 시간 추가
   let dateFolderName = date;
+  const currentApt = (apt || '').trim();
+
   try {
-    // 기존 폴더가 있는지 확인
-    const existingDir = await photoFolderHandle.getDirectoryHandle(date).catch(() => null);
-    if (existingDir) {
-      // 기존 폴더의 _session.json을 읽어서 같은 작업인지 확인
+    // 같은 날짜의 모든 폴더 스캔 (YYYY-MM-DD, YYYY-MM-DD_HHMM 형식)
+    const candidates = [];  // 같은 날짜 폴더 목록
+    for await (const [name, handle] of photoFolderHandle.entries()) {
+      if (handle.kind !== 'directory') continue;
+      // 시작이 같은 날짜인지 확인
+      if (name === date || name.startsWith(date + '_')) {
+        candidates.push({ name, handle });
+      }
+    }
+
+    // 각 폴더의 작업명 확인
+    let existingFolder = null;  // 같은 작업명이 있는 폴더
+    for (const { name, handle } of candidates) {
       let existingApt = null;
       try {
-        const fh = await existingDir.getFileHandle('_session.json');
+        const fh = await handle.getFileHandle('_session.json');
         const file = await fh.getFile();
         const buffer = await file.arrayBuffer();
         let text = new TextDecoder('utf-8').decode(buffer);
@@ -68,16 +84,56 @@ async function saveToFolder() {
         existingApt = (parsed.apt || '').trim();
       } catch(e) {}
 
-      // 다른 작업이면 시간 추가한 폴더 사용
-      const currentApt = (apt || '').trim();
-      if (existingApt && existingApt !== currentApt) {
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2,'0');
-        const mm = String(now.getMinutes()).padStart(2,'0');
-        dateFolderName = `${date}_${hh}${mm}`;
-        console.log(`📁 같은 날짜 다른 작업 감지 → ${dateFolderName} 폴더 사용 (기존: ${existingApt}, 신규: ${currentApt})`);
+      if (existingApt === currentApt) {
+        // 같은 작업 발견 → 그 폴더에 덮어쓰기
+        existingFolder = name;
+        break;
       }
     }
+
+    if (existingFolder) {
+      // 같은 작업명 발견 → 기존 폴더에 덮어쓰기
+      dateFolderName = existingFolder;
+      console.log(`📁 같은 작업 발견 → ${existingFolder} 폴더에 덮어쓰기`);
+
+      // 덮어쓰기: 기존 work 폴더들 모두 비우기 (이전 사진 제거)
+      try {
+        const oldDir = await photoFolderHandle.getDirectoryHandle(existingFolder);
+        const toDelete = [];
+        for await (const [n, h] of oldDir.entries()) {
+          if (h.kind === 'directory' && /^work\d+/.test(n)) {
+            toDelete.push({ n, h });
+          }
+        }
+        for (const { n, h } of toDelete) {
+          try {
+            // work 폴더 안의 파일들 삭제
+            const fnames = [];
+            for await (const [fn, fh] of h.entries()) {
+              if (fh.kind === 'file') fnames.push(fn);
+            }
+            for (const fn of fnames) {
+              try { await h.removeEntry(fn); } catch(e) {}
+            }
+            // work 폴더 삭제
+            await oldDir.removeEntry(n);
+          } catch(e) {
+            console.warn(`work 폴더 정리 실패: ${n}`, e.message);
+          }
+        }
+        console.log(`🗑️ 기존 work 폴더 ${toDelete.length}개 정리 완료`);
+      } catch(e) {
+        console.warn('기존 폴더 정리 실패:', e.message);
+      }
+    } else if (candidates.length > 0) {
+      // 같은 작업명은 없지만 다른 작업이 있음 → 시간 추가
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      dateFolderName = `${date}_${hh}${mm}`;
+      console.log(`📁 같은 날짜 다른 작업 감지 → ${dateFolderName} 폴더 사용`);
+    }
+    // candidates 비어있으면 dateFolderName = date 그대로 사용
   } catch(e) {
     console.warn('폴더명 결정 중 오류:', e.message);
   }

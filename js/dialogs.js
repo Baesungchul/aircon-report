@@ -54,10 +54,21 @@ async function saveToFolder() {
   const date = document.getElementById('workDate').value || getLocalDateStr();
   const apt  = document.getElementById('aptName').value || 'site';
 
+  // 작업명 정규화 함수: 보이지 않는 문자 제거 + 유니코드 정규화 + 공백 통일
+  function normalizeAptName(s) {
+    if (!s) return '';
+    return String(s)
+      .normalize('NFC')                          // 한글 자모 결합 (NFD → NFC)
+      .replace(/[\u200B-\u200F\uFEFF]/g, '')     // ZWSP, ZWJ, ZWNJ, BOM 등 제거
+      .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ')  // 각종 유니코드 공백 → 일반 공백
+      .replace(/\s+/g, ' ')                      // 연속 공백 → 단일 공백
+      .trim();
+  }
+
   // 폴더명 결정: 같은 날짜에 같은 작업명이 있으면 그 폴더 사용 (덮어쓰기)
   // 같은 날짜에 다른 작업명이 있으면 시간 추가
   let dateFolderName = date;
-  const currentApt = (apt || '').trim();
+  const currentApt = normalizeAptName(apt);
 
   try {
     // 같은 날짜의 모든 폴더 스캔 (YYYY-MM-DD, YYYY-MM-DD_HHMM 형식)
@@ -81,12 +92,15 @@ async function saveToFolder() {
         let text = new TextDecoder('utf-8').decode(buffer);
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
         const parsed = JSON.parse(text.trim());
-        existingApt = (parsed.apt || '').trim();
+        existingApt = normalizeAptName(parsed.apt || '');
       } catch(e) {}
+
+      console.log(`📋 비교: "${currentApt}" (${currentApt.length}자) vs "${existingApt}" (${(existingApt||'').length}자) [${name}]`);
 
       if (existingApt === currentApt) {
         // 같은 작업 발견 → 그 폴더에 덮어쓰기
         existingFolder = name;
+        console.log(`✅ 매칭 성공: ${name}`);
         break;
       }
     }
@@ -168,7 +182,8 @@ async function saveToFolder() {
     version: 1,
     type: 'aircon-report',
     savedAt: new Date().toISOString(),
-    apt, date,
+    apt: currentApt,  // 정규화된 작업명 저장
+    date,
     worker:  document.getElementById('workerName').value || '',
     coName:  document.getElementById('coName')?.value || '',
     coTel:   document.getElementById('coTel')?.value || '',

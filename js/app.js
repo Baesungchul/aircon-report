@@ -25,4 +25,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   await init();
   if (typeof loadSettings === 'function') loadSettings();
   if (typeof bindSettings === 'function') bindSettings();
+  // 다국어 적용 (저장된 언어 설정으로)
+  if (typeof applyI18nToDOM === 'function') applyI18nToDOM();
 });

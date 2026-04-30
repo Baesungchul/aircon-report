@@ -26,6 +26,10 @@ function buildReportHTML(){
   const total=units.length;
   const complete=units.filter(u=>u.before.length>0&&u.after.length>0).length;
 
+  // 보고서 테마 (설정에서 선택)
+  const reportTheme = localStorage.getItem('ac_report_theme_v1') || 'default';
+  const themeClass = `rp-theme-${reportTheme}`;
+
   // 배열을 n개씩 나누기
   function chunk(arr, n) {
     if(!arr||arr.length===0) return [[]];
@@ -59,7 +63,7 @@ function buildReportHTML(){
   const specialCount = units.reduce((s,u)=>s+u.specials.length,0);
 
   /* ── 표지 ── */
-  html+=`<div class="rpage rp-cover">
+  html+=`<div class="rpage rp-cover ${themeClass}">
 
     <!-- HERO -->
     <div class="rp-hero">
@@ -78,46 +82,46 @@ function buildReportHTML(){
           </div>
         </div>
         <div class="rp-rpt-badge">
-          <div class="rp-rpt-badge-lbl">Report Date</div>
+          <div class="rp-rpt-badge-lbl">${t('report.cover.report')}</div>
           <div class="rp-rpt-badge-num">${dateShort}</div>
-          ${coBiz?`<div class="rp-rpt-badge-num" style="margin-top:4px;font-size:10px;">사업자 ${escH(coBiz)}</div>`:''}
+          ${coBiz?`<div class="rp-rpt-badge-num" style="margin-top:4px;font-size:10px;">${t('report.coCard.biz').replace(/^[^\w가-힣]+\s*/, '')} ${escH(coBiz)}</div>`:''}
         </div>
       </div>
 
       <div class="rp-hero-title">
-        <div class="rp-eyebrow">Air Conditioner Cleaning Report</div>
-        <div class="rp-h1">에어컨 청소<br><span class="rp-accent">작업 보고서</span></div>
+        <div class="rp-eyebrow">${t('report.cover.eyebrow')}</div>
+        <div class="rp-h1">${t('report.cover.title.before')}<br><span class="rp-accent">${t('report.cover.title.after')}</span></div>
       </div>
 
       ${coDesc?`<div class="rp-desc-box">
-        <div class="rp-desc-label">📋 업체 소개</div>
+        <div class="rp-desc-label">📋 ${t('report.cover.about')}</div>
         <div class="rp-desc-text">${escH(coDesc).replace(/\n/g,'<br>')}</div>
       </div>`:''}
 
       ${coTel?`<div class="rp-tel-box">
         <span class="rp-tel-ic">📞</span>
         <div class="rp-tel-body">
-          <div class="rp-tel-lbl">대표 연락처</div>
+          <div class="rp-tel-lbl">${t('report.cover.tel')}</div>
           <div class="rp-tel-num">${escH(coTel)}</div>
         </div>
       </div>`:''}
 
       <div class="rp-meta-grid">
         <div class="rp-meta-cell">
-          <div class="rp-meta-lbl">현장 / Site</div>
+          <div class="rp-meta-lbl">${t('report.cover.workSite')}</div>
           <div class="rp-meta-val">${escH(apt)}</div>
         </div>
         <div class="rp-meta-cell">
-          <div class="rp-meta-lbl">작업일자</div>
+          <div class="rp-meta-lbl">${t('report.cover.workDate')}</div>
           <div class="rp-meta-val">${dateShort}</div>
         </div>
         <div class="rp-meta-cell">
-          <div class="rp-meta-lbl">담당자</div>
+          <div class="rp-meta-lbl">${t('main.worker')}</div>
           <div class="rp-meta-val">${escH(worker)}</div>
         </div>
         <div class="rp-meta-cell">
-          <div class="rp-meta-lbl">완료 / Status</div>
-          <div class="rp-meta-val">${complete} / ${total}호</div>
+          <div class="rp-meta-lbl">${t('report.cover.completed')}</div>
+          <div class="rp-meta-val">${complete} / ${total}${t('report.cover.unit')}</div>
         </div>
       </div>
     </div>
@@ -125,20 +129,20 @@ function buildReportHTML(){
     <!-- KPI -->
     <div class="rp-kpi-row">
       <div class="rp-kpi">
-        <div class="rp-kpi-lbl">총 호수</div>
-        <div><span class="rp-kpi-num">${total}</span><span class="rp-kpi-unit">호</span></div>
+        <div class="rp-kpi-lbl">${t('report.cover.totalUnits')}</div>
+        <div><span class="rp-kpi-num">${total}</span><span class="rp-kpi-unit">${t('report.cover.unit')}</span></div>
       </div>
       <div class="rp-kpi rp-khi">
-        <div class="rp-kpi-lbl">완료</div>
-        <div><span class="rp-kpi-num">${complete}</span><span class="rp-kpi-unit">호</span></div>
+        <div class="rp-kpi-lbl">${t('report.cover.completed')}</div>
+        <div><span class="rp-kpi-num">${complete}</span><span class="rp-kpi-unit">${t('report.cover.unit')}</span></div>
       </div>
       <div class="rp-kpi rp-kwn">
-        <div class="rp-kpi-lbl">미완료</div>
-        <div><span class="rp-kpi-num">${total-complete}</span><span class="rp-kpi-unit">호</span></div>
+        <div class="rp-kpi-lbl">${t('report.cover.incomplete')}</div>
+        <div><span class="rp-kpi-num">${total-complete}</span><span class="rp-kpi-unit">${t('report.cover.unit')}</span></div>
       </div>
       <div class="rp-kpi">
-        <div class="rp-kpi-lbl">특이사항</div>
-        <div><span class="rp-kpi-num">${specialCount}</span><span class="rp-kpi-unit">건</span></div>
+        <div class="rp-kpi-lbl">${t('report.cover.specials')}</div>
+        <div><span class="rp-kpi-num">${specialCount}</span><span class="rp-kpi-unit">${t('report.cover.case')}</span></div>
       </div>
     </div>
 
@@ -146,19 +150,19 @@ function buildReportHTML(){
     <div class="rp-list-wrap">
       <div class="rp-list-title">
         <div class="rp-list-bar"></div>
-        <div class="rp-list-txt">작업 상세 목록</div>
-        <div class="rp-list-cnt">총 ${total}건</div>
+        <div class="rp-list-txt">${t('report.list.title')}</div>
+        <div class="rp-list-cnt">${t('report.list.total', {n: total})}</div>
       </div>
       ${total <= 7 ? `
       <!-- 1단: 기본 테이블 -->
       <table class="rp-wtbl">
         <thead>
           <tr>
-            <th style="width:44px" class="tc">#</th>
-            <th>호수</th>
-            <th class="tc">작업 전</th>
-            <th class="tc">작업 후</th>
-            <th class="tc">상태</th>
+            <th style="width:44px" class="tc">${t('report.list.no')}</th>
+            <th>${t('report.list.unit')}</th>
+            <th class="tc">${t('report.list.before')}</th>
+            <th class="tc">${t('report.list.after')}</th>
+            <th class="tc">${t('report.list.status')}</th>
           </tr>
         </thead>
         <tbody>
@@ -170,7 +174,7 @@ function buildReportHTML(){
               <td><span class="rp-ho">${escH(u.name)}</span></td>
               <td class="tc"><span class="rp-pst ${bOk?'d':'e'}">${bOk?'✓':'✕'}</span></td>
               <td class="tc"><span class="rp-pst ${aOk?'d':'e'}">${aOk?'✓':'✕'}</span></td>
-              <td class="tc"><span class="rp-pill ${ok?'don':'pnd'}">${ok?'완료':'미완료'}</span></td>
+              <td class="tc"><span class="rp-pill ${ok?'don':'pnd'}">${ok?t('report.list.statusDone'):t('report.list.statusPending')}</span></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -187,7 +191,7 @@ function buildReportHTML(){
             <div class="rp-gstatus">
               <span class="rp-gpst ${bOk?'d':'e'}" title="작업 전">${bOk?'✓':'✕'}</span>
               <span class="rp-gpst ${aOk?'d':'e'}" title="작업 후">${aOk?'✓':'✕'}</span>
-              <span class="rp-pill ${ok?'don':'pnd'}">${ok?'완료':'미완'}</span>
+              <span class="rp-pill ${ok?'don':'pnd'}">${ok?t('report.list.statusDoneShort'):t('report.list.statusPendingShort')}</span>
             </div>
           </div>`;
         }).join('')}
@@ -200,22 +204,22 @@ function buildReportHTML(){
     <div class="rp-notes">
       <div class="rp-notes-head">
         <span class="rp-notes-ic">!</span>
-        <span class="rp-notes-title">특이사항 있는 호수</span>
+        <span class="rp-notes-title">${t('report.detail.special')}</span>
       </div>
-      <div class="rp-notes-body">${units.filter(u=>u.specials.length>0).map(u=>`${escH(u.name)} (${u.specials.length}건)`).join(' · ')}</div>
+      <div class="rp-notes-body">${units.filter(u=>u.specials.length>0).map(u=>`${escH(u.name)} (${u.specials.length}${getCurrentLang()==='en'?'':'건'})`).join(' · ')}</div>
     </div>`:''}
 
     <!-- 업체정보 카드 -->
     <div class="rp-co-card">
-      <div class="rp-co-card-title">📌 업체 정보</div>
+      <div class="rp-co-card-title">${t('report.coCard.title')}</div>
       <div class="rp-co-card-grid">
-        <div class="rp-co-card-row"><span class="rp-co-card-lbl">🏷️ 업체명</span><span class="rp-co-card-val">${escH(coName)}</span></div>
-        ${coBrand? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">📋 법인명</span><span class="rp-co-card-val">${escH(coBrand)}</span></div>` : ''}
-        ${coTel  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">📞 연락처</span><span class="rp-co-card-val">${escH(coTel)}</span></div>` : ''}
-        ${coBiz  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">🏢 사업자번호</span><span class="rp-co-card-val">${escH(coBiz)}</span></div>` : ''}
-        ${coAddr ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">📍 주소</span><span class="rp-co-card-val">${escH(coAddr)}</span></div>` : ''}
-        ${coEmail? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">✉️ 이메일</span><span class="rp-co-card-val">${escH(coEmail)}</span></div>` : ''}
-        ${coWeb  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">🌐 웹사이트</span><span class="rp-co-card-val">${escH(coWeb)}</span></div>` : ''}
+        <div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.name')}</span><span class="rp-co-card-val">${escH(coName)}</span></div>
+        ${coBrand? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.brand')}</span><span class="rp-co-card-val">${escH(coBrand)}</span></div>` : ''}
+        ${coTel  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.tel')}</span><span class="rp-co-card-val">${escH(coTel)}</span></div>` : ''}
+        ${coBiz  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.biz')}</span><span class="rp-co-card-val">${escH(coBiz)}</span></div>` : ''}
+        ${coAddr ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.addr')}</span><span class="rp-co-card-val">${escH(coAddr)}</span></div>` : ''}
+        ${coEmail? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.email')}</span><span class="rp-co-card-val">${escH(coEmail)}</span></div>` : ''}
+        ${coWeb  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.web')}</span><span class="rp-co-card-val">${escH(coWeb)}</span></div>` : ''}
       </div>
     </div>
 
@@ -318,26 +322,26 @@ function buildReportHTML(){
         ? `❄️ ${escH(u.name)}`
         : `❄️ ${escH(u.name)} <span style="font-size:11px;font-weight:400;color:#666">사진 ${p+1}/${normalPages}</span>`;
 
-      html += `<div class="rpage rp-det">
-        ${headBar(`${escH(apt)} | ${dateStr} | 담당: ${escH(worker)}`)}
+      html += `<div class="rpage rp-det ${themeClass}">
+        ${headBar(`${escH(apt)} | ${dateStr} | ${t('main.worker')}: ${escH(worker)}`)}
         <div class="rp-ubar">
           <div class="rp-uname">${unitTitle}</div>
-          <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel} | 전 ${u.before.length}장 · 후 ${u.after.length}장${specCount?` · 특이 ${specCount}건`:''}</div>
+          <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel} | ${t('report.detail.before')} ${u.before.length}${getCurrentLang()==='en'?'':'장'} · ${t('report.detail.after')} ${u.after.length}${getCurrentLang()==='en'?'':'장'}${specCount?` · ${t('report.detail.special')} ${specCount}${getCurrentLang()==='en'?'':'건'}`:''}</div>
         </div>
         <div class="rp-photos${showInlineSpec?' has-sp':''}">
           <div class="rp-col">
-            <div class="rp-clbl rp-lbl-b">🔴 작업 전 (BEFORE)${bSlice.length?` — ${p*3+1}~${p*3+bSlice.length}장`:''}</div>
+            <div class="rp-clbl rp-lbl-b">🔴 ${t('report.detail.before').toUpperCase()}${bSlice.length?` — ${p*3+1}~${p*3+bSlice.length}${getCurrentLang()==='en'?'':'장'}`:''}</div>
             ${colPhotosFn(bSlice, slotsPerCol)}
           </div>
           <div class="rp-col">
-            <div class="rp-clbl rp-lbl-a">🟢 작업 후 (AFTER)${aSlice.length?` — ${p*3+1}~${p*3+aSlice.length}장`:''}</div>
+            <div class="rp-clbl rp-lbl-a">🟢 ${t('report.detail.after').toUpperCase()}${aSlice.length?` — ${p*3+1}~${p*3+aSlice.length}${getCurrentLang()==='en'?'':'장'}`:''}</div>
             ${colPhotosFn(aSlice, slotsPerCol)}
           </div>
         </div>
         ${showInlineSpec ? inlineSpecialSection(u.specials) : ''}
         <div class="rp-foot">
           <span>${escH(coName)} | ${escH(apt)} | ${escH(u.name)}${pageLabel}</span>
-          <div>확인:<span class="sign-ln"></span></div>
+          <div>${getCurrentLang()==='en'?'Approved':'확인'}:<span class="sign-ln"></span></div>
         </div>
       </div>`;
     }
@@ -348,16 +352,16 @@ function buildReportHTML(){
       const pageLabel = ` (${pageNo}/${totalPagesForUnit}쪽)`;
       const subPageInfo = spInfo.totalPages > 1 ? ` (${spInfo.page}/${spInfo.totalPages})` : '';
 
-      html += `<div class="rpage rp-det">
-        ${headBar(`${escH(apt)} | ${dateStr} | 담당: ${escH(worker)}`)}
+      html += `<div class="rpage rp-det ${themeClass}">
+        ${headBar(`${escH(apt)} | ${dateStr} | ${t('main.worker')}: ${escH(worker)}`)}
         <div class="rp-ubar" style="background:#fffbf0;border-bottom:2px solid #f0b429;">
-          <div class="rp-uname" style="color:#c07010;">⚠️ ${escH(u.name)} 특이사항 ${spInfo.specIdx+1}/${specCount}${subPageInfo}</div>
+          <div class="rp-uname" style="color:#c07010;">⚠️ ${escH(u.name)} ${t("report.detail.special")} ${spInfo.specIdx+1}/${specCount}${subPageInfo}</div>
           <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel}</div>
         </div>
         ${specialPageBody(spInfo.special, spInfo.photos, spInfo.page === spInfo.totalPages)}
         <div class="rp-foot">
-          <span>${escH(coName)} | ${escH(apt)} | ${escH(u.name)} 특이사항</span>
-          <div>확인:<span class="sign-ln"></span></div>
+          <span>${escH(coName)} | ${escH(apt)} | ${escH(u.name)} ${t("report.detail.special")}</span>
+          <div>${getCurrentLang()==='en'?'Approved':'확인'}:<span class="sign-ln"></span></div>
         </div>
       </div>`;
     });
@@ -405,7 +409,7 @@ function buildReportHTML(){
 
     return `<div class="rp-sp-sec">
       <div class="rp-sp-titlebar">
-        <span class="ic">⚠️ 특이사항 (${count}건${allPhotos.length?` · 사진 ${allPhotos.length}장`:''})</span>
+        <span class="ic">⚠️ ${t('report.detail.special')} (${count}${getCurrentLang()==='en'?'':'건'}${allPhotos.length?` · ${t('report.detail.photo')} ${allPhotos.length}${getCurrentLang()==='en'?'':'장'}`:''})</span>
       </div>
       <div class="rp-sp-grid">${photoSlots.join('')}</div>
       <div class="rp-sp-text">

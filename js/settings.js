@@ -13,6 +13,7 @@ const FS_SIZES = [
 ];
 const FS_KEY    = 'ac_fs_index_v1';
 const THEME_KEY = 'ac_theme_v1';
+const REPORT_THEME_KEY = 'ac_report_theme_v1';
 const LANG_KEY  = 'ac_lang_v1';
 
 function applyTheme(name) {
@@ -22,11 +23,20 @@ function applyTheme(name) {
   } else {
     root.setAttribute('data-theme', name);
   }
-  // active 버튼 표시
-  document.querySelectorAll('.theme-btn').forEach(b => {
+  // active 버튼 표시 (앱 테마만)
+  document.querySelectorAll('[data-theme]').forEach(b => {
     b.classList.toggle('active', b.dataset.theme === (name || 'dark'));
   });
   localStorage.setItem(THEME_KEY, name || 'dark');
+}
+
+// 보고서 테마 적용 (저장만, 적용은 보고서 빌드 시)
+function applyReportTheme(name) {
+  // active 버튼 표시 (보고서 테마만)
+  document.querySelectorAll('[data-rtheme]').forEach(b => {
+    b.classList.toggle('active', b.dataset.rtheme === (name || 'default'));
+  });
+  localStorage.setItem(REPORT_THEME_KEY, name || 'default');
 }
 
 function applyFontSize(idx) {
@@ -104,10 +114,22 @@ function bindSettings() {
     }
   });
 
-  // 테마 선택
-  document.querySelectorAll('.theme-btn').forEach(btn => {
+  // 앱 테마 선택
+  document.querySelectorAll('[data-theme]').forEach(btn => {
     btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
   });
+
+  // 보고서 테마 선택
+  document.querySelectorAll('[data-rtheme]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyReportTheme(btn.dataset.rtheme);
+      if (typeof showToast === 'function') showToast('✓ 보고서 테마 변경됨', 'ok');
+    });
+  });
+
+  // 저장된 보고서 테마 복원
+  const savedReportTheme = localStorage.getItem(REPORT_THEME_KEY) || 'default';
+  applyReportTheme(savedReportTheme);
 
   // 폰트 크기
   let fsIdx = parseInt(localStorage.getItem(FS_KEY) || '2', 10);
@@ -116,14 +138,22 @@ function bindSettings() {
   if (fsDown) fsDown.addEventListener('click', () => { fsIdx = applyFontSize(fsIdx - 1); });
   if (fsUp)   fsUp.addEventListener('click',   () => { fsIdx = applyFontSize(fsIdx + 1); });
 
-  // 언어 (준비 중)
+  // 언어 변경
   const langSel = document.getElementById('langSelect');
   if (langSel) langSel.addEventListener('change', () => {
-    localStorage.setItem(LANG_KEY, langSel.value);
-    if (langSel.value !== 'ko') {
-      showToast('해당 언어는 곧 지원 예정입니다', 'err');
-      langSel.value = 'ko';
-      localStorage.setItem(LANG_KEY, 'ko');
+    const newLang = langSel.value;
+    if (newLang === 'ja') {
+      // 일본어는 아직 준비 중
+      showToast('해당 언어는 곧 지원 예정입니다 / Coming soon', 'err');
+      langSel.value = localStorage.getItem(LANG_KEY) || 'ko';
+      return;
+    }
+    // 한국어 또는 영어로 즉시 적용
+    if (typeof setLanguage === 'function') {
+      setLanguage(newLang);
+      if (typeof showToast === 'function') {
+        showToast(newLang === 'en' ? '✓ Language: English' : '✓ 언어: 한국어', 'ok');
+      }
     }
   });
 }

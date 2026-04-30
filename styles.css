@@ -428,3 +428,140 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 [data-theme="light"] .theme-btn.active{background:rgba(59,130,246,.12);}
 [data-theme="light"] .btn.b-ghost{color:var(--tx);border-color:var(--bd);}
 [data-theme="light"] .unit,[data-theme="light"] .unit-hd{background:var(--sf);}
+
+/* ═══════════════════════════════════════════════
+   보고서 테마 (5종)
+═══════════════════════════════════════════════ */
+
+/* ──────── 1) DEFAULT (기본 - 다크 시원한) ──────── */
+/* 기본 스타일이라 별도 정의 없음 */
+
+/* ──────── 2) BRIGHT (밝은 느낌) ──────── */
+.rp-theme-bright .rp-hero{
+  background:linear-gradient(135deg,#fef3c7 0%,#fde68a 50%,#fcd34d 100%);
+  color:#0a1628;
+}
+.rp-theme-bright .rp-hero::before{background:radial-gradient(circle,rgba(251,191,36,.4) 0%,transparent 60%);}
+.rp-theme-bright .rp-hero::after{background:radial-gradient(circle,rgba(252,211,77,.3) 0%,transparent 60%);}
+.rp-theme-bright .rp-snw{color:rgba(180,83,9,.15);}
+.rp-theme-bright .rp-brand-name,
+.rp-theme-bright .rp-h1{color:#0a1628;}
+.rp-theme-bright .rp-h1 .rp-accent{color:#d97706;}
+.rp-theme-bright .rp-brand-tag,
+.rp-theme-bright .rp-rpt-badge-lbl,
+.rp-theme-bright .rp-eyebrow,
+.rp-theme-bright .rp-desc-label,
+.rp-theme-bright .rp-tel-lbl,
+.rp-theme-bright .rp-meta-lbl{color:#b45309;}
+.rp-theme-bright .rp-rpt-badge-num,
+.rp-theme-bright .rp-sub{color:rgba(10,22,40,.7);}
+.rp-theme-bright .rp-eyebrow{background:rgba(217,119,6,.15);border-color:rgba(217,119,6,.3);}
+.rp-theme-bright .rp-desc-box{background:rgba(255,255,255,.5);border-left-color:#d97706;}
+.rp-theme-bright .rp-desc-text{color:#0a1628;}
+.rp-theme-bright .rp-tel-box{background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(254,243,199,.5));border-color:rgba(217,119,6,.4);}
+.rp-theme-bright .rp-tel-num{color:#0a1628;}
+.rp-theme-bright .rp-meta-grid{background:rgba(180,83,9,.15);border-color:rgba(180,83,9,.2);}
+.rp-theme-bright .rp-meta-cell{background:rgba(255,255,255,.7);}
+.rp-theme-bright .rp-meta-val{color:#0a1628;}
+.rp-theme-bright .rp-list-bar{background:linear-gradient(180deg,#d97706,#fbbf24);}
+.rp-theme-bright .rp-kpi.rp-khi{background:linear-gradient(135deg,#fef3c7,#fde68a);border-color:rgba(217,119,6,.3);}
+.rp-theme-bright .rp-khi .rp-kpi-num{color:#d97706;}
+.rp-theme-bright .rp-brand-logo{background:linear-gradient(135deg,#fbbf24,#f59e0b);}
+
+/* ──────── 3) DARK (어두운 느낌) ──────── */
+.rp-theme-dark .rp-hero{
+  background:linear-gradient(135deg,#0f0f0f 0%,#1a1a1a 50%,#262626 100%);
+}
+.rp-theme-dark .rp-hero::before{background:radial-gradient(circle,rgba(168,85,247,.18) 0%,transparent 60%);}
+.rp-theme-dark .rp-hero::after{background:radial-gradient(circle,rgba(192,132,252,.1) 0%,transparent 60%);}
+.rp-theme-dark .rp-h1 .rp-accent{color:#a78bfa;}
+.rp-theme-dark .rp-brand-tag,
+.rp-theme-dark .rp-rpt-badge-lbl,
+.rp-theme-dark .rp-eyebrow,
+.rp-theme-dark .rp-desc-label,
+.rp-theme-dark .rp-tel-lbl,
+.rp-theme-dark .rp-meta-lbl{color:#c4b5fd;}
+.rp-theme-dark .rp-eyebrow{background:rgba(168,85,247,.15);border-color:rgba(168,85,247,.3);}
+.rp-theme-dark .rp-desc-box{border-left-color:#a78bfa;}
+.rp-theme-dark .rp-tel-box{background:linear-gradient(135deg,rgba(168,85,247,.18),rgba(124,58,237,.12));border-color:rgba(168,85,247,.4);}
+.rp-theme-dark .rp-list-bar{background:linear-gradient(180deg,#7c3aed,#a78bfa);}
+.rp-theme-dark .rp-kpi.rp-khi{background:linear-gradient(135deg,#faf5ff,#f3e8ff);border-color:rgba(168,85,247,.3);}
+.rp-theme-dark .rp-khi .rp-kpi-num{color:#7c3aed;}
+.rp-theme-dark .rp-brand-logo{background:linear-gradient(135deg,#a78bfa,#c4b5fd);}
+
+/* ──────── 4) COOL (시원한 느낌 - 청록/민트) ──────── */
+.rp-theme-cool .rp-hero{
+  background:linear-gradient(135deg,#0c4a6e 0%,#0e7490 50%,#06b6d4 100%);
+}
+.rp-theme-cool .rp-hero::before{background:radial-gradient(circle,rgba(34,211,238,.3) 0%,transparent 60%);}
+.rp-theme-cool .rp-hero::after{background:radial-gradient(circle,rgba(165,243,252,.18) 0%,transparent 60%);}
+.rp-theme-cool .rp-h1 .rp-accent{color:#67e8f9;}
+.rp-theme-cool .rp-brand-tag,
+.rp-theme-cool .rp-rpt-badge-lbl,
+.rp-theme-cool .rp-eyebrow,
+.rp-theme-cool .rp-desc-label,
+.rp-theme-cool .rp-tel-lbl,
+.rp-theme-cool .rp-meta-lbl{color:#a5f3fc;}
+.rp-theme-cool .rp-eyebrow{background:rgba(34,211,238,.18);border-color:rgba(34,211,238,.35);}
+.rp-theme-cool .rp-desc-box{border-left-color:#22d3ee;}
+.rp-theme-cool .rp-tel-box{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(6,182,212,.15));border-color:rgba(34,211,238,.45);}
+.rp-theme-cool .rp-list-bar{background:linear-gradient(180deg,#0891b2,#22d3ee);}
+.rp-theme-cool .rp-kpi.rp-khi{background:linear-gradient(135deg,#ecfeff,#cffafe);border-color:rgba(6,182,212,.3);}
+.rp-theme-cool .rp-khi .rp-kpi-num{color:#0891b2;}
+.rp-theme-cool .rp-brand-logo{background:linear-gradient(135deg,#22d3ee,#67e8f9);}
+
+/* ──────── 5) CLEAN (깔끔한 느낌 - 흰색 베이스) ──────── */
+.rp-theme-clean .rp-hero{
+  background:#fafbfc;
+  color:#0a1628;
+  border-bottom:3px solid #2563eb;
+}
+.rp-theme-clean .rp-hero::before,
+.rp-theme-clean .rp-hero::after{display:none;}
+.rp-theme-clean .rp-snw{display:none;}
+.rp-theme-clean .rp-brand-name,
+.rp-theme-clean .rp-h1{color:#0a1628;}
+.rp-theme-clean .rp-h1 .rp-accent{color:#2563eb;}
+.rp-theme-clean .rp-brand-tag,
+.rp-theme-clean .rp-rpt-badge-lbl,
+.rp-theme-clean .rp-eyebrow,
+.rp-theme-clean .rp-desc-label,
+.rp-theme-clean .rp-tel-lbl,
+.rp-theme-clean .rp-meta-lbl{color:#2563eb;}
+.rp-theme-clean .rp-rpt-badge-num,
+.rp-theme-clean .rp-sub{color:#475569;}
+.rp-theme-clean .rp-eyebrow{background:#eff6ff;border-color:#bfdbfe;}
+.rp-theme-clean .rp-desc-box{background:#f1f5f9;border-left-color:#2563eb;}
+.rp-theme-clean .rp-desc-text{color:#0a1628;}
+.rp-theme-clean .rp-tel-box{background:#eff6ff;border-color:#bfdbfe;}
+.rp-theme-clean .rp-tel-num{color:#0a1628;}
+.rp-theme-clean .rp-meta-grid{background:#e2e8f0;border-color:#cbd5e1;}
+.rp-theme-clean .rp-meta-cell{background:#fff;}
+.rp-theme-clean .rp-meta-val{color:#0a1628;}
+.rp-theme-clean .rp-list-bar{background:#2563eb;}
+.rp-theme-clean .rp-kpi.rp-khi{background:#eff6ff;border-color:#bfdbfe;}
+.rp-theme-clean .rp-khi .rp-kpi-num{color:#2563eb;}
+.rp-theme-clean .rp-brand-logo{background:#2563eb;}
+
+/* ──────── 6) PREMIUM (세련된 느낌 - 검정/금색) ──────── */
+.rp-theme-premium .rp-hero{
+  background:linear-gradient(135deg,#18181b 0%,#27272a 50%,#1c1917 100%);
+}
+.rp-theme-premium .rp-hero::before{background:radial-gradient(circle,rgba(212,175,55,.18) 0%,transparent 60%);}
+.rp-theme-premium .rp-hero::after{background:radial-gradient(circle,rgba(234,179,8,.08) 0%,transparent 60%);}
+.rp-theme-premium .rp-h1 .rp-accent{color:#d4af37;}
+.rp-theme-premium .rp-brand-tag,
+.rp-theme-premium .rp-rpt-badge-lbl,
+.rp-theme-premium .rp-eyebrow,
+.rp-theme-premium .rp-desc-label,
+.rp-theme-premium .rp-tel-lbl,
+.rp-theme-premium .rp-meta-lbl{color:#d4af37;letter-spacing:.18em;}
+.rp-theme-premium .rp-eyebrow{background:rgba(212,175,55,.1);border-color:rgba(212,175,55,.4);}
+.rp-theme-premium .rp-desc-box{background:rgba(255,255,255,.04);border-left-color:#d4af37;}
+.rp-theme-premium .rp-tel-box{background:linear-gradient(135deg,rgba(212,175,55,.15),rgba(180,148,46,.08));border-color:rgba(212,175,55,.5);}
+.rp-theme-premium .rp-tel-num{color:#fbbf24;}
+.rp-theme-premium .rp-list-bar{background:linear-gradient(180deg,#b8860b,#d4af37);}
+.rp-theme-premium .rp-kpi.rp-khi{background:linear-gradient(135deg,#fffbeb,#fef3c7);border-color:rgba(212,175,55,.35);}
+.rp-theme-premium .rp-khi .rp-kpi-num{color:#b8860b;}
+.rp-theme-premium .rp-brand-logo{background:linear-gradient(135deg,#d4af37,#fbbf24);box-shadow:0 8px 22px rgba(212,175,55,.4);}
+.rp-theme-premium .rp-h1{font-family:'Inter',serif;font-weight:900;}

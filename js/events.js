@@ -55,6 +55,17 @@ function bindAll() {
   document.getElementById('btnJPG2').addEventListener('click', exportJPG);
   document.getElementById('btnPvClose').addEventListener('click', ()=>document.getElementById('pvModal').classList.remove('open'));
 
+  // 미리보기 줌 컨트롤
+  let _pvZoom = 1;
+  function setPvZoom(z) {
+    _pvZoom = Math.max(0.5, Math.min(3, z));
+    document.querySelectorAll('#pvScroll .rpage').forEach(p => {
+      p.style.transform = `scale(${_pvZoom})`;
+    });
+  }
+  document.getElementById('btnPvZoomIn')?.addEventListener('click', () => setPvZoom(_pvZoom + 0.2));
+  document.getElementById('btnPvZoomOut')?.addEventListener('click', () => setPvZoom(_pvZoom - 0.2));
+
   // 이미지 모달
   document.getElementById('imgX').addEventListener('click', ()=>document.getElementById('imgModal').classList.remove('open'));
   document.getElementById('imgModal').addEventListener('click', e=>{ if(e.target===document.getElementById('imgModal')) document.getElementById('imgModal').classList.remove('open'); });
@@ -254,9 +265,14 @@ function addUnit(name) {
 }
 
 function bulkAdd() {
-  const raw=prompt('여러 호수를 줄바꿈으로 입력:\n\n예)\n101동 201호\n101동 202호\n101동 203호');
+  const raw=prompt('여러 호수를 한꺼번에 입력하세요\n\n📌 구분자: 쉼표(,) 또는 슬래시(/)\n\n예시 1) 101동 201호, 101동 202호, 101동 203호\n예시 2) 201호 / 202호 / 203호');
   if(!raw) return;
-  const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  // 반각/전각 쉼표, 반각/전각 슬래시, 줄바꿈 모두 구분자로 인식
+  const lines=raw.split(/[,，\/／\n]/).map(l=>l.trim()).filter(Boolean);
+  if(lines.length===0) return;
+  if(lines.length===1) {
+    showToast('구분자(쉼표/슬래시)가 없습니다. 단일 호수로 추가합니다','err');
+  }
   lines.forEach(l=>units.push({id:nid++,name:l,before:[],after:[],specials:[],open:false}));
   renderAll(); updateStats(); sessionAutoSave();
   showToast(`${lines.length}개 호수 추가됨`,'ok');

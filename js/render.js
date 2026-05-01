@@ -59,15 +59,21 @@ function renderAll() {
 
     return `<div class="u-card ${scls}" id="card-${u.id}">
       <div class="u-top" data-id="${u.id}">
-        <div class="u-num">${ri+1}</div>
-        <div class="u-name-row" data-uid="${u.id}">
-          <span class="u-name" id="nm-${u.id}">${escH(u.name)}</span>
-          <button class="icon-btn edit-ic">✏️</button>
+        <!-- 1줄: 번호 + 호수명 + 펼침 -->
+        <div class="u-row1">
+          <div class="u-num">${ri+1}</div>
+          <div class="u-name-row" data-uid="${u.id}">
+            <span class="u-name" id="nm-${u.id}">${escH(u.name)}</span>
+            <button class="icon-btn edit-ic">✏️</button>
+          </div>
+          <span class="u-chev ${u.open?'open':''}">▼</span>
         </div>
-        ${badge}
-        ${(u.before.length >= 2 || u.after.length >= 2) ? `<button class="reorder-btn" data-uid="${u.id}" title="사진 순서 편집">🔄 순서 편집</button>` : ''}
-        <button class="del-btn" data-id="${u.id}">삭제</button>
-        <span class="u-chev ${u.open?'open':''}">▼</span>
+        <!-- 2줄: 상태/액션 -->
+        <div class="u-row2">
+          ${badge}
+          ${(u.before.length >= 2 || u.after.length >= 2) ? `<button class="reorder-btn" data-uid="${u.id}" title="사진 순서 편집">🔄 순서 편집</button>` : ''}
+          <button class="del-btn" data-id="${u.id}">삭제</button>
+        </div>
       </div>
       <div class="u-body ${u.open?'open':''}">
         <div class="ph-cols">

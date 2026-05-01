@@ -16,6 +16,25 @@ const THEME_KEY = 'ac_theme_v1';
 const REPORT_THEME_KEY = 'ac_report_theme_v1';
 const LANG_KEY  = 'ac_lang_v1';
 
+// 보고서 테마와 매칭되는 통합 테마 목록 (6개)
+const APP_THEMES = [
+  { id: 'dark',    label: '기본 (다크 블루)', gradient: 'linear-gradient(135deg,#0d0f18,#3d8ef0)' },
+  { id: 'bright',  label: '밝은',             gradient: 'linear-gradient(135deg,#26201a,#fbbf24)' },
+  { id: 'darkpurple', label: '어두운',        gradient: 'linear-gradient(135deg,#18181b,#a78bfa)' },
+  { id: 'cool',    label: '시원한',           gradient: 'linear-gradient(135deg,#0c2c44,#22d3ee)' },
+  { id: 'clean',   label: '깔끔한',           gradient: 'linear-gradient(135deg,#fafbfc,#2563eb)' },
+  { id: 'premium', label: '세련된',           gradient: 'linear-gradient(135deg,#18181b,#d4af37)' },
+];
+
+const REPORT_THEMES = [
+  { id: 'default', label: '기본',   gradient: 'linear-gradient(135deg,#0a1628,#4dd0e1)' },
+  { id: 'bright',  label: '밝은',   gradient: 'linear-gradient(135deg,#fef3c7,#fbbf24)' },
+  { id: 'dark',    label: '어두운', gradient: 'linear-gradient(135deg,#1a1a1a,#a78bfa)' },
+  { id: 'cool',    label: '시원한', gradient: 'linear-gradient(135deg,#0c4a6e,#22d3ee)' },
+  { id: 'clean',   label: '깔끔한', gradient: 'linear-gradient(135deg,#fafbfc,#2563eb)' },
+  { id: 'premium', label: '세련된', gradient: 'linear-gradient(135deg,#18181b,#d4af37)' },
+];
+
 function applyTheme(name) {
   const root = document.documentElement;
   if (name === 'dark' || !name) {
@@ -23,20 +42,69 @@ function applyTheme(name) {
   } else {
     root.setAttribute('data-theme', name);
   }
-  // active 버튼 표시 (앱 테마만)
-  document.querySelectorAll('[data-theme]').forEach(b => {
-    b.classList.toggle('active', b.dataset.theme === (name || 'dark'));
-  });
   localStorage.setItem(THEME_KEY, name || 'dark');
+  // 라벨 업데이트
+  updateThemeLabels();
 }
 
-// 보고서 테마 적용 (저장만, 적용은 보고서 빌드 시)
 function applyReportTheme(name) {
-  // active 버튼 표시 (보고서 테마만)
-  document.querySelectorAll('[data-rtheme]').forEach(b => {
-    b.classList.toggle('active', b.dataset.rtheme === (name || 'default'));
-  });
   localStorage.setItem(REPORT_THEME_KEY, name || 'default');
+  updateThemeLabels();
+}
+
+function updateThemeLabels() {
+  const curApp = localStorage.getItem(THEME_KEY) || 'dark';
+  const curReport = localStorage.getItem(REPORT_THEME_KEY) || 'default';
+  const appTheme = APP_THEMES.find(t => t.id === curApp);
+  const reportTheme = REPORT_THEMES.find(t => t.id === curReport);
+  const appLabel = document.getElementById('curAppThemeLabel');
+  const reportLabel = document.getElementById('curReportThemeLabel');
+  if (appLabel && appTheme) appLabel.textContent = appTheme.label;
+  if (reportLabel && reportTheme) reportLabel.textContent = reportTheme.label;
+}
+
+function openThemePicker(type) {
+  // type: 'app' or 'report'
+  const themes = type === 'app' ? APP_THEMES : REPORT_THEMES;
+  const curKey = type === 'app' ? THEME_KEY : REPORT_THEME_KEY;
+  const curId = localStorage.getItem(curKey) || (type === 'app' ? 'dark' : 'default');
+
+  document.getElementById('themePickerTitle').textContent =
+    type === 'app' ? '🎨 앱 테마 선택' : '📄 보고서 테마 선택';
+
+  const body = document.getElementById('themePickerBody');
+  body.innerHTML = `
+    <div class="theme-picker-grid">
+      ${themes.map(t => `
+        <button class="theme-pick-item ${t.id === curId ? 'active' : ''}" data-tid="${t.id}" data-ttype="${type}">
+          <div class="theme-pick-prev" style="background:${t.gradient};"></div>
+          <div class="theme-pick-lbl">${t.label}</div>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  // 클릭 이벤트
+  body.querySelectorAll('.theme-pick-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tid = btn.dataset.tid;
+      const ttype = btn.dataset.ttype;
+      if (ttype === 'app') {
+        applyTheme(tid);
+        if (typeof showToast === 'function') showToast('✓ 앱 테마 변경됨', 'ok');
+      } else {
+        applyReportTheme(tid);
+        if (typeof showToast === 'function') showToast('✓ 보고서 테마 변경됨', 'ok');
+      }
+      closeThemePicker();
+    });
+  });
+
+  document.getElementById('themePickerModal').classList.add('open');
+}
+
+function closeThemePicker() {
+  document.getElementById('themePickerModal').classList.remove('open');
 }
 
 function applyFontSize(idx) {
@@ -153,22 +221,20 @@ function bindSettings() {
     }
   });
 
-  // 앱 테마 선택
-  document.querySelectorAll('[data-theme]').forEach(btn => {
-    btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
-  });
+  // 앱 테마 선택 - 팝업 열기
+  const btnPickApp = document.getElementById('btnPickAppTheme');
+  if (btnPickApp) btnPickApp.addEventListener('click', () => openThemePicker('app'));
 
-  // 보고서 테마 선택
-  document.querySelectorAll('[data-rtheme]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      applyReportTheme(btn.dataset.rtheme);
-      if (typeof showToast === 'function') showToast('✓ 보고서 테마 변경됨', 'ok');
-    });
-  });
+  // 보고서 테마 선택 - 팝업 열기
+  const btnPickReport = document.getElementById('btnPickReportTheme');
+  if (btnPickReport) btnPickReport.addEventListener('click', () => openThemePicker('report'));
 
-  // 저장된 보고서 테마 복원
-  const savedReportTheme = localStorage.getItem(REPORT_THEME_KEY) || 'default';
-  applyReportTheme(savedReportTheme);
+  // 테마 팝업 닫기
+  const themePickerClose = document.getElementById('themePickerClose');
+  if (themePickerClose) themePickerClose.addEventListener('click', closeThemePicker);
+
+  // 라벨 초기화
+  updateThemeLabels();
 
   // 폰트 크기
   let fsIdx = parseInt(localStorage.getItem(FS_KEY) || '2', 10);

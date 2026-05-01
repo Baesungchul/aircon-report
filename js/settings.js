@@ -263,3 +263,47 @@ function bindSettings() {
     }
   });
 }
+
+// 전화번호 자동 하이픈
+function autoFormatPhone(input) {
+  if (!input) return;
+  input.addEventListener('input', () => {
+    let v = input.value.replace(/[^\d]/g, '');
+    let formatted = '';
+    // 010-XXXX-XXXX 또는 02-XXX(X)-XXXX 등
+    if (v.startsWith('02')) {
+      // 서울 02
+      if (v.length <= 2) formatted = v;
+      else if (v.length <= 5) formatted = v.slice(0,2) + '-' + v.slice(2);
+      else if (v.length <= 9) formatted = v.slice(0,2) + '-' + v.slice(2,5) + '-' + v.slice(5);
+      else formatted = v.slice(0,2) + '-' + v.slice(2,6) + '-' + v.slice(6,10);
+    } else if (v.length <= 3) {
+      formatted = v;
+    } else if (v.length <= 7) {
+      formatted = v.slice(0,3) + '-' + v.slice(3);
+    } else if (v.length <= 11) {
+      formatted = v.slice(0,3) + '-' + v.slice(3,7) + '-' + v.slice(7);
+    } else {
+      formatted = v.slice(0,3) + '-' + v.slice(3,7) + '-' + v.slice(7,11);
+    }
+    input.value = formatted;
+  });
+}
+
+// 사업자번호 자동 하이픈 (000-00-00000)
+function autoFormatBiz(input) {
+  if (!input) return;
+  input.addEventListener('input', () => {
+    let v = input.value.replace(/[^\d]/g, '');
+    let formatted = '';
+    if (v.length <= 3) formatted = v;
+    else if (v.length <= 5) formatted = v.slice(0,3) + '-' + v.slice(3);
+    else formatted = v.slice(0,3) + '-' + v.slice(3,5) + '-' + v.slice(5,10);
+    input.value = formatted;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  autoFormatPhone(document.getElementById('coTel'));
+  autoFormatBiz(document.getElementById('coBiz'));
+});

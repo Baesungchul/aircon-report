@@ -227,3 +227,50 @@ function setupBackButtonHandler() {
     }
   });
 }
+
+// ═══════════════════════════════
+// 모달 열릴 때 body 스크롤 막기 (뒷 화면 움직임 방지)
+// ═══════════════════════════════
+(function setupModalScrollLock() {
+  const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal', 'reorderModal', 'themePickerModal'];
+
+  let savedScrollY = 0;
+
+  function updateBodyLock() {
+    // 열린 모달이 있는지 확인
+    const anyOpen = modalIds.some(id => {
+      const el = document.getElementById(id);
+      return el && el.classList.contains('open');
+    });
+
+    if (anyOpen) {
+      if (!document.body.classList.contains('modal-open')) {
+        savedScrollY = window.scrollY;
+        document.body.classList.add('modal-open');
+        document.body.style.top = `-${savedScrollY}px`;
+      }
+    } else {
+      if (document.body.classList.contains('modal-open')) {
+        document.body.classList.remove('modal-open');
+        document.body.style.top = '';
+        window.scrollTo(0, savedScrollY);
+      }
+    }
+  }
+
+  // 페이지 로드 후 각 모달의 클래스 변화 감지
+  function bind() {
+    modalIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const observer = new MutationObserver(updateBodyLock);
+      observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+})();

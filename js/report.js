@@ -106,6 +106,25 @@ function buildReportHTML(){
         </div>
       </div>`:''}
 
+      ${(()=>{
+        // 입력된 업체정보만 모아서 칩 형태로 표시
+        const items = [];
+        if (coBiz)   items.push({ ic: '🏢', label: t('report.coCard.biz'),   val: coBiz });
+        if (coAddr)  items.push({ ic: '📍', label: t('report.coCard.addr'),  val: coAddr });
+        if (coEmail) items.push({ ic: '✉️', label: t('report.coCard.email'), val: coEmail });
+        if (coWeb)   items.push({ ic: '🌐', label: t('report.coCard.web'),   val: coWeb });
+        if (items.length === 0) return '';
+        return `<div class="rp-co-info">
+          ${items.map(it => `
+            <div class="rp-co-info-row">
+              <span class="rp-co-info-ic">${it.ic}</span>
+              <span class="rp-co-info-lbl">${escH(it.label.replace(/^[^\w가-힣]+\s*/, ''))}</span>
+              <span class="rp-co-info-val">${escH(it.val)}</span>
+            </div>
+          `).join('')}
+        </div>`;
+      })()}
+
       <div class="rp-meta-grid">
         <div class="rp-meta-cell">
           <div class="rp-meta-lbl">${t('report.cover.workSite')}</div>

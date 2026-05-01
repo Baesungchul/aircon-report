@@ -1254,7 +1254,8 @@ function updateCoHdrBtn() {
 // ═══════════════════════════════════════════
 // 사진 순서 편집
 // ═══════════════════════════════════════════
-let _reorderState = null;  // { unitId, side: 'before'|'after', photos: [...복제] }
+// _reorderState: { unitId, before: [...복제], after: [...복제] }
+let _reorderState = null;
 
 function openReorderModal(unitId, side) {
   // unitId는 DOM 데이터셋에서 온 문자열, u.id는 숫자일 수 있음 → 문자열로 통일 비교
@@ -1264,22 +1265,21 @@ function openReorderModal(unitId, side) {
     return;
   }
 
-  const photos = side === 'before' ? u.before : u.after;
-  if (!photos || photos.length < 2) {
+  if (u.before.length < 2 && u.after.length < 2) {
     showToast('순서 편집은 사진이 2장 이상일 때 가능합니다', 'err');
     return;
   }
 
   // 복제본 만들기 (취소 시 원본 보존)
   _reorderState = {
-    unitId: u.id,  // 원본 id 사용
-    side,
-    photos: photos.map(p => ({ ...p }))
+    unitId: u.id,
+    before: u.before.map(p => ({ ...p })),
+    after: u.after.map(p => ({ ...p }))
   };
 
   // 제목 설정
   document.getElementById('reorderTitle').textContent =
-    `🔄 ${u.name} - ${side === 'before' ? '작업 전' : '작업 후'} 순서`;
+    `🔄 ${u.name} - 사진 순서 편집`;
 
   renderReorderList();
   document.getElementById('reorderModal').classList.add('open');
@@ -1289,40 +1289,63 @@ function renderReorderList() {
   const body = document.getElementById('reorderBody');
   if (!_reorderState) return;
 
-  const photos = _reorderState.photos;
-  const sideLabel = _reorderState.side === 'before' ? '작업 전' : '작업 후';
+  const before = _reorderState.before;
+  const after = _reorderState.after;
+
+  // 양쪽 컬럼을 만들기 (각각 독립적으로 ▲▼)
+  function colHtml(photos, side, label, color) {
+    if (!photos.length) {
+      return `
+        <div class="reorder-col">
+          <div class="reorder-col-head" style="color:${color};">${label} (0장)</div>
+          <div class="reorder-empty">사진 없음</div>
+        </div>
+      `;
+    }
+    return `
+      <div class="reorder-col">
+        <div class="reorder-col-head" style="color:${color};">${label} (${photos.length}장)</div>
+        <div class="reorder-list">
+          ${photos.map((p, idx) => `
+            <div class="reorder-item">
+              <div class="reorder-num">${idx + 1}</div>
+              <img class="reorder-thumb" src="${p.dataUrl}" alt="${label} ${idx+1}">
+              <div class="reorder-arrows">
+                <button class="reorder-arrow" data-side="${side}" data-action="up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                <button class="reorder-arrow" data-side="${side}" data-action="down" data-idx="${idx}" ${idx === photos.length - 1 ? 'disabled' : ''}>▼</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
 
   body.innerHTML = `
     <div class="reorder-info">
-      💡 ▲▼ 버튼으로 사진 순서를 변경하세요. 보고서에 표시되는 순서가 바뀝니다.
+      💡 양쪽을 보면서 ▲▼로 순서를 맞추세요. 같은 위치(1번끼리, 2번끼리)가 보고서에서 짝으로 표시됩니다.
     </div>
-    <div class="reorder-list">
-      ${photos.map((p, idx) => `
-        <div class="reorder-item">
-          <div class="reorder-num">${idx + 1}</div>
-          <img class="reorder-thumb" src="${p.dataUrl}" alt="${sideLabel} ${idx+1}">
-          <div class="reorder-arrows">
-            <button class="reorder-arrow" data-action="up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button>
-            <button class="reorder-arrow" data-action="down" data-idx="${idx}" ${idx === photos.length - 1 ? 'disabled' : ''}>▼</button>
-          </div>
-        </div>
-      `).join('')}
+    <div class="reorder-cols">
+      ${colHtml(before, 'before', '🔴 작업 전', '#f06060')}
+      ${colHtml(after, 'after', '🟢 작업 후', '#10b981')}
     </div>
   `;
 
   // 이벤트 바인딩 (요소 새로 만들었으니 다시)
   body.querySelectorAll('.reorder-arrow').forEach(btn => {
     btn.addEventListener('click', e => {
+      const side = btn.dataset.side;
       const action = btn.dataset.action;
       const idx = parseInt(btn.dataset.idx);
-      moveReorderItem(idx, action === 'up' ? -1 : 1);
+      moveReorderItem(side, idx, action === 'up' ? -1 : 1);
     });
   });
 }
 
-function moveReorderItem(idx, direction) {
+function moveReorderItem(side, idx, direction) {
   if (!_reorderState) return;
-  const photos = _reorderState.photos;
+  const photos = _reorderState[side];
+  if (!photos) return;
   const newIdx = idx + direction;
 
   if (newIdx < 0 || newIdx >= photos.length) return;
@@ -1339,17 +1362,13 @@ function saveReorder() {
   const u = units.find(x => String(x.id) === String(_reorderState.unitId));
   if (!u) return;
 
-  // 원본에 적용
-  if (_reorderState.side === 'before') {
-    u.before = _reorderState.photos;
-  } else {
-    u.after = _reorderState.photos;
-  }
+  // 원본에 적용 (양쪽 모두)
+  u.before = _reorderState.before;
+  u.after = _reorderState.after;
 
-  // 폴더에 이미 저장된 사진 ID는 변경되었을 수 있으므로 savedToFolder 플래그 리셋
-  // (다음 저장 시 새 순서대로 다시 저장되도록)
-  const photos = _reorderState.photos;
-  photos.forEach(p => { p.savedToFolder = false; });
+  // 폴더에 이미 저장된 사진은 새 순서로 다시 저장 필요
+  u.before.forEach(p => { p.savedToFolder = false; });
+  u.after.forEach(p => { p.savedToFolder = false; });
 
   closeReorderModal();
   renderAll();

@@ -77,7 +77,46 @@ function openSettings() {
       if (clearBtn) clearBtn.style.display = 'none';
     }
   }
+
+  // 업체정보 미리보기 갱신
+  const coSummary = document.getElementById('setCoSummary');
+  if (coSummary) {
+    const coName  = document.getElementById('coName')?.value  || '';
+    const coBrand = document.getElementById('coBrand')?.value || '';
+    const coTel   = document.getElementById('coTel')?.value   || '';
+    const coBiz   = document.getElementById('coBiz')?.value   || '';
+    const coAddr  = document.getElementById('coAddr')?.value  || '';
+    const coEmail = document.getElementById('coEmail')?.value || '';
+    const coWeb   = document.getElementById('coWeb')?.value   || '';
+    const coDesc  = document.getElementById('coDesc')?.value  || '';
+
+    const lines = [];
+    if (coName)  lines.push(`<b style="color:var(--ac);">🏷️ ${escHtml(coName)}</b>` + (coBrand ? ` <span style="color:var(--mu);">· ${escHtml(coBrand)}</span>` : ''));
+    if (coTel)   lines.push(`📞 ${escHtml(coTel)}`);
+    if (coBiz)   lines.push(`🏢 사업자 ${escHtml(coBiz)}`);
+    if (coAddr)  lines.push(`📍 ${escHtml(coAddr)}`);
+    if (coEmail) lines.push(`✉️ ${escHtml(coEmail)}`);
+    if (coWeb)   lines.push(`🌐 ${escHtml(coWeb)}`);
+    if (coDesc)  lines.push(`<span style="color:var(--mu);font-size:11px;">📋 ${escHtml(coDesc.split('\n')[0]).slice(0, 60)}${coDesc.length > 60 ? '...' : ''}</span>`);
+
+    if (lines.length > 0) {
+      coSummary.innerHTML = lines.join('<br>');
+      coSummary.style.display = 'block';
+    } else {
+      coSummary.innerHTML = '<span style="color:var(--wn);">⚠️ 업체정보가 입력되지 않았습니다</span>';
+      coSummary.style.display = 'block';
+    }
+  }
+
   document.getElementById('settingsModal').classList.add('open');
+}
+
+// HTML escape (settings.js 내에서 안전하게)
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
 }
 
 function closeSettings() {

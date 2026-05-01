@@ -2,14 +2,14 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="에어컨보고서">
 <meta name="application-name" content="에어컨보고서">
 <meta name="theme-color" content="#3d8ef0">
-<title>평택에어컨1004 - 작업 보고서</title>
+<title>작업 보고서 생성기</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233d8ef0'/%3E%3Cstop offset='100%25' stop-color='%2300c9a7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='90' fill='url(%23g)'/%3E%3Ctext x='50%25' y='50%25' font-size='300' text-anchor='middle' dominant-baseline='central' fill='%23fff'%3E%E2%9D%84%3C/text%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233d8ef0'/%3E%3Cstop offset='100%25' stop-color='%2300c9a7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='90' fill='url(%23g)'/%3E%3Ctext x='50%25' y='50%25' font-size='300' text-anchor='middle' dominant-baseline='central' fill='%23fff'%3E%E2%9D%84%3C/text%3E%3C/svg%3E">
@@ -27,8 +27,8 @@
 <!-- HEADER -->
 <div class="hdr">
   <div class="logo">
-    <div class="logo-ic">❄️</div>
-    <div><div class="logo-tx">평택에어컨1004</div><div class="logo-sb">작업 보고서 생성기</div></div>
+    <div class="logo-ic" id="appLogoIcon">❄️</div>
+    <div><div class="logo-tx">작업 보고서 생성기</div></div>
     <div class="save-status" id="saveStatus">💾 저장됨</div>
     <button class="hdr-toggle" id="hdrToggle" title="메뉴 접기/펼치기">▲</button>
   </div>
@@ -218,7 +218,7 @@
       <div class="co-row">
         <div class="co-field">
           <label>대표 연락처</label>
-          <input class="co-input" id="coTel" placeholder="010-0000-0000" type="tel">
+          <input class="co-input" id="coTel" placeholder="010-0000-0000 (자동 하이픈)" type="text" inputmode="tel">
         </div>
         <div class="co-field">
           <label>사업자 번호</label>
@@ -342,6 +342,8 @@
   <div class="pv-bar">
     <div class="pv-title">📄 보고서 미리보기</div>
     <div class="pv-btns">
+      <button class="btn b-ghost b-xs" id="btnPvZoomOut" style="font-size:18px;font-weight:bold;min-width:42px;">－</button>
+      <button class="btn b-ghost b-xs" id="btnPvZoomIn" style="font-size:18px;font-weight:bold;min-width:42px;">＋</button>
       <button class="btn b-green" id="btnPDF2">⬇️ PDF</button>
       <button class="btn b-orange" id="btnJPG2">🖼️ JPG</button>
       <button class="btn b-ghost" id="btnPvClose">✕ 닫기</button>

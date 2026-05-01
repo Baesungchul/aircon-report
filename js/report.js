@@ -495,7 +495,13 @@ async function exportPDF(){
     await sleep(40);
   }
   const{apt,dateStr}=getInfo();
-  const fileName = `report_${(apt||'work').replace(/[\\/:*?"<>|]/g,'_')}_${dateStr.replace(/\./g,'-')}.pdf`;
+  // 파일명: 한글 제거. 작업명 정보는 폴더명으로 구분되므로 파일명은 단순하게.
+  // 같은 폴더에 여러 보고서를 저장할 때 구분되도록 시간 추가
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const dateClean = dateStr.replace(/\./g,'-');
+  const fileName = `report_${dateClean}_${hh}${mm}.pdf`;
 
   // 폴더에 저장 시도, 실패 시 다운로드 폴백
   let savedToFolder = false;
@@ -530,8 +536,12 @@ async function exportJPG(){
   const folderInfo = await ensureWorkSavedToFolder();
 
   showOverlay('이미지 생성 중...');
-  const safeName = (apt||'work').replace(/[\\/:*?"<>|]/g,'_');
+  // 파일명에서 한글 제거 (폴더명으로 구분되므로 단순하게)
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
   const dateClean = dateStr.replace(/\./g,'-');
+  const baseFileName = `report_${dateClean}_${hh}${mm}`;
 
   // 페이지별 캔버스 생성
   const blobs = [];
@@ -550,8 +560,8 @@ async function exportJPG(){
       imageTimeout:0
     });
     const fname = pages.length === 1
-      ? `report_${safeName}_${dateClean}.jpg`
-      : `report_${safeName}_${dateClean}_p${String(i+1).padStart(2,'0')}.jpg`;
+      ? `${baseFileName}.jpg`
+      : `${baseFileName}_p${String(i+1).padStart(2,'0')}.jpg`;
     // Blob과 dataUrl 모두 준비
     const dataUrl = c.toDataURL('image/jpeg', .92);
     const blob = await (await fetch(dataUrl)).blob();

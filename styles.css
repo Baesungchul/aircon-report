@@ -189,18 +189,16 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
   align-items:center;
   gap:16px;
   background:#2a2a2a;
-  touch-action:pinch-zoom;
+  /* 세로 스크롤 + 핀치줌 모두 허용 */
+  touch-action:pan-y pinch-zoom;
   -webkit-overflow-scrolling:touch;
-  /* 핀치줌 가능 */
-  -webkit-user-select:none;
-  user-select:none;
 }
 .pv-scroll *{touch-action:inherit;}
 /* 페이지 자체에 transform 적용 가능하도록 */
 .pv-scroll .rpage{
   transform-origin:top center;
   will-change:transform;
-  touch-action:pinch-zoom;
+  touch-action:pan-y pinch-zoom;
 }
 .pv-pg-wrap{position:relative;}
 .pv-pg-num{position:absolute;top:-16px;left:0;font-size:9px;color:#999;font-family:'DM Mono',monospace;}

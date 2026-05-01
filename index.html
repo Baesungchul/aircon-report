@@ -136,6 +136,26 @@
             <div class="theme-preview" style="background:linear-gradient(135deg,#f5f7fa,#3b82f6);"></div>
             <span data-i18n="set.theme.light">라이트</span>
           </button>
+          <button class="theme-btn" data-theme="bright">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#26201a,#fbbf24);"></div>
+            <span>밝은</span>
+          </button>
+          <button class="theme-btn" data-theme="darkpurple">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#18181b,#a78bfa);"></div>
+            <span>어두운</span>
+          </button>
+          <button class="theme-btn" data-theme="cool">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#0c2c44,#22d3ee);"></div>
+            <span>시원한</span>
+          </button>
+          <button class="theme-btn" data-theme="clean">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#fafbfc,#2563eb);border:1px solid #cbd5e1;"></div>
+            <span>깔끔한</span>
+          </button>
+          <button class="theme-btn" data-theme="premium">
+            <div class="theme-preview" style="background:linear-gradient(135deg,#18181b,#d4af37);"></div>
+            <span>세련된</span>
+          </button>
         </div>
       </div>
 
@@ -342,6 +362,21 @@
       <button class="btn b-ghost b-xs" id="btnSlClose">✕ 닫기</button>
     </div>
     <div class="sl-body" id="slBody"></div>
+  </div>
+</div>
+
+<!-- 사진 순서 편집 모달 -->
+<div class="co-modal" id="reorderModal">
+  <div class="co-box" style="max-width:520px;">
+    <div class="co-head">
+      <div class="co-head-title" id="reorderTitle">🔄 사진 순서 편집</div>
+      <button class="btn b-ghost b-xs" id="reorderClose">✕</button>
+    </div>
+    <div class="co-body" id="reorderBody" style="padding:12px;"></div>
+    <div class="co-foot">
+      <button class="btn b-ghost" id="reorderCancel">취소</button>
+      <button class="btn b-green" id="reorderSave">✅ 저장</button>
+    </div>
   </div>
 </div>
 

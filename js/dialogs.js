@@ -409,12 +409,11 @@ function getLocalDateStr(d) {
 }
 
 async function openLoadList() {
-  // 기본: 최근 3일 (로컬 기준)
+  // 기본: 오늘 (로컬 기준)
   const today = new Date();
-  const threeDaysAgo = new Date(today);
-  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-  _loadDateFrom = getLocalDateStr(threeDaysAgo);
-  _loadDateTo   = getLocalDateStr(today);
+  const todayStr = getLocalDateStr(today);
+  _loadDateFrom = todayStr;
+  _loadDateTo   = todayStr;
 
   document.getElementById('slModal').classList.add('open');
   await renderLoadList();
@@ -567,8 +566,12 @@ async function renderLoadList() {
     body.innerHTML = `<div class="sl-empty">폴더 읽기 실패: ${e.message}</div>`;
     return;
   }
-  // 정렬: savedAt 최신 우선, 같으면 폴더명(YYYY-MM-DD_HHMM)으로 시간 비교
+  // 정렬: 작업일(data.date) 최신순 우선, 같으면 저장 시각순
   sessions.sort((a,b) => {
+    const da = (a.data.date || a.name.substring(0,10) || '').replace(/[^\d-]/g,'');
+    const db = (b.data.date || b.name.substring(0,10) || '').replace(/[^\d-]/g,'');
+    if (db !== da) return db.localeCompare(da);
+    // 같은 작업일이면 저장 시각순
     const ta = new Date(a.data.savedAt).getTime();
     const tb = new Date(b.data.savedAt).getTime();
     if (tb !== ta) return tb - ta;
@@ -819,11 +822,12 @@ function showDateRangeDialog() {
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:14px;">
+        <button class="btn b-ghost b-xs" data-preset="0">오늘</button>
         <button class="btn b-ghost b-xs" data-preset="3">최근 3일</button>
         <button class="btn b-ghost b-xs" data-preset="30">최근 30일</button>
         <button class="btn b-ghost b-xs" data-preset="90">최근 3개월</button>
         <button class="btn b-ghost b-xs" data-preset="365">최근 1년</button>
-        <button class="btn b-ghost b-xs" data-preset="all" style="grid-column:span 2;">전체 기간</button>
+        <button class="btn b-ghost b-xs" data-preset="all">전체 기간</button>
       </div>
 
       <div style="display:flex;gap:8px;">
@@ -1228,6 +1232,10 @@ function applyCoIcon() {
   renderTo(previewEl);
   renderTo(pvIc);
 
+  // 앱 헤더 로고 아이콘도 갱신
+  const appLogo = document.getElementById('appLogoIcon');
+  if (appLogo) renderTo(appLogo);
+
   if (infoEl)  infoEl.textContent = !coIconData ? '기본 아이콘' : (coIconData.startsWith('data:') ? '업로드된 이미지' : `이모지 ${coIconData}`);
   if (clearBtn) clearBtn.style.display = coIconData ? 'inline-flex' : 'none';
 
@@ -1411,4 +1419,53 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bindReorderEvents);
 } else {
   bindReorderEvents();
+}
+
+// 전화번호/사업자번호 입력 시 자동 하이픈
+function setupAutoFormat() {
+  const coTel = document.getElementById('coTel');
+  if (coTel) {
+    coTel.addEventListener('input', e => {
+      const raw = e.target.value.replace(/[^\d]/g, '');
+      let formatted = raw;
+      if (raw.length === 11 && raw.startsWith('010')) {
+        formatted = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7)}`;
+      } else if (raw.length === 10 && raw.startsWith('02')) {
+        formatted = `${raw.slice(0,2)}-${raw.slice(2,6)}-${raw.slice(6)}`;
+      } else if (raw.length === 11) {
+        formatted = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7)}`;
+      } else if (raw.length === 10) {
+        formatted = `${raw.slice(0,3)}-${raw.slice(3,6)}-${raw.slice(6)}`;
+      } else if (raw.length === 9) {
+        formatted = `${raw.slice(0,2)}-${raw.slice(2,5)}-${raw.slice(5)}`;
+      } else if (raw.length === 8) {
+        formatted = `${raw.slice(0,4)}-${raw.slice(4)}`;
+      }
+      // 커서 위치 보존
+      const cursorPos = e.target.selectionStart;
+      const oldLen = e.target.value.length;
+      e.target.value = formatted;
+      const newLen = formatted.length;
+      const diff = newLen - oldLen;
+      try { e.target.setSelectionRange(cursorPos + diff, cursorPos + diff); } catch(e2) {}
+    });
+  }
+
+  const coBiz = document.getElementById('coBiz');
+  if (coBiz) {
+    coBiz.addEventListener('input', e => {
+      const raw = e.target.value.replace(/[^\d]/g, '');
+      let formatted = raw;
+      if (raw.length === 10) {
+        formatted = `${raw.slice(0,3)}-${raw.slice(3,5)}-${raw.slice(5)}`;
+      }
+      e.target.value = formatted;
+    });
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupAutoFormat);
+} else {
+  setupAutoFormat();
 }

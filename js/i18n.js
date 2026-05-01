@@ -5,8 +5,8 @@
 const I18N = {
   ko: {
     // 앱 헤더
-    'app.title': '평택에어컨1004',
-    'app.subtitle': '작업 보고서 생성기',
+    'app.title': '작업 보고서 생성기',
+    'app.subtitle': '',
 
     // 메인 입력
     'main.workName': '작업명',
@@ -201,8 +201,8 @@ const I18N = {
 
   en: {
     // App header
-    'app.title': 'Pyeongtaek AC 1004',
-    'app.subtitle': 'Work Report Generator',
+    'app.title': 'Work Report Generator',
+    'app.subtitle': '',
 
     // Main inputs
     'main.workName': 'Work Site',

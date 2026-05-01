@@ -713,15 +713,26 @@ async function deleteDateFolder(target) {
 
   showOverlay('삭제 중...');
   try {
-    // 쓰기 권한 필요
-    const perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    // 쓰기 권한 필수
+    let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
     if (perm !== 'granted') {
-      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
-      if (newPerm !== 'granted') {
+      perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
         hideOverlay();
-        showToast('쓰기 권한이 없어 삭제할 수 없습니다', 'err');
+        showToast('쓰기 권한이 거부되어 삭제할 수 없습니다', 'err');
         return;
       }
+    }
+
+    // 중요: 권한 확인 후 photoFolderHandle에서 새로 dirHandle을 받아옴
+    // (target.dirHandle은 읽기 권한으로 받은 것이라 쓰기 작업이 안 됨)
+    let freshDirHandle;
+    try {
+      freshDirHandle = await photoFolderHandle.getDirectoryHandle(target.name);
+    } catch(e) {
+      hideOverlay();
+      showToast('폴더를 찾을 수 없습니다: ' + e.message, 'err');
+      return;
     }
 
     // 폴더 전체 삭제 시도
@@ -731,8 +742,14 @@ async function deleteDateFolder(target) {
     } catch(e1) {
       // 2차: 수동 재귀 삭제 (안드로이드용)
       console.warn('recursive 삭제 실패, 수동 삭제 시도:', e1.message);
-      await deleteDirectoryContents(target.dirHandle);
-      await photoFolderHandle.removeEntry(target.name);
+      try {
+        await deleteDirectoryContents(freshDirHandle);
+        await photoFolderHandle.removeEntry(target.name);
+      } catch(e2) {
+        hideOverlay();
+        showToast('삭제 실패: ' + e2.message, 'err');
+        return;
+      }
     }
 
     hideOverlay();

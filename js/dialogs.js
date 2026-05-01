@@ -407,23 +407,27 @@ async function renderLoadList() {
     return;
   }
 
-  // 권한 확인 (필요 시 자동 요청)
+  // 권한 확인 (삭제 기능 위해 처음부터 readwrite 요청)
   try {
-    const perm = await photoFolderHandle.queryPermission({ mode: 'read' });
+    const perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
     if (perm !== 'granted') {
-      const newPerm = await photoFolderHandle.requestPermission({ mode: 'read' });
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
       if (newPerm !== 'granted') {
-        body = freshSlBody();
-        body.innerHTML = `
-          <div style="padding:14px;text-align:center;">
-            <div style="font-size:13px;color:var(--wn);margin-bottom:14px;">저장 폴더 접근 권한이 거부되었습니다.</div>
-            <button class="btn b-blue" id="btnPickFileFallback" style="width:100%;justify-content:center;">📂 파일 탐색기로 선택</button>
-          </div>
-        `;
-        body.addEventListener('click', e => {
-          if (e.target.closest('#btnPickFileFallback')) openFilePickerFallback();
-        });
-        return;
+        // readwrite 거부되면 read만이라도 시도
+        const readPerm = await photoFolderHandle.requestPermission({ mode: 'read' });
+        if (readPerm !== 'granted') {
+          body = freshSlBody();
+          body.innerHTML = `
+            <div style="padding:14px;text-align:center;">
+              <div style="font-size:13px;color:var(--wn);margin-bottom:14px;">저장 폴더 접근 권한이 거부되었습니다.</div>
+              <button class="btn b-blue" id="btnPickFileFallback" style="width:100%;justify-content:center;">📂 파일 탐색기로 선택</button>
+            </div>
+          `;
+          body.addEventListener('click', e => {
+            if (e.target.closest('#btnPickFileFallback')) openFilePickerFallback();
+          });
+          return;
+        }
       }
     }
   } catch(e) {
@@ -648,12 +652,24 @@ async function renderLoadList() {
     html += sessions.map(s => {
       const d = new Date(s.data.savedAt);
       const ts = d.toLocaleString('ko-KR', { year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-      const uc = (s.data.units||[]).length;
-      const phc = (s.data.units||[]).reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
+      const unitArr = s.data.units || [];
+      const uc = unitArr.length;
+      const phc = unitArr.reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
+
+      // 호수 미리보기 (최대 5개까지 표시, 그 이상은 +N)
+      const unitNames = unitArr.map(u => u.name).filter(n => n);
+      let unitsPreview = '';
+      if (unitNames.length > 0) {
+        const shown = unitNames.slice(0, 5);
+        const remain = unitNames.length - shown.length;
+        unitsPreview = shown.map(escH).join(', ');
+        if (remain > 0) unitsPreview += ` <span style="opacity:.7">+${remain}</span>`;
+      }
 
       return `<div class="sl-item" data-sname="${s.name}" style="border-left:3px solid ${s.isLegacy?'#fbbf24':'var(--ac2)'};">
         <div class="sl-info" data-fload="${s.name}" style="cursor:pointer;">
           <div class="sl-name">📁 ${escH(s.data.apt || '작업')} <span style="font-size:11px;color:var(--mu);font-weight:500;">· ${s.data.date || s.name}</span></div>
+          ${unitsPreview ? `<div class="sl-units" style="font-size:11px;color:var(--ac2);margin:3px 0;line-height:1.4;word-break:break-all;">🏠 ${unitsPreview}</div>` : ''}
           <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장</div>
         </div>
         <div class="sl-btns">

@@ -469,6 +469,10 @@ async function buildAndPreview(){
 async function exportPDF(){
   const pages=document.getElementById('rpWrap').querySelectorAll('.rpage');
   if(!pages.length){showToast('먼저 미리보기를 눌러 보고서를 생성해주세요','err');return;}
+
+  // 자동저장 폴더 + 작업 자동저장 처리 (실패해도 PDF는 생성)
+  const folderInfo = await ensureWorkSavedToFolder();
+
   showOverlay('PDF 생성 중...');
   const{jsPDF}=window.jspdf;
   const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
@@ -491,16 +495,46 @@ async function exportPDF(){
     await sleep(40);
   }
   const{apt,dateStr}=getInfo();
-  pdf.save(`에어컨청소보고서_${apt}_${dateStr}.pdf`);
-  hideOverlay(); showToast('PDF 저장 완료!','ok');
+  const fileName = `report_${(apt||'work').replace(/[\\/:*?"<>|]/g,'_')}_${dateStr.replace(/\./g,'-')}.pdf`;
+
+  // 폴더에 저장 시도, 실패 시 다운로드 폴백
+  let savedToFolder = false;
+  if (folderInfo && folderInfo.workDir) {
+    try {
+      const pdfBlob = pdf.output('blob');
+      const fh = await folderInfo.workDir.getFileHandle(fileName, { create: true });
+      const w = await fh.createWritable();
+      await w.write(pdfBlob);
+      await w.close();
+      savedToFolder = true;
+      console.log(`✓ PDF 폴더 저장: ${folderInfo.folderName}/${fileName}`);
+    } catch(e) {
+      console.warn('PDF 폴더 저장 실패, 다운로드로 폴백:', e.message);
+    }
+  }
+
+  if (!savedToFolder) {
+    pdf.save(fileName);
+  }
+
+  hideOverlay();
+  showToast(savedToFolder ? `✓ PDF 저장됨 (${folderInfo.folderName} 폴더)` : '✓ PDF 다운로드 완료', 'ok');
 }
 
 async function exportJPG(){
   const pages=document.getElementById('rpWrap').querySelectorAll('.rpage');
   if(!pages.length){showToast('먼저 미리보기를 눌러 보고서를 생성해주세요','err');return;}
   const{apt,dateStr}=getInfo();
+
+  // 자동저장 폴더 + 작업 자동저장 처리
+  const folderInfo = await ensureWorkSavedToFolder();
+
   showOverlay('이미지 생성 중...');
-  const links=[];
+  const safeName = (apt||'work').replace(/[\\/:*?"<>|]/g,'_');
+  const dateClean = dateStr.replace(/\./g,'-');
+
+  // 페이지별 캔버스 생성
+  const blobs = [];
   for(let i=0;i<pages.length;i++){
     setProg((i/pages.length)*100,`${i+1} / ${pages.length} 변환 중`);
     const c=await html2canvas(pages[i],{
@@ -515,11 +549,125 @@ async function exportJPG(){
       logging:false,
       imageTimeout:0
     });
-    links.push({url:c.toDataURL('image/jpeg',.92),name:`에어컨청소보고서_${apt}_${i+1}페이지.jpg`});
+    const fname = pages.length === 1
+      ? `report_${safeName}_${dateClean}.jpg`
+      : `report_${safeName}_${dateClean}_p${String(i+1).padStart(2,'0')}.jpg`;
+    // Blob과 dataUrl 모두 준비
+    const dataUrl = c.toDataURL('image/jpeg', .92);
+    const blob = await (await fetch(dataUrl)).blob();
+    blobs.push({ blob, dataUrl, name: fname });
     await sleep(40);
   }
   hideOverlay();
-  if(links.length===1){const a=document.createElement('a');a.href=links[0].url;a.download=`에어컨청소보고서_${apt}_${dateStr}.jpg`;a.click();}
-  else{showToast(`${links.length}페이지 저장 시작`,'ok');for(let i=0;i<links.length;i++){await sleep(300);const a=document.createElement('a');a.href=links[i].url;a.download=links[i].name;a.click();}}
+
+  // 폴더에 저장 시도
+  let savedToFolder = false;
+  if (folderInfo && folderInfo.workDir) {
+    try {
+      for (const item of blobs) {
+        const fh = await folderInfo.workDir.getFileHandle(item.name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(item.blob);
+        await w.close();
+        await sleep(20);
+      }
+      savedToFolder = true;
+      console.log(`✓ JPG ${blobs.length}장 폴더 저장: ${folderInfo.folderName}/`);
+    } catch(e) {
+      console.warn('JPG 폴더 저장 실패, 다운로드로 폴백:', e.message);
+    }
+  }
+
+  if (!savedToFolder) {
+    // 다운로드 폴백
+    if (blobs.length === 1) {
+      const a = document.createElement('a');
+      a.href = blobs[0].dataUrl;
+      a.download = blobs[0].name;
+      a.click();
+    } else {
+      showToast(`${blobs.length}페이지 저장 시작`, 'ok');
+      for (let i = 0; i < blobs.length; i++) {
+        await sleep(300);
+        const a = document.createElement('a');
+        a.href = blobs[i].dataUrl;
+        a.download = blobs[i].name;
+        a.click();
+      }
+    }
+  }
+
+  showToast(savedToFolder ? `✓ JPG ${blobs.length}장 저장됨 (${folderInfo.folderName} 폴더)` : `✓ JPG ${blobs.length}장 다운로드 완료`, 'ok');
+}
+
+// 보고서 저장 전: 작업이 폴더에 저장되어 있는지 확인하고 없으면 자동 저장
+// 반환: { workDir, folderName } 또는 null (폴더 미설정 또는 저장 실패)
+async function ensureWorkSavedToFolder() {
+  if (!photoFolderHandle) {
+    console.log('폴더 미설정 - 보고서는 다운로드로 저장됨');
+    return null;
+  }
+
+  // 권한 확인
+  try {
+    let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        showToast('폴더 권한이 거부되어 다운로드로 저장됩니다', 'err');
+        return null;
+      }
+    }
+  } catch(e) {
+    return null;
+  }
+
+  // 작업이 저장되어 있는지 확인 + 없으면 saveToFolder 호출
+  showOverlay('작업 자동저장 중...');
+  try {
+    if (typeof saveToFolder === 'function') {
+      // saveToFolder는 자체적으로 같은 작업 감지 → 덮어쓰기 / 새 시간 폴더 결정
+      await saveToFolder();
+    }
+  } catch(e) {
+    console.warn('작업 자동저장 실패:', e.message);
+  }
+  hideOverlay();
+
+  // 저장된 폴더 핸들 반환 (가장 최근 + 같은 작업명)
+  try {
+    const apt = (document.getElementById('aptName').value || '').trim();
+    const date = document.getElementById('workDate').value || getLocalDateStr();
+
+    // 같은 날짜의 모든 폴더 중 같은 작업명을 찾음
+    let matchFolder = null;
+    let matchTime = '';
+    for await (const [name, handle] of photoFolderHandle.entries()) {
+      if (handle.kind !== 'directory') continue;
+      if (name !== date && !name.startsWith(date + '_')) continue;
+
+      try {
+        const fh = await handle.getFileHandle('_session.json');
+        const file = await fh.getFile();
+        const buffer = await file.arrayBuffer();
+        let text = new TextDecoder('utf-8').decode(buffer);
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        const parsed = JSON.parse(text.trim());
+        const folderApt = (parsed.apt || '').trim();
+        if (folderApt === apt && name > matchTime) {
+          matchFolder = { name, handle };
+          matchTime = name;
+        }
+      } catch(e) {}
+    }
+
+    if (matchFolder) {
+      return { workDir: matchFolder.handle, folderName: matchFolder.name };
+    }
+  } catch(e) {
+    console.warn('작업 폴더 찾기 실패:', e.message);
+  }
+
+  return null;
 }
 

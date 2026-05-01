@@ -703,26 +703,15 @@ async function ensureWorkSavedToFolder() {
     return null;
   }
 
-  // 작업이 저장되어 있는지 확인 + 없으면 saveToFolder 호출
-  showOverlay('작업 자동저장 중...');
-  try {
-    if (typeof saveToFolder === 'function') {
-      // saveToFolder는 자체적으로 같은 작업 감지 → 덮어쓰기 / 새 시간 폴더 결정
-      await saveToFolder();
-    }
-  } catch(e) {
-    console.warn('작업 자동저장 실패:', e.message);
-  }
-  hideOverlay();
+  const apt = (document.getElementById('aptName').value || '').trim();
+  const date = document.getElementById('workDate').value || getLocalDateStr();
 
-  // 저장된 폴더 핸들 반환 (가장 최근 + 같은 작업명)
-  try {
-    const apt = (document.getElementById('aptName').value || '').trim();
-    const date = document.getElementById('workDate').value || getLocalDateStr();
+  // ✨ 1차: 이미 저장된 같은 작업 폴더가 있는지 + 변경사항 없는지 확인
+  let matchFolder = null;
+  let matchTime = '';
+  let needsSave = true;  // 기본은 저장 필요
 
-    // 같은 날짜의 모든 폴더 중 같은 작업명을 찾음
-    let matchFolder = null;
-    let matchTime = '';
+  try {
     for await (const [name, handle] of photoFolderHandle.entries()) {
       if (handle.kind !== 'directory') continue;
       if (name !== date && !name.startsWith(date + '_')) continue;
@@ -736,19 +725,89 @@ async function ensureWorkSavedToFolder() {
         const parsed = JSON.parse(text.trim());
         const folderApt = (parsed.apt || '').trim();
         if (folderApt === apt && name > matchTime) {
-          matchFolder = { name, handle };
+          matchFolder = { name, handle, savedData: parsed };
           matchTime = name;
         }
       } catch(e) {}
     }
-
-    if (matchFolder) {
-      return { workDir: matchFolder.handle, folderName: matchFolder.name };
-    }
   } catch(e) {
-    console.warn('작업 폴더 찾기 실패:', e.message);
+    console.warn('폴더 검색 실패:', e.message);
   }
 
+  // ✨ 변경사항 비교: 저장된 데이터와 현재 메모리 비교
+  if (matchFolder) {
+    const saved = matchFolder.savedData;
+    const currentUnits = units.length;
+    const savedUnits = (saved.units || []).length;
+
+    // 호수 개수 비교
+    if (currentUnits === savedUnits) {
+      let allMatch = true;
+      for (let i = 0; i < currentUnits; i++) {
+        const cu = units[i];
+        const su = saved.units[i];
+        if (!su) { allMatch = false; break; }
+        // 호수명 + 사진 개수만 비교 (간단 비교)
+        const curBefore = cu.before.length;
+        const curAfter = cu.after.length;
+        const curSpec = cu.specials.length;
+        const savBefore = su.beforeCount || 0;
+        const savAfter = su.afterCount || 0;
+        const savSpec = (su.specials || []).length;
+
+        if (cu.name !== su.name || curBefore !== savBefore ||
+            curAfter !== savAfter || curSpec !== savSpec) {
+          allMatch = false;
+          break;
+        }
+      }
+
+      if (allMatch) {
+        needsSave = false;
+        console.log('✓ 작업 이미 저장됨 - 자동저장 스킵');
+      }
+    }
+  }
+
+  // ✨ 변경사항 있을 때만 저장
+  if (needsSave) {
+    showOverlay('작업 자동저장 중...');
+    try {
+      if (typeof saveToFolder === 'function') {
+        await saveToFolder();
+      }
+    } catch(e) {
+      console.warn('작업 자동저장 실패:', e.message);
+    }
+    hideOverlay();
+
+    // 저장 후 다시 폴더 찾기
+    matchFolder = null;
+    matchTime = '';
+    try {
+      for await (const [name, handle] of photoFolderHandle.entries()) {
+        if (handle.kind !== 'directory') continue;
+        if (name !== date && !name.startsWith(date + '_')) continue;
+        try {
+          const fh = await handle.getFileHandle('_session.json');
+          const file = await fh.getFile();
+          const buffer = await file.arrayBuffer();
+          let text = new TextDecoder('utf-8').decode(buffer);
+          if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+          const parsed = JSON.parse(text.trim());
+          const folderApt = (parsed.apt || '').trim();
+          if (folderApt === apt && name > matchTime) {
+            matchFolder = { name, handle };
+            matchTime = name;
+          }
+        } catch(e) {}
+      }
+    } catch(e) {}
+  }
+
+  if (matchFolder) {
+    return { workDir: matchFolder.handle, folderName: matchFolder.name };
+  }
   return null;
 }
 

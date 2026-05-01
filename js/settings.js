@@ -64,6 +64,7 @@ function updateThemeLabels() {
 }
 
 function openThemePicker(type) {
+  console.log('🎨 테마 팝업 열기:', type);
   // type: 'app' or 'report'
   const themes = type === 'app' ? APP_THEMES : REPORT_THEMES;
   const curKey = type === 'app' ? THEME_KEY : REPORT_THEME_KEY;

@@ -663,7 +663,8 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
 ═══════════════════════════════════════════════ */
 .reorder-btn{
   background:var(--sf3);border:1px solid var(--ac);color:var(--ac);
-  border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;
+  border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;
+  white-space:nowrap;flex-shrink:0;
 }
 .reorder-btn:active{background:var(--ac);color:#fff;}
 

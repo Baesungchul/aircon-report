@@ -728,3 +728,55 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--bg)
   .reorder-cols{grid-template-columns:1fr;}
   .reorder-thumb{width:60px;height:60px;}
 }
+
+/* 표지 - 업체정보 동적 표시 */
+.rp-co-info{
+  background:rgba(77,208,225,.08);
+  border:1px solid rgba(77,208,225,.25);
+  border-radius:10px;
+  padding:10px 12px;
+  margin-bottom:14px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.rp-co-info-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:11px;
+  line-height:1.4;
+}
+.rp-co-info-ic{
+  flex-shrink:0;
+  font-size:13px;
+}
+.rp-co-info-lbl{
+  flex-shrink:0;
+  color:#a8d4ff;
+  font-weight:600;
+  min-width:60px;
+}
+.rp-co-info-val{
+  color:rgba(255,255,255,.92);
+  word-break:break-all;
+  flex:1;
+}
+
+/* 보고서 테마별 색상 */
+.rp-theme-bright .rp-co-info{background:rgba(180,83,9,.1);border-color:rgba(217,119,6,.3);}
+.rp-theme-bright .rp-co-info-lbl{color:#b45309;}
+.rp-theme-bright .rp-co-info-val{color:#0a1628;}
+
+.rp-theme-dark .rp-co-info{background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.3);}
+.rp-theme-dark .rp-co-info-lbl{color:#c4b5fd;}
+
+.rp-theme-cool .rp-co-info{background:rgba(34,211,238,.15);border-color:rgba(34,211,238,.35);}
+.rp-theme-cool .rp-co-info-lbl{color:#a5f3fc;}
+
+.rp-theme-clean .rp-co-info{background:#eff6ff;border-color:#bfdbfe;}
+.rp-theme-clean .rp-co-info-lbl{color:#2563eb;}
+.rp-theme-clean .rp-co-info-val{color:#0a1628;}
+
+.rp-theme-premium .rp-co-info{background:rgba(212,175,55,.1);border-color:rgba(212,175,55,.35);}
+.rp-theme-premium .rp-co-info-lbl{color:#d4af37;}

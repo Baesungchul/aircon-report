@@ -5,14 +5,35 @@ function getInfo(){
   const d=document.getElementById('workDate').value;
   let ds='';
   if(d){const[y,m,dd]=d.split('-');ds=`${y}년 ${parseInt(m)}월 ${parseInt(dd)}일`;}
+
+  // 전화번호 자동 포맷: 01012345678 → 010-1234-5678
+  function formatTel(tel){
+    if(!tel) return '';
+    const t = tel.replace(/[^\d]/g,'');  // 숫자만
+    if(t.length === 11 && t.startsWith('010')) return `${t.slice(0,3)}-${t.slice(3,7)}-${t.slice(7)}`;
+    if(t.length === 10 && t.startsWith('02'))  return `${t.slice(0,2)}-${t.slice(2,6)}-${t.slice(6)}`;
+    if(t.length === 11)                         return `${t.slice(0,3)}-${t.slice(3,7)}-${t.slice(7)}`;
+    if(t.length === 10)                         return `${t.slice(0,3)}-${t.slice(3,6)}-${t.slice(6)}`;
+    if(t.length === 9)                          return `${t.slice(0,2)}-${t.slice(2,5)}-${t.slice(5)}`;
+    if(t.length === 8)                          return `${t.slice(0,4)}-${t.slice(4)}`;
+    return tel; // 알 수 없는 형식은 원본 유지
+  }
+  // 사업자번호: 1234567890 → 123-45-67890
+  function formatBiz(biz){
+    if(!biz) return '';
+    const b = biz.replace(/[^\d]/g,'');
+    if(b.length === 10) return `${b.slice(0,3)}-${b.slice(3,5)}-${b.slice(5)}`;
+    return biz;
+  }
+
   return{
     apt:    document.getElementById('aptName').value||'OO아파트',
     dateStr:ds,
     worker: document.getElementById('workerName').value||'담당자',
     coName: document.getElementById('coName').value||'평택에어컨1004',
     coBrand:document.getElementById('coBrand')?.value||'',
-    coTel:  document.getElementById('coTel').value||'',
-    coBiz:  document.getElementById('coBiz').value||'',
+    coTel:  formatTel(document.getElementById('coTel').value||''),
+    coBiz:  formatBiz(document.getElementById('coBiz').value||''),
     coAddr: document.getElementById('coAddr').value||'',
     coEmail:document.getElementById('coEmail').value||'',
     coWeb:  document.getElementById('coWeb').value||'',
@@ -45,11 +66,11 @@ function buildReportHTML(){
     return escH(coIcon);
   };
 
-  // 헤더 바 (상세 페이지용)
+  // 헤더 바 (상세 페이지용) - 회사명만 (연락처는 표지에만)
   const headBar=r=>`<div class="rp-head">
     <div class="rp-head-l">
       <div class="rp-head-ic">${iconHtml()}</div>
-      <div class="rp-brand-r">${escH(coName)}${coBrand?` <span style="color:#888;font-weight:500;">· ${escH(coBrand)}</span>`:''}<small>${[coTel,coBiz?'사업자 '+coBiz:''].filter(Boolean).join(' · ')}</small></div>
+      <div class="rp-brand-r">${escH(coName)}${coBrand?` <span style="color:#888;font-weight:500;">· ${escH(coBrand)}</span>`:''}</div>
     </div>
     <div class="rp-head-r">${r}</div>
   </div>`;
@@ -228,23 +249,9 @@ function buildReportHTML(){
       <div class="rp-notes-body">${units.filter(u=>u.specials.length>0).map(u=>`${escH(u.name)} (${u.specials.length}${getCurrentLang()==='en'?'':'건'})`).join(' · ')}</div>
     </div>`:''}
 
-    <!-- 업체정보 카드 -->
-    <div class="rp-co-card">
-      <div class="rp-co-card-title">${t('report.coCard.title')}</div>
-      <div class="rp-co-card-grid">
-        <div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.name')}</span><span class="rp-co-card-val">${escH(coName)}</span></div>
-        ${coBrand? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.brand')}</span><span class="rp-co-card-val">${escH(coBrand)}</span></div>` : ''}
-        ${coTel  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.tel')}</span><span class="rp-co-card-val">${escH(coTel)}</span></div>` : ''}
-        ${coBiz  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.biz')}</span><span class="rp-co-card-val">${escH(coBiz)}</span></div>` : ''}
-        ${coAddr ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.addr')}</span><span class="rp-co-card-val">${escH(coAddr)}</span></div>` : ''}
-        ${coEmail? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.email')}</span><span class="rp-co-card-val">${escH(coEmail)}</span></div>` : ''}
-        ${coWeb  ? `<div class="rp-co-card-row"><span class="rp-co-card-lbl">${t('report.coCard.web')}</span><span class="rp-co-card-val">${escH(coWeb)}</span></div>` : ''}
-      </div>
-    </div>
-
-    <!-- 표지 푸터 -->
+    <!-- 표지 푸터 (페이지 번호만) -->
     <div class="rp-cv-foot">
-      <div><span class="rp-cv-foot-brand">${escH(coName)}</span>${coTel?` · ${escH(coTel)}`:''}</div>
+      <div></div>
       <div>— 1 / ${1+units.reduce((s,u)=>{
         const bc=chunk(u.before,3).length, ac=chunk(u.after,3).length;
         let pc=Math.max(bc,ac,1);

@@ -335,6 +335,27 @@ function getWorkNumber(unitName) {
 // 구조: [선택폴더]/[YYYY-MM-DD]/workNN/imageNN.jpg
 // 저장 시 사용할 날짜 폴더명 (saveToFolder에서 설정, doWriteOne에서 사용)
 let _currentSaveDateFolderName = null;
+// 폴더 핸들 캐시 (같은 저장 세션 내에서만 사용)
+const _dirHandleCache = new Map();
+
+function clearDirHandleCache() { _dirHandleCache.clear(); }
+
+async function getCachedDateDir(dateFolderName) {
+  const key = `date:${dateFolderName}`;
+  if (_dirHandleCache.has(key)) return _dirHandleCache.get(key);
+  const handle = await photoFolderHandle.getDirectoryHandle(dateFolderName, { create: true });
+  _dirHandleCache.set(key, handle);
+  return handle;
+}
+
+async function getCachedWorkDir(dateFolderName, workNum) {
+  const key = `work:${dateFolderName}/work${workNum}`;
+  if (_dirHandleCache.has(key)) return _dirHandleCache.get(key);
+  const dateDir = await getCachedDateDir(dateFolderName);
+  const handle = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });
+  _dirHandleCache.set(key, handle);
+  return handle;
+}
 
 async function doWriteOne(photo, unitName, typeLabel) {
   // saveToFolder가 설정한 폴더명 우선, 없으면 기본 날짜
@@ -362,12 +383,9 @@ async function doWriteOne(photo, unitName, typeLabel) {
                      : typeLabel === '후' ? 'B'
                      : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
 
-    // 폴더 구조: [루트] / [날짜폴더] / workNN / [타입]imageNN.jpg
-    step = '날짜폴더';
-    const dateDir = await photoFolderHandle.getDirectoryHandle(dateFolderName, { create: true });
-
+    // ✨ 캐시된 폴더 핸들 사용 (매번 새로 안 가져옴)
     step = '작업폴더';
-    const workDir = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });
+    const workDir = await getCachedWorkDir(dateFolderName, workNum);
 
     const fname = `${typePrefix}_image${String(idx).padStart(2, '0')}.jpg`;
 
@@ -377,7 +395,6 @@ async function doWriteOne(photo, unitName, typeLabel) {
       const existingFh = await workDir.getFileHandle(fname, { create: false });
       const existingFile = await existingFh.getFile();
       if (existingFile.size === blob.size) {
-        // 같은 크기 → 같은 사진으로 간주, 스킵
         if (typeof photo === 'object') photo.savedToFolder = true;
         return; // 빨리 끝!
       }
@@ -396,6 +413,8 @@ async function doWriteOne(photo, unitName, typeLabel) {
 
     step = 'close';
     await w.close();
+
+    if (typeof photo === 'object') photo.savedToFolder = true;
 
   } catch(e) {
     throw new Error(`[${step}] ${e.name||'Error'}: ${e.message}`);

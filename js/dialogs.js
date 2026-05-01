@@ -49,6 +49,8 @@ async function saveToFolder() {
   // 인덱스 카운터 초기화 (사진 번호가 1번부터 시작하도록)
   if (typeof _indexCounter !== 'undefined' && _indexCounter.clear) _indexCounter.clear();
   if (typeof _savedPhotoIds !== 'undefined' && _savedPhotoIds.clear) _savedPhotoIds.clear();
+  // 폴더 핸들 캐시도 클리어 (이전 저장 세션의 핸들 안 쓰도록)
+  if (typeof clearDirHandleCache === 'function') clearDirHandleCache();
 
   // 날짜와 작업명을 미리 확정 (사진 저장 실패해도 _session.json은 저장하도록)
   const date = document.getElementById('workDate').value || getLocalDateStr();
@@ -186,22 +188,40 @@ async function saveToFolder() {
   _currentSaveDateFolderName = dateFolderName;
 
   try {
-    // 1) 모든 사진을 폴더에 저장
+    // 1) 모든 사진을 폴더에 저장 - 호수별로 병렬 처리
+    // 한 호수 내의 사진들을 동시에 저장 (workNN 폴더 별도 핸들이라 충돌 없음)
     for (const u of units) {
+      const tasks = [];
+
+      // 작업 전
       for (let i = 0; i < u.before.length; i++) {
-        try { await doWriteOne(u.before[i], u.name, '전'); saved++; await sleep(30); }
-        catch(e) { failed++; console.warn('사진 저장 실패:', e.message); }
+        tasks.push(
+          doWriteOne(u.before[i], u.name, '전')
+            .then(() => { saved++; })
+            .catch(e => { failed++; console.warn('사진 저장 실패:', e.message); })
+        );
       }
+      // 작업 후
       for (let i = 0; i < u.after.length; i++) {
-        try { await doWriteOne(u.after[i], u.name, '후'); saved++; await sleep(30); }
-        catch(e) { failed++; console.warn('사진 저장 실패:', e.message); }
+        tasks.push(
+          doWriteOne(u.after[i], u.name, '후')
+            .then(() => { saved++; })
+            .catch(e => { failed++; console.warn('사진 저장 실패:', e.message); })
+        );
       }
+      // 특이사항
       for (let si = 0; si < u.specials.length; si++) {
         for (let pi = 0; pi < u.specials[si].photos.length; pi++) {
-          try { await doWriteOne(u.specials[si].photos[pi], u.name, `특이${si+1}_`); saved++; await sleep(30); }
-          catch(e) { failed++; console.warn('사진 저장 실패:', e.message); }
+          tasks.push(
+            doWriteOne(u.specials[si].photos[pi], u.name, `특이${si+1}_`)
+              .then(() => { saved++; })
+              .catch(e => { failed++; console.warn('사진 저장 실패:', e.message); })
+          );
         }
       }
+
+      // 한 호수의 모든 사진을 동시에 저장
+      await Promise.all(tasks);
     }
   } catch(eOuter) {
     console.warn('사진 저장 루프 에러:', eOuter);
@@ -1237,8 +1257,12 @@ function updateCoHdrBtn() {
 let _reorderState = null;  // { unitId, side: 'before'|'after', photos: [...복제] }
 
 function openReorderModal(unitId, side) {
-  const u = units.find(x => x.id === unitId);
-  if (!u) return;
+  // unitId는 DOM 데이터셋에서 온 문자열, u.id는 숫자일 수 있음 → 문자열로 통일 비교
+  const u = units.find(x => String(x.id) === String(unitId));
+  if (!u) {
+    console.warn('호수를 찾을 수 없음:', unitId);
+    return;
+  }
 
   const photos = side === 'before' ? u.before : u.after;
   if (!photos || photos.length < 2) {
@@ -1248,7 +1272,7 @@ function openReorderModal(unitId, side) {
 
   // 복제본 만들기 (취소 시 원본 보존)
   _reorderState = {
-    unitId,
+    unitId: u.id,  // 원본 id 사용
     side,
     photos: photos.map(p => ({ ...p }))
   };
@@ -1312,7 +1336,7 @@ function moveReorderItem(idx, direction) {
 
 function saveReorder() {
   if (!_reorderState) return;
-  const u = units.find(x => x.id === _reorderState.unitId);
+  const u = units.find(x => String(x.id) === String(_reorderState.unitId));
   if (!u) return;
 
   // 원본에 적용
@@ -1341,16 +1365,18 @@ function closeReorderModal() {
   document.getElementById('reorderModal').classList.remove('open');
 }
 
-// 이벤트 바인딩 (DOM 로드 후)
-document.addEventListener('DOMContentLoaded', () => {
-  // 호수 카드의 순서 편집 버튼 (이벤트 위임)
+// 이벤트 바인딩 (즉시 + 안전하게)
+function bindReorderEvents() {
+  // 호수 카드의 순서 편집 버튼 (이벤트 위임 - 캡처링 단계로 다른 핸들러보다 먼저)
   document.body.addEventListener('click', e => {
     const btn = e.target.closest('.reorder-btn');
     if (btn) {
       e.stopPropagation();
+      e.preventDefault();
+      console.log('🔄 순서 편집 버튼 클릭:', btn.dataset.uid, btn.dataset.side);
       openReorderModal(btn.dataset.uid, btn.dataset.side);
     }
-  });
+  }, true);  // ← 캡처링 단계 (true)
 
   // 모달 버튼들
   const closeBtn = document.getElementById('reorderClose');
@@ -1359,4 +1385,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (closeBtn) closeBtn.addEventListener('click', closeReorderModal);
   if (cancelBtn) cancelBtn.addEventListener('click', closeReorderModal);
   if (saveBtn) saveBtn.addEventListener('click', saveReorder);
-});
+}
+
+// DOM이 이미 로드됐으면 즉시, 아니면 DOMContentLoaded 대기
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bindReorderEvents);
+} else {
+  bindReorderEvents();
+}

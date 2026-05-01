@@ -465,197 +465,98 @@ async function renderLoadList() {
     return;
   }
 
-  // 날짜 폴더들 스캔 (기간 필터 적용)
+  // 날짜 폴더들 스캔 (기간 필터 적용) - 병렬 처리로 속도 개선
   const sessions = [];
   const debugInfo = { totalFolders: 0, dateFolders: 0, inRange: 0, withSession: 0, errors: [], details: [] };
+
+  // 안정적인 파일 읽기 헬퍼 (1회 시도 + 1회 재시도)
+  async function readJsonFile(fhandle) {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const file = await fhandle.getFile();
+        const buffer = await file.arrayBuffer();
+        const decoder = new TextDecoder('utf-8');
+        let text = decoder.decode(buffer);
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        text = text.trim();
+        if (!text) throw new Error('빈 문자열');
+        return { text, size: file.size, parsed: JSON.parse(text) };
+      } catch(e) {
+        lastErr = e;
+        if (attempt < 2) await new Promise(r => setTimeout(r, 50));
+      }
+    }
+    throw lastErr;
+  }
+
+  // 한 폴더에서 _session.json 읽기 (병렬 처리용)
+  async function processOneFolder(name, handle) {
+    let data = null;
+    let foundFile = null;
+
+    try {
+      const fh = await handle.getFileHandle('_session.json');
+      const result = await readJsonFile(fh);
+      if (result.parsed && Array.isArray(result.parsed.units)) {
+        data = result.parsed;
+        foundFile = '_session.json';
+      }
+    } catch(e) {
+      // _session.json 없거나 읽기 실패 - legacy 처리
+    }
+
+    return { name, data, dirHandle: handle, sourceFile: foundFile };
+  }
+
   try {
+    // 1) 빠른 1차 스캔: 디렉토리 이름만 모음 (파일 안 읽음)
+    const candidates = [];
     for await (const [name, handle] of photoFolderHandle.entries()) {
       debugInfo.totalFolders++;
       if (handle.kind !== 'directory') continue;
-      // YYYY-MM-DD 또는 YYYY-MM-DD_HHMM 형식 허용
       if (!/^\d{4}-\d{2}-\d{2}(_\d{4})?$/.test(name)) continue;
       debugInfo.dateFolders++;
 
-      // 기간 필터 (시간 부분 제외하고 날짜만 비교)
-      const dateOnly = name.substring(0, 10);  // YYYY-MM-DD
+      // 기간 필터
+      const dateOnly = name.substring(0, 10);
       if (_loadDateFrom && dateOnly < _loadDateFrom) continue;
       if (_loadDateTo && dateOnly > _loadDateTo) continue;
       debugInfo.inRange++;
 
-      let data = null;
-      let foundFile = null;
-      const filesToCleanup = [];
-      const folderDebug = { name, files: [], result: '' };
+      candidates.push({ name, handle });
+    }
 
-      // 안정적인 파일 읽기 헬퍼 (재시도 포함, 안드로이드 크롬 호환)
-      async function readJsonFile(fhandle) {
-        let lastErr = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            const file = await fhandle.getFile();
-            // file.text() 대신 arrayBuffer로 읽기 (더 안정적)
-            const buffer = await file.arrayBuffer();
-            const decoder = new TextDecoder('utf-8');
-            let text = decoder.decode(buffer);
-            // BOM 제거
-            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-            // 끝 공백/제어문자 제거
-            text = text.trim();
-            if (!text) throw new Error('빈 문자열');
-            return { text, size: file.size, parsed: JSON.parse(text) };
-          } catch(e) {
-            lastErr = e;
-            if (attempt < 3) {
-              await new Promise(r => setTimeout(r, 100 * attempt));
-            }
-          }
-        }
-        throw lastErr;
-      }
-
-      // 1차: _session.json
-      try {
-        const fh = await handle.getFileHandle('_session.json');
-        try {
-          const result = await readJsonFile(fh);
-          folderDebug.files.push(`_session.json(${result.size}B)`);
-          if (result.parsed && Array.isArray(result.parsed.units)) {
-            data = result.parsed;
-            foundFile = '_session.json';
-            folderDebug.result = `OK from _session.json (${result.parsed.units.length} units)`;
-          } else {
-            folderDebug.result = `_session.json: units 배열 없음`;
-          }
-        } catch(readErr) {
-          folderDebug.files.push(`_session.json(읽기실패)`);
-          folderDebug.result = `_session.json 읽기 실패: ${readErr.message}`;
-        }
-      } catch(e) {
-        folderDebug.files.push('_session.json: 없음');
-      }
-
-      // 2차: *.acreport.json 찾기
-      if (!data) {
-        try {
-          for await (const [fname, fhandle] of handle.entries()) {
-            if (fhandle.kind !== 'file') continue;
-            if (!fname.endsWith('.acreport.json') && !fname.endsWith('.json')) continue;
-            if (fname === '_session.json') continue;
-
-            try {
-              const result = await readJsonFile(fhandle);
-              folderDebug.files.push(`${fname}(${result.size}B)`);
-              if (result.size <= 10) {
-                filesToCleanup.push(fname);
-                continue;
-              }
-              if (result.parsed && Array.isArray(result.parsed.units)) {
-                data = result.parsed;
-                foundFile = fname;
-                folderDebug.result = `OK from ${fname} (${result.parsed.units.length} units)`;
-                break;
-              } else {
-                folderDebug.result = `${fname}: units 배열 없음`;
-              }
-            } catch(e2) {
-              folderDebug.files.push(`${fname}(읽기실패)`);
-              folderDebug.result = `${fname} 처리 실패: ${e2.message}`;
-              console.warn(`${name}/${fname} 처리 실패:`, e2.message);
-            }
-          }
-        } catch(e3) {}
-      }
-
-      debugInfo.details.push(folderDebug);
-
-      // 0바이트 / 손상된 파일 자동 삭제
-      if (filesToCleanup.length > 0) {
-        try {
-          const perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
-          if (perm === 'granted') {
-            for (const f of filesToCleanup) {
-              try {
-                await handle.removeEntry(f);
-                console.log(`🗑️ 손상된 파일 삭제: ${name}/${f}`);
-              } catch(e) {}
-            }
-          }
-        } catch(e) {}
-      }
-
-      if (data) {
-        sessions.push({ name, data, dirHandle: handle, sourceFile: foundFile });
-        debugInfo.withSession++;
-
-        // _session.json이 없었으면 자동 생성 (다음번 빠른 로딩용)
-        if (foundFile && foundFile !== '_session.json') {
-          try {
-            const jsonText = JSON.stringify(data, null, 2);
-            const blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
-            const fh = await handle.getFileHandle('_session.json', { create: true });
-            const w = await fh.createWritable();
-            await w.write(blob);
-            await w.close();
-            console.log(`✓ _session.json 자동 생성: ${name} (from ${foundFile})`);
-          } catch(e) {}
-        }
-      } else {
-        // 작업 정보 파일이 없는 폴더 → 사진 카운트로 임시 정보 생성
-        let workCount = 0;
-        let photoCount = 0;
-        try {
-          for await (const [wname, whandle] of handle.entries()) {
-            if (whandle.kind === 'directory' && /^work\d+/.test(wname)) {
-              workCount++;
-              try {
-                for await (const [pname, phandle] of whandle.entries()) {
-                  if (phandle.kind === 'file' && /\.jpg$/i.test(pname)) photoCount++;
-                }
-              } catch(e) {}
-            }
-          }
-        } catch(e) {}
-
-        if (workCount > 0) {
-          // 사진은 있지만 정보 파일이 없는 경우 → 임시 데이터로 표시
-          sessions.push({
-            name,
-            data: {
-              apt: '⚠️ 작업명 없음',
-              date: name,
-              savedAt: name + 'T00:00:00.000Z',
-              units: Array(workCount).fill(0).map((_, i) => ({
-                name: `work${String(i+1).padStart(2,'0')}`,
-                beforeCount: 0,
-                afterCount: 0,
-                specials: []
-              }))
-            },
-            dirHandle: handle,
-            isLegacy: true
-          });
+    // 2) 병렬 처리: 모든 후보 폴더를 한 번에 처리
+    // (안드로이드 크롬에서 너무 많은 동시 요청은 부담될 수 있어 청크로 나눔)
+    const CHUNK = 8;  // 한 번에 8개씩 병렬
+    for (let i = 0; i < candidates.length; i += CHUNK) {
+      const chunk = candidates.slice(i, i + CHUNK);
+      const results = await Promise.all(
+        chunk.map(c => processOneFolder(c.name, c.handle).catch(() => ({ name: c.name, data: null, dirHandle: c.handle })))
+      );
+      for (const r of results) {
+        if (r.data) {
+          sessions.push(r);
           debugInfo.withSession++;
-        } else {
-          debugInfo.errors.push(`${name}: 작업 정보 파일 없음`);
         }
       }
     }
-    // 정렬: savedAt 최신 우선, 같으면 폴더명(YYYY-MM-DD_HHMM)으로 시간 비교
-    sessions.sort((a,b) => {
-      const ta = new Date(a.data.savedAt).getTime();
-      const tb = new Date(b.data.savedAt).getTime();
-      if (tb !== ta) return tb - ta;
-      // 같은 시각이면 폴더명 내림차순 (시간 포함된 폴더가 더 뒤)
-      return b.name.localeCompare(a.name);
-    });
-
-    // 콘솔 로그 (F12로 확인 가능)
-    console.log('📂 불러오기 스캔 결과:', debugInfo);
   } catch(e) {
     body = freshSlBody();
     body.innerHTML = `<div class="sl-empty">폴더 읽기 실패: ${e.message}</div>`;
     return;
   }
+  // 정렬: savedAt 최신 우선, 같으면 폴더명(YYYY-MM-DD_HHMM)으로 시간 비교
+  sessions.sort((a,b) => {
+    const ta = new Date(a.data.savedAt).getTime();
+    const tb = new Date(b.data.savedAt).getTime();
+    if (tb !== ta) return tb - ta;
+    return b.name.localeCompare(a.name);
+  });
+
+  // 콘솔 로그 (F12로 확인 가능)
+  console.log('📂 불러오기 스캔 결과:', debugInfo);
 
   // 날짜 범위 라벨
   const fromLabel = _loadDateFrom || '처음';

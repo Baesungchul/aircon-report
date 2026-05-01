@@ -110,32 +110,62 @@ async function saveToFolder() {
       dateFolderName = existingFolder;
       console.log(`📁 같은 작업 발견 → ${existingFolder} 폴더에 덮어쓰기`);
 
-      // 덮어쓰기: 기존 work 폴더들 모두 비우기 (이전 사진 제거)
+      // ✨ 빠른 덮어쓰기: 메모리의 사진 개수보다 많이 저장된 파일들만 삭제
+      // (모두 삭제 후 재저장 = 느림 / 초과분만 삭제 + 같은 크기 스킵 = 빠름)
       try {
         const oldDir = await photoFolderHandle.getDirectoryHandle(existingFolder);
-        const toDelete = [];
-        for await (const [n, h] of oldDir.entries()) {
-          if (h.kind === 'directory' && /^work\d+/.test(n)) {
-            toDelete.push({ n, h });
+
+        // 메모리상 각 호수의 사진 수 계산 (workNN/A_imageNN.jpg 형식)
+        const expectedFiles = new Set();  // 보존할 파일들
+        units.forEach(u => {
+          const workNum = String(getWorkNumber(u.name)).padStart(2,'0');
+          const workKey = `work${workNum}`;
+          // before (A_image01~)
+          for (let i = 1; i <= u.before.length; i++) {
+            expectedFiles.add(`${workKey}/A_image${String(i).padStart(2,'0')}.jpg`);
+          }
+          // after (B_image01~)
+          for (let i = 1; i <= u.after.length; i++) {
+            expectedFiles.add(`${workKey}/B_image${String(i).padStart(2,'0')}.jpg`);
+          }
+          // specials
+          u.specials.forEach((sp, si) => {
+            for (let i = 1; i <= sp.photos.length; i++) {
+              expectedFiles.add(`${workKey}/S${si+1}_image${String(i).padStart(2,'0')}.jpg`);
+            }
+          });
+        });
+
+        // 폴더의 work 폴더들 순회하며 메모리에 없는 파일만 삭제
+        let deletedCount = 0;
+        for await (const [workName, workHandle] of oldDir.entries()) {
+          if (workHandle.kind !== 'directory' || !/^work\d+/.test(workName)) continue;
+
+          // 이 work 폴더 안의 파일들
+          const filesToCheck = [];
+          for await (const [fn, fh] of workHandle.entries()) {
+            if (fh.kind === 'file') filesToCheck.push(fn);
+          }
+
+          for (const fn of filesToCheck) {
+            const fullKey = `${workName}/${fn}`;
+            if (!expectedFiles.has(fullKey)) {
+              // 메모리에 없는 파일 → 삭제
+              try {
+                await workHandle.removeEntry(fn);
+                deletedCount++;
+              } catch(e) {}
+            }
+          }
+
+          // 빈 work 폴더는 삭제
+          let isEmpty = true;
+          for await (const _ of workHandle.entries()) { isEmpty = false; break; }
+          if (isEmpty) {
+            try { await oldDir.removeEntry(workName); } catch(e) {}
           }
         }
-        for (const { n, h } of toDelete) {
-          try {
-            // work 폴더 안의 파일들 삭제
-            const fnames = [];
-            for await (const [fn, fh] of h.entries()) {
-              if (fh.kind === 'file') fnames.push(fn);
-            }
-            for (const fn of fnames) {
-              try { await h.removeEntry(fn); } catch(e) {}
-            }
-            // work 폴더 삭제
-            await oldDir.removeEntry(n);
-          } catch(e) {
-            console.warn(`work 폴더 정리 실패: ${n}`, e.message);
-          }
-        }
-        console.log(`🗑️ 기존 work 폴더 ${toDelete.length}개 정리 완료`);
+        if (deletedCount > 0) console.log(`🗑️ 불필요한 파일 ${deletedCount}개 정리`);
       } catch(e) {
         console.warn('기존 폴더 정리 실패:', e.message);
       }
@@ -727,53 +757,89 @@ async function deleteDateFolder(target) {
     `이 작업은 되돌릴 수 없습니다.`
   )) return;
 
-  showOverlay('삭제 중...');
+  // ✨ 권한 체크는 overlay 띄우기 전에 (안드로이드에서 권한 다이얼로그가 가려지는 문제 방지)
   try {
-    // 쓰기 권한 필수
     let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
     if (perm !== 'granted') {
       perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
       if (perm !== 'granted') {
-        hideOverlay();
         showToast('쓰기 권한이 거부되어 삭제할 수 없습니다', 'err');
         return;
       }
     }
+  } catch(e) {
+    showToast('권한 확인 실패: ' + e.message, 'err');
+    return;
+  }
 
-    // 중요: 권한 확인 후 photoFolderHandle에서 새로 dirHandle을 받아옴
-    // (target.dirHandle은 읽기 권한으로 받은 것이라 쓰기 작업이 안 됨)
+  showOverlay('삭제 중...');
+
+  // 30초 안전장치: 너무 오래 걸리면 강제 종료
+  const safetyTimeout = setTimeout(() => {
+    hideOverlay();
+    showToast('삭제 시간 초과 - 다시 시도해주세요', 'err');
+  }, 30000);
+
+  try {
+    // 폴더 핸들 가져오기
     let freshDirHandle;
     try {
       freshDirHandle = await photoFolderHandle.getDirectoryHandle(target.name);
     } catch(e) {
+      clearTimeout(safetyTimeout);
       hideOverlay();
-      showToast('폴더를 찾을 수 없습니다: ' + e.message, 'err');
+      // 폴더가 없으면 이미 삭제된 것 → 목록만 새로고침
+      console.warn('폴더를 찾을 수 없음 (이미 삭제됨?):', e.message);
+      showToast('이미 삭제된 폴더입니다', 'ok');
+      await renderLoadList();
       return;
     }
 
     // 폴더 전체 삭제 시도
+    let deleted = false;
+
+    // 1차: recursive 옵션 (데스크톱 크롬에서 잘 됨)
     try {
-      // 1차: recursive 옵션 (데스크톱 크롬에서 잘 됨)
       await photoFolderHandle.removeEntry(target.name, { recursive: true });
+      deleted = true;
+      console.log('✓ recursive 삭제 성공');
     } catch(e1) {
-      // 2차: 수동 재귀 삭제 (안드로이드용)
       console.warn('recursive 삭제 실패, 수동 삭제 시도:', e1.message);
+    }
+
+    // 2차: 수동 재귀 삭제 (안드로이드용)
+    if (!deleted) {
       try {
         await deleteDirectoryContents(freshDirHandle);
         await photoFolderHandle.removeEntry(target.name);
+        deleted = true;
+        console.log('✓ 수동 삭제 성공');
       } catch(e2) {
+        console.warn('수동 삭제 실패:', e2.message);
+      }
+    }
+
+    // 3차: 빈 폴더면 그냥 삭제 시도
+    if (!deleted) {
+      try {
+        await photoFolderHandle.removeEntry(target.name);
+        deleted = true;
+      } catch(e3) {
+        clearTimeout(safetyTimeout);
         hideOverlay();
-        showToast('삭제 실패: ' + e2.message, 'err');
+        showToast('삭제 실패: ' + e3.message, 'err');
         return;
       }
     }
 
+    clearTimeout(safetyTimeout);
     hideOverlay();
     showToast(`✓ "${apt}" 삭제됨`, 'ok');
 
     // 목록 새로고침
     await renderLoadList();
   } catch(e) {
+    clearTimeout(safetyTimeout);
     hideOverlay();
     showToast('삭제 실패: ' + e.message, 'err');
   }
@@ -1263,3 +1329,133 @@ function updateCoHdrBtn() {
   }
 }
 
+
+// ═══════════════════════════════════════════
+// 사진 순서 편집
+// ═══════════════════════════════════════════
+let _reorderState = null;  // { unitId, side: 'before'|'after', photos: [...복제] }
+
+function openReorderModal(unitId, side) {
+  const u = units.find(x => x.id === unitId);
+  if (!u) return;
+
+  const photos = side === 'before' ? u.before : u.after;
+  if (!photos || photos.length < 2) {
+    showToast('순서 편집은 사진이 2장 이상일 때 가능합니다', 'err');
+    return;
+  }
+
+  // 복제본 만들기 (취소 시 원본 보존)
+  _reorderState = {
+    unitId,
+    side,
+    photos: photos.map(p => ({ ...p }))
+  };
+
+  // 제목 설정
+  document.getElementById('reorderTitle').textContent =
+    `🔄 ${u.name} - ${side === 'before' ? '작업 전' : '작업 후'} 순서`;
+
+  renderReorderList();
+  document.getElementById('reorderModal').classList.add('open');
+}
+
+function renderReorderList() {
+  const body = document.getElementById('reorderBody');
+  if (!_reorderState) return;
+
+  const photos = _reorderState.photos;
+  const sideLabel = _reorderState.side === 'before' ? '작업 전' : '작업 후';
+
+  body.innerHTML = `
+    <div class="reorder-info">
+      💡 ▲▼ 버튼으로 사진 순서를 변경하세요. 보고서에 표시되는 순서가 바뀝니다.
+    </div>
+    <div class="reorder-list">
+      ${photos.map((p, idx) => `
+        <div class="reorder-item">
+          <div class="reorder-num">${idx + 1}</div>
+          <img class="reorder-thumb" src="${p.dataUrl}" alt="${sideLabel} ${idx+1}">
+          <div class="reorder-arrows">
+            <button class="reorder-arrow" data-action="up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button>
+            <button class="reorder-arrow" data-action="down" data-idx="${idx}" ${idx === photos.length - 1 ? 'disabled' : ''}>▼</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // 이벤트 바인딩 (요소 새로 만들었으니 다시)
+  body.querySelectorAll('.reorder-arrow').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const action = btn.dataset.action;
+      const idx = parseInt(btn.dataset.idx);
+      moveReorderItem(idx, action === 'up' ? -1 : 1);
+    });
+  });
+}
+
+function moveReorderItem(idx, direction) {
+  if (!_reorderState) return;
+  const photos = _reorderState.photos;
+  const newIdx = idx + direction;
+
+  if (newIdx < 0 || newIdx >= photos.length) return;
+
+  // 스왑
+  [photos[idx], photos[newIdx]] = [photos[newIdx], photos[idx]];
+
+  // 다시 그리기
+  renderReorderList();
+}
+
+function saveReorder() {
+  if (!_reorderState) return;
+  const u = units.find(x => x.id === _reorderState.unitId);
+  if (!u) return;
+
+  // 원본에 적용
+  if (_reorderState.side === 'before') {
+    u.before = _reorderState.photos;
+  } else {
+    u.after = _reorderState.photos;
+  }
+
+  // 폴더에 이미 저장된 사진 ID는 변경되었을 수 있으므로 savedToFolder 플래그 리셋
+  // (다음 저장 시 새 순서대로 다시 저장되도록)
+  const photos = _reorderState.photos;
+  photos.forEach(p => { p.savedToFolder = false; });
+
+  closeReorderModal();
+  renderAll();
+  updateStats();
+  showToast('✓ 순서 변경 완료', 'ok');
+
+  // 자동저장 (세션)
+  if (typeof sessionAutoSaveNow === 'function') sessionAutoSaveNow();
+}
+
+function closeReorderModal() {
+  _reorderState = null;
+  document.getElementById('reorderModal').classList.remove('open');
+}
+
+// 이벤트 바인딩 (DOM 로드 후)
+document.addEventListener('DOMContentLoaded', () => {
+  // 호수 카드의 순서 편집 버튼 (이벤트 위임)
+  document.body.addEventListener('click', e => {
+    const btn = e.target.closest('.reorder-btn');
+    if (btn) {
+      e.stopPropagation();
+      openReorderModal(btn.dataset.uid, btn.dataset.side);
+    }
+  });
+
+  // 모달 버튼들
+  const closeBtn = document.getElementById('reorderClose');
+  const cancelBtn = document.getElementById('reorderCancel');
+  const saveBtn = document.getElementById('reorderSave');
+  if (closeBtn) closeBtn.addEventListener('click', closeReorderModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeReorderModal);
+  if (saveBtn) saveBtn.addEventListener('click', saveReorder);
+});

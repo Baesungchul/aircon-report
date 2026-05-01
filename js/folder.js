@@ -369,8 +369,23 @@ async function doWriteOne(photo, unitName, typeLabel) {
     step = '작업폴더';
     const workDir = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });
 
-    step = '파일핸들';
     const fname = `${typePrefix}_image${String(idx).padStart(2, '0')}.jpg`;
+
+    // ✨ 최적화: 기존 파일이 같은 크기면 스킵 (덮어쓰기 안함)
+    step = '기존파일 확인';
+    try {
+      const existingFh = await workDir.getFileHandle(fname, { create: false });
+      const existingFile = await existingFh.getFile();
+      if (existingFile.size === blob.size) {
+        // 같은 크기 → 같은 사진으로 간주, 스킵
+        if (typeof photo === 'object') photo.savedToFolder = true;
+        return; // 빨리 끝!
+      }
+    } catch(e) {
+      // 파일이 없거나 다름 → 계속 진행
+    }
+
+    step = '파일핸들';
     const fh = await workDir.getFileHandle(fname, { create: true });
 
     step = 'createWritable';

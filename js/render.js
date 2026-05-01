@@ -71,12 +71,16 @@ function renderAll() {
       <div class="u-body ${u.open?'open':''}">
         <div class="ph-cols">
           <div>
-            <div class="ph-lbl lbl-b">🔴 작업 전 (${u.before.length}장)</div>
+            <div class="ph-lbl lbl-b">🔴 작업 전 (${u.before.length}장)
+              ${u.before.length >= 2 ? `<button class="reorder-btn" data-uid="${u.id}" data-side="before" title="순서 편집">🔄</button>` : ''}
+            </div>
             ${makeUpload('before')}
             <div class="thumbs">${makeThumbs(u.before,'before')}</div>
           </div>
           <div>
-            <div class="ph-lbl lbl-a">🟢 작업 후 (${u.after.length}장)</div>
+            <div class="ph-lbl lbl-a">🟢 작업 후 (${u.after.length}장)
+              ${u.after.length >= 2 ? `<button class="reorder-btn" data-uid="${u.id}" data-side="after" title="순서 편집">🔄</button>` : ''}
+            </div>
             ${makeUpload('after')}
             <div class="thumbs">${makeThumbs(u.after,'after')}</div>
           </div>

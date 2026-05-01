@@ -194,7 +194,7 @@ function setupBackButtonHandler() {
 
   window.addEventListener('popstate', (e) => {
     // 1) 열린 모달 찾기
-    const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal'];
+    const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal', 'reorderModal'];
     let openModal = null;
     for (const id of modalIds) {
       const el = document.getElementById(id);

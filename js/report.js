@@ -495,17 +495,52 @@ async function exportPDF(){
     await sleep(40);
   }
   const{apt,dateStr}=getInfo();
-  // 파일명: 한글 제거. 작업명 정보는 폴더명으로 구분되므로 파일명은 단순하게.
-  // 같은 폴더에 여러 보고서를 저장할 때 구분되도록 시간 추가
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2,'0');
-  const mm = String(now.getMinutes()).padStart(2,'0');
   const dateClean = dateStr.replace(/\./g,'-');
-  const fileName = `report_${dateClean}_${hh}${mm}.pdf`;
+  // 기본 파일명 (시간 없음)
+  const baseName = `report_${dateClean}`;
+  let fileName = `${baseName}.pdf`;
 
-  // 폴더에 저장 시도, 실패 시 다운로드 폴백
+  // 폴더에 저장 시도
   let savedToFolder = false;
   if (folderInfo && folderInfo.workDir) {
+    // ✨ 기존 파일 존재 확인 후 사용자에게 선택 받기
+    let existingFiles = [];
+    try {
+      for await (const [fname, fhandle] of folderInfo.workDir.entries()) {
+        if (fhandle.kind === 'file' && fname.startsWith(baseName) && fname.endsWith('.pdf')) {
+          existingFiles.push(fname);
+        }
+      }
+    } catch(e) {}
+
+    if (existingFiles.length > 0) {
+      hideOverlay();
+      const choice = confirm(
+        `📄 PDF 파일이 이미 있습니다 (${existingFiles.length}개)\n\n` +
+        `${existingFiles.slice(0, 3).join('\n')}` +
+        (existingFiles.length > 3 ? `\n... 외 ${existingFiles.length - 3}개` : '') +
+        `\n\n[확인] 기존 파일 덮어쓰기 (이전 PDF 모두 삭제)\n[취소] 새 파일로 저장 (시간 추가)`
+      );
+      showOverlay('PDF 저장 중...');
+
+      if (choice) {
+        // 덮어쓰기: 기존 PDF들 삭제
+        for (const oldFile of existingFiles) {
+          try {
+            await folderInfo.workDir.removeEntry(oldFile);
+            console.log(`🗑️ 기존 PDF 삭제: ${oldFile}`);
+          } catch(e) {}
+        }
+        fileName = `${baseName}.pdf`;
+      } else {
+        // 새 파일: 시간 추가
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2,'0');
+        const mm = String(now.getMinutes()).padStart(2,'0');
+        fileName = `${baseName}_${hh}${mm}.pdf`;
+      }
+    }
+
     try {
       const pdfBlob = pdf.output('blob');
       const fh = await folderInfo.workDir.getFileHandle(fileName, { create: true });
@@ -535,13 +570,49 @@ async function exportJPG(){
   // 자동저장 폴더 + 작업 자동저장 처리
   const folderInfo = await ensureWorkSavedToFolder();
 
-  showOverlay('이미지 생성 중...');
-  // 파일명에서 한글 제거 (폴더명으로 구분되므로 단순하게)
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2,'0');
-  const mm = String(now.getMinutes()).padStart(2,'0');
+  // ✨ 기존 JPG 확인 → 덮어쓰기/새로 저장 선택
   const dateClean = dateStr.replace(/\./g,'-');
-  const baseFileName = `report_${dateClean}_${hh}${mm}`;
+  const baseName = `report_${dateClean}`;
+  let baseFileName = baseName;  // 기본은 시간 없음
+
+  if (folderInfo && folderInfo.workDir) {
+    let existingFiles = [];
+    try {
+      for await (const [fname, fhandle] of folderInfo.workDir.entries()) {
+        if (fhandle.kind === 'file' && fname.startsWith(baseName) && fname.endsWith('.jpg')) {
+          existingFiles.push(fname);
+        }
+      }
+    } catch(e) {}
+
+    if (existingFiles.length > 0) {
+      const choice = confirm(
+        `🖼️ JPG 파일이 이미 있습니다 (${existingFiles.length}개)\n\n` +
+        `${existingFiles.slice(0, 3).join('\n')}` +
+        (existingFiles.length > 3 ? `\n... 외 ${existingFiles.length - 3}개` : '') +
+        `\n\n[확인] 기존 파일 덮어쓰기 (이전 JPG 모두 삭제)\n[취소] 새 파일로 저장 (시간 추가)`
+      );
+
+      if (choice) {
+        // 덮어쓰기: 기존 JPG들 삭제
+        for (const oldFile of existingFiles) {
+          try {
+            await folderInfo.workDir.removeEntry(oldFile);
+            console.log(`🗑️ 기존 JPG 삭제: ${oldFile}`);
+          } catch(e) {}
+        }
+        baseFileName = baseName;
+      } else {
+        // 새 파일: 시간 추가
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2,'0');
+        const mm = String(now.getMinutes()).padStart(2,'0');
+        baseFileName = `${baseName}_${hh}${mm}`;
+      }
+    }
+  }
+
+  showOverlay('이미지 생성 중...');
 
   // 페이지별 캔버스 생성
   const blobs = [];

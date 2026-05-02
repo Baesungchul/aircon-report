@@ -180,9 +180,10 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 /* PREVIEW */
 .pv-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:200;flex-direction:column;}
 .pv-modal.open{display:flex;}
-.pv-bar{flex-shrink:0;background:var(--sf);border-bottom:1px solid var(--bd);padding:10px 14px;display:flex;align-items:center;gap:10px;}
-.pv-title{font-size:15px;font-weight:700;color:var(--tx);flex:1;}
-.pv-btns{display:flex;gap:6px;}
+.pv-bar{flex-shrink:0;background:var(--sf);border-bottom:1px solid var(--bd);padding:8px 10px;display:flex;align-items:center;gap:6px;flex-wrap:nowrap;}
+.pv-title{font-size:13px;font-weight:700;color:var(--tx);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.pv-btns{display:flex;gap:4px;flex-shrink:0;}
+.pv-btns .btn{padding:6px 8px;font-size:11px;min-height:32px;white-space:nowrap;}
 /* 보고서 미리보기 - 핀치 줌/이동 가능 */
 .pv-scroll{
   flex:1;

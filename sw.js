@@ -1,5 +1,5 @@
-// 서비스워커 v12 - 고객 관리 추가
-const CACHE = 'ac1004-v12';
+// 서비스워커 v15 - customers.xlsx 폴더 저장
+const CACHE = 'ac1004-v15';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

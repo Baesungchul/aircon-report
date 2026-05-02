@@ -1,5 +1,5 @@
-// 서비스워커 v11 - 업종 분류 추가
-const CACHE = 'ac1004-v11';
+// 서비스워커 v12 - 고객 관리 추가
+const CACHE = 'ac1004-v12';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

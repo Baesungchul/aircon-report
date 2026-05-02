@@ -917,3 +917,97 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
   font-weight:600;
   color:var(--tx);
 }
+
+/* ═══════════════════════════════════════════════
+   고객 정보 (호수 카드 안)
+═══════════════════════════════════════════════ */
+.cust-sec{
+  margin-top:12px;
+  padding:12px;
+  background:rgba(77,208,225,.06);
+  border:1px solid rgba(77,208,225,.2);
+  border-radius:10px;
+}
+.cust-hdr{
+  font-size:13px;
+  font-weight:700;
+  color:var(--ac);
+  margin-bottom:8px;
+}
+.cust-hint{
+  font-size:10px;
+  font-weight:400;
+  color:var(--mu);
+  margin-left:6px;
+}
+.cust-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  margin-bottom:6px;
+}
+.cust-inp{
+  background:var(--sf2);
+  border:1px solid var(--bd);
+  border-radius:7px;
+  padding:8px 10px;
+  color:var(--tx);
+  font-family:inherit;
+  font-size:13px;
+  width:100%;
+  box-sizing:border-box;
+}
+.cust-inp:focus{outline:none;border-color:var(--ac);}
+.cust-memo{
+  background:var(--sf2);
+  border:1px solid var(--bd);
+  border-radius:7px;
+  padding:8px 10px;
+  color:var(--tx);
+  font-family:inherit;
+  font-size:13px;
+  width:100%;
+  box-sizing:border-box;
+  resize:vertical;
+}
+.cust-memo:focus{outline:none;border-color:var(--ac);}
+
+@media (max-width:600px){
+  .cust-grid{grid-template-columns:1fr;}
+}
+
+/* 고객 목록 카드 */
+.cust-card{
+  background:var(--sf);
+  border:1px solid var(--bd);
+  border-radius:10px;
+  padding:12px;
+  cursor:pointer;
+  transition:all .15s;
+}
+.cust-card:active{background:var(--sf2);}
+.cust-card-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:6px;
+}
+.cust-card-name{
+  font-size:15px;
+  font-weight:700;
+  color:var(--tx);
+}
+.cust-card-del{
+  background:transparent;
+  border:1px solid var(--bd);
+  border-radius:6px;
+  padding:4px 8px;
+  cursor:pointer;
+  font-size:14px;
+  color:var(--dn);
+}
+.cust-card-body{
+  font-size:13px;
+  color:var(--tx);
+  line-height:1.6;
+}

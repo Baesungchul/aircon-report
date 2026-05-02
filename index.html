@@ -17,6 +17,7 @@
 <!-- 외부 라이브러리 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <!-- 스타일 -->
 
@@ -105,6 +106,13 @@
         <div class="set-sec-title" data-i18n="set.company">🏢 업체정보</div>
         <div id="setCoSummary" style="font-size:12px;color:var(--mu);background:var(--sf2);border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6;display:none;"></div>
         <button class="btn b-blue" id="setOpenCoInfo" style="width:100%;justify-content:center;" data-i18n="set.company.edit">업체정보 편집</button>
+      </div>
+
+      <!-- 고객 관리 -->
+      <div class="set-sec">
+        <div class="set-sec-title">👥 고객 관리</div>
+        <div id="setCustomerSummary" style="font-size:12px;color:var(--mu);background:var(--sf2);border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6;">고객 0명</div>
+        <button class="btn b-blue" id="setOpenCustomers" style="width:100%;justify-content:center;">📋 고객 목록 보기</button>
       </div>
 
       <!-- 저장 폴더 -->
@@ -378,6 +386,21 @@
   </div>
 </div>
 
+<!-- 고객 목록 (전체화면 모달) -->
+<div class="rd-modal" id="customerModal">
+  <div class="rd-box">
+    <div class="rd-head">
+      <div class="rd-title" id="customerTitle">👥 고객 목록</div>
+      <button class="rd-close-btn" id="customerClose">✕</button>
+    </div>
+    <div class="rd-body" id="customerBody"></div>
+    <div class="rd-foot">
+      <button class="btn b-green" id="customerExportXlsx">📊 엑셀로 내보내기</button>
+      <button class="btn b-ghost" id="customerCloseFoot">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- 미리보기 -->
 <div class="pv-modal" id="pvModal">
   <div class="pv-bar">
@@ -424,6 +447,7 @@
 <script src="./js/report.js"></script>
 <script src="./js/folder.js"></script>
 <script src="./js/settings.js"></script>
+<script src="./js/customers.js"></script>
 <script src="./js/app.js"></script>
 
 </body>

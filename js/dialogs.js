@@ -384,8 +384,37 @@ async function doSave() {
       nid
     };
     await dbPut(obj);
+
+    // 🆕 고객 정보 자동 저장 (각 호수의 customer 정보를 customers DB에)
+    let savedCustomers = 0;
+    try {
+      const apt = document.getElementById('aptName').value || '';
+      const date = document.getElementById('workDate').value || '';
+      for (const u of units) {
+        const phone = u.customer?.phone?.trim();
+        if (!phone) continue;  // 전화번호 없으면 스킵
+        const norm = normalizePhone(phone);
+        if (!norm || norm.replace(/[^\d]/g, '').length < 9) continue;  // 짧으면 스킵
+        try {
+          await customerUpsert({
+            phone: norm,
+            name: '',  // 이름 필드 없음 - upsert에서 호수명을 자동으로 이름으로
+            address: u.customer.address || '',
+            memo: u.customer.memo || '',
+            visit: {
+              date: date || new Date().toISOString().slice(0, 10),
+              apt: apt,
+              unit: u.name,
+              work: `사진 ${u.before.length + u.after.length}장${u.specials.length ? `, 특이사항 ${u.specials.length}건` : ''}`
+            }
+          });
+          savedCustomers++;
+        } catch(e) { console.warn('고객 저장 실패:', e.message); }
+      }
+    } catch(e) { console.warn('고객 저장 루프 실패:', e); }
+
     hideOverlay();
-    showToast(`"${name}" 저장 완료 ✓`,'ok');
+    showToast(`"${name}" 저장 완료 ✓${savedCustomers ? ` (고객 ${savedCustomers}명)` : ''}`,'ok');
   } catch(e) {
     hideOverlay();
     showToast('저장 실패: '+e.message,'err');

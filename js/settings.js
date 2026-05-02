@@ -177,6 +177,9 @@ function openSettings() {
     }
   }
 
+  // 고객 통계 갱신
+  if (typeof updateCustomerSummary === 'function') updateCustomerSummary();
+
   document.getElementById('settingsModal').classList.add('open');
 }
 

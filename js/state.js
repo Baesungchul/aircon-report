@@ -196,7 +196,7 @@ function setupBackButtonHandler() {
 
   window.addEventListener('popstate', (e) => {
     // 1) 열린 모달 찾기
-    const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal', 'reorderModal', 'themePickerModal'];
+    const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal', 'reorderModal', 'themePickerModal', 'customerModal'];
     let openModal = null;
     for (const id of modalIds) {
       const el = document.getElementById(id);
@@ -234,7 +234,7 @@ function setupBackButtonHandler() {
 // 모달 열릴 때 body 스크롤 막기 (뒷 화면 움직임 방지)
 // ═══════════════════════════════
 (function setupModalScrollLock() {
-  const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal', 'reorderModal', 'themePickerModal'];
+  const modalIds = ['saveDlg', 'slModal', 'coModal', 'settingsModal', 'imgModal', 'pvModal', 'reorderModal', 'themePickerModal', 'customerModal'];
 
   let savedScrollY = 0;
 

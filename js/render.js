@@ -93,6 +93,14 @@ function renderAll() {
           ${spHtml}
           <button class="add-sp-btn" data-uid="${u.id}">＋ 특이사항 추가</button>
         </div>
+        <div class="cust-sec">
+          <div class="cust-hdr">📞 고객 정보 <span class="cust-hint">(전화번호 입력 시 자동 저장)</span></div>
+          <div class="cust-grid">
+            <input class="cust-inp" type="text" inputmode="tel" placeholder="📞 전화번호 (예: 010-1234-5678)" data-uid="${u.id}" data-field="phone" value="${escH(u.customer?.phone || '')}">
+            <input class="cust-inp" type="text" placeholder="🏠 주소 (선택)" data-uid="${u.id}" data-field="address" value="${escH(u.customer?.address || '')}">
+          </div>
+          <textarea class="cust-memo" rows="2" placeholder="💬 메모 (요청사항, 결제 방법, 추천인 등)" data-uid="${u.id}" data-field="memo">${escH(u.customer?.memo || '')}</textarea>
+        </div>
       </div>
     </div>`;
   }).join('');

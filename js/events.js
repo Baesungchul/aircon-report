@@ -258,7 +258,7 @@ function addUnit(name) {
   const inp=document.getElementById('newName');
   const n=(name!==undefined?name:inp.value).trim();
   if(!n){ showToast('호수명을 입력해주세요','err'); return; }
-  units.push({id:nid++,name:n,before:[],after:[],specials:[],open:true});
+  units.push({id:nid++,name:n,before:[],after:[],specials:[],open:true,customer:{phone:'',address:'',memo:''}});
   if(name===undefined){ inp.value=''; inp.focus(); }
   renderAll(); updateStats(); sessionAutoSave();
   showToast(`✅ "${n}" 호수가 추가되었습니다`, 'ok');
@@ -273,7 +273,7 @@ function bulkAdd() {
   if(lines.length===1) {
     showToast('구분자(쉼표/슬래시)가 없습니다. 단일 호수로 추가합니다','err');
   }
-  lines.forEach(l=>units.push({id:nid++,name:l,before:[],after:[],specials:[],open:false}));
+  lines.forEach(l=>units.push({id:nid++,name:l,before:[],after:[],specials:[],open:false,customer:{phone:'',address:'',memo:''}}));
   renderAll(); updateStats(); sessionAutoSave();
   showToast(`${lines.length}개 호수 추가됨`,'ok');
 }
@@ -363,3 +363,63 @@ async function newWork() {
 
 // (이전 savePhotosForNewWork 함수는 saveToFolder로 통합되어 제거)
 
+
+// ═══════════════════════════════
+// 호수별 고객 정보 입력 이벤트 (이벤트 위임)
+// ═══════════════════════════════
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!el.classList || !(el.classList.contains('cust-inp') || el.classList.contains('cust-memo'))) return;
+
+  const uid = el.dataset.uid;
+  const field = el.dataset.field;
+  if (!uid || !field) return;
+
+  const u = units.find(x => String(x.id) === String(uid));
+  if (!u) return;
+
+  if (!u.customer) u.customer = { phone: '', address: '', memo: '' };
+
+  // 전화번호 자동 하이픈
+  if (field === 'phone') {
+    const raw = el.value.replace(/[^\d]/g, '');
+    let formatted = el.value;
+    if (raw.length === 11 && raw.startsWith('010')) formatted = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7)}`;
+    else if (raw.length === 10 && raw.startsWith('02')) formatted = `${raw.slice(0,2)}-${raw.slice(2,6)}-${raw.slice(6)}`;
+    else if (raw.length === 11) formatted = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7)}`;
+    else if (raw.length === 10) formatted = `${raw.slice(0,3)}-${raw.slice(3,6)}-${raw.slice(6)}`;
+    if (formatted !== el.value) {
+      const cur = el.selectionStart;
+      el.value = formatted;
+      try { el.setSelectionRange(cur+1, cur+1); } catch(e2) {}
+    }
+
+    // 기존 고객 자동 매칭 (디바운스 - 500ms 후)
+    clearTimeout(el._matchTimer);
+    el._matchTimer = setTimeout(async () => {
+      const phone = normalizePhone(el.value);
+      if (phone && phone.length >= 9) {
+        try {
+          const existing = await customerGet(phone);
+          if (existing) {
+            // 기존 고객이면 주소/메모 자동 채우기 (비어있을 때만)
+            const addrEl = document.querySelector(`.cust-inp[data-uid="${uid}"][data-field="address"]`);
+            const memoEl = document.querySelector(`.cust-memo[data-uid="${uid}"]`);
+            if (addrEl && !addrEl.value && existing.address) {
+              addrEl.value = existing.address;
+              u.customer.address = existing.address;
+            }
+            if (memoEl && !memoEl.value && existing.memo) {
+              memoEl.value = existing.memo;
+              u.customer.memo = existing.memo;
+            }
+            showToast(`🔔 재방문 고객! ${existing.name || phone} (${existing.visitCount}회 방문)`, 'ok');
+          }
+        } catch(e) {}
+      }
+    }, 500);
+  }
+
+  u.customer[field] = el.value;
+  sessionAutoSave();
+});

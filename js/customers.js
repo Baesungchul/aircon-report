@@ -19,7 +19,7 @@ async function renderCustomerList() {
 
   let customers = [];
   try {
-    customers = await customerGetAll();
+    customers = await customerListAll();
   } catch(e) {
     body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--mu);">고객 목록 로드 실패: ${e.message}</div>`;
     return;
@@ -60,6 +60,15 @@ async function renderCustomerList() {
           <div style="font-size:20px;font-weight:800;color:var(--wn);">${recent}</div>
         </div>
       </div>
+      ${photoFolderHandle ? `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd);font-size:11px;color:var(--mu);text-align:center;">
+          📁 저장 위치: <b>${escHtmlSafe(photoFolderHandle.name)}/customers.xlsx</b>
+        </div>
+      ` : `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd);font-size:11px;color:var(--wn);text-align:center;">
+          ⚠️ 저장 폴더가 설정되지 않았습니다 (브라우저 내부에만 저장됨)
+        </div>
+      `}
     </div>
 
     <input class="cust-inp" id="customerSearchInp" type="text" placeholder="🔍 이름/전화번호/주소 검색" value="${escHtmlSafe(_customerSearch)}" style="width:100%;margin-bottom:12px;">
@@ -99,7 +108,7 @@ async function renderCustomerList() {
       const phone = btn.dataset.phone;
       if (!confirm(`${phone} 고객을 삭제할까요?\n방문 내역도 함께 삭제됩니다.`)) return;
       try {
-        await customerDelete(phone);
+        await customerRemove(phone);
         await renderCustomerList();
         showToast('✓ 고객 삭제됨', 'ok');
       } catch(e) {
@@ -142,7 +151,7 @@ function renderCustomerCard(c) {
 }
 
 async function showCustomerDetail(phone) {
-  const c = await customerGet(phone);
+  const c = await customerLookup(phone);
   if (!c) return;
 
   const visitsHtml = (c.visits || []).slice().reverse().map(v => `
@@ -174,7 +183,7 @@ async function exportCustomersXlsx() {
   }
 
   try {
-    const customers = await customerGetAll();
+    const customers = await customerListAll();
     if (customers.length === 0) {
       showToast('내보낼 고객이 없습니다', 'err');
       return;
@@ -253,7 +262,7 @@ async function updateCustomerSummary() {
   const el = document.getElementById('setCustomerSummary');
   if (!el) return;
   try {
-    const customers = await customerGetAll();
+    const customers = await customerListAll();
     const total = customers.length;
     const repeat = customers.filter(c => (c.visitCount || 0) >= 2).length;
     el.innerHTML = `<b style="color:var(--ac);">총 ${total}명</b>` +
@@ -269,15 +278,35 @@ function bindCustomerEvents() {
   const closeBtn = document.getElementById('customerClose');
   const closeFoot = document.getElementById('customerCloseFoot');
   const exportBtn = document.getElementById('customerExportXlsx');
+  const flushBtn = document.getElementById('customerForceFlush');
 
   if (openBtn) openBtn.addEventListener('click', () => {
-    closeSettings && closeSettings();  // 설정 모달이 있으면 닫기
+    closeSettings && closeSettings();
     document.getElementById('settingsModal')?.classList.remove('open');
     openCustomerModal();
   });
   if (closeBtn) closeBtn.addEventListener('click', closeCustomerModal);
   if (closeFoot) closeFoot.addEventListener('click', closeCustomerModal);
   if (exportBtn) exportBtn.addEventListener('click', exportCustomersXlsx);
+
+  // 수동 저장: 현재 호수의 고객정보를 강제로 customers DB에 저장
+  if (flushBtn) flushBtn.addEventListener('click', async () => {
+    if (typeof flushAllCustomers !== 'function') {
+      showToast('flush 함수 없음', 'err');
+      return;
+    }
+    try {
+      const cnt = await flushAllCustomers();
+      // xlsx 파일도 즉시 쓰기
+      if (typeof flushCustomersXlsx === 'function') {
+        await flushCustomersXlsx();
+      }
+      showToast(`✓ ${cnt}명 저장 완료${photoFolderHandle ? ' (xlsx 포함)' : ''}`, 'ok');
+      await renderCustomerList();
+    } catch(e) {
+      showToast(`저장 실패: ${e.message}`, 'err');
+    }
+  });
 }
 
 if (document.readyState === 'loading') {

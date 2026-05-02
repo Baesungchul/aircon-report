@@ -313,6 +313,16 @@ async function saveToFolder() {
       saveOk = true;
       sessionFileSaved = true;
       console.log('✓ 세션 파일 저장 완료:', { folder: dateFolderName, mainFile: ok1, sessionJson: ok2 });
+      // 🆕 고객 정보도 함께 저장 (조용히)
+      try {
+        if (typeof flushAllCustomers === 'function') {
+          await flushAllCustomers();
+        }
+        // customers.xlsx도 즉시 쓰기
+        if (typeof flushCustomersXlsx === 'function') {
+          await flushCustomersXlsx();
+        }
+      } catch(e) { console.warn('고객 저장 실패:', e); }
     } else {
       console.error('❌ 모든 시도 실패. 마지막 에러:', lastError);
     }
@@ -394,22 +404,26 @@ async function doSave() {
         const phone = u.customer?.phone?.trim();
         if (!phone) continue;  // 전화번호 없으면 스킵
         const norm = normalizePhone(phone);
-        if (!norm || norm.replace(/[^\d]/g, '').length < 9) continue;  // 짧으면 스킵
+        if (!norm || norm.replace(/[^\d]/g, '').length < 9) continue;
         try {
-          await customerUpsert({
+          await customerSave({
             phone: norm,
-            name: '',  // 이름 필드 없음 - upsert에서 호수명을 자동으로 이름으로
+            name: '',
             address: u.customer.address || '',
             memo: u.customer.memo || '',
             visit: {
               date: date || new Date().toISOString().slice(0, 10),
               apt: apt,
               unit: u.name,
-              work: `사진 ${u.before.length + u.after.length}장${u.specials.length ? `, 특이사항 ${u.specials.length}건` : ''}`
+              work: `Photos: ${u.before.length + u.after.length}${u.specials.length ? `, Notes: ${u.specials.length}` : ''}`
             }
           });
           savedCustomers++;
         } catch(e) { console.warn('고객 저장 실패:', e.message); }
+      }
+      // 즉시 파일 쓰기
+      if (typeof flushCustomersXlsx === 'function') {
+        await flushCustomersXlsx();
       }
     } catch(e) { console.warn('고객 저장 루프 실패:', e); }
 

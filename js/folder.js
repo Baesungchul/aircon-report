@@ -144,6 +144,9 @@ async function selectPhotoFolder() {
     await settingsPut('photoFolderHandle', handle);
     updateFolderUI(handle, 'granted');
     showToast(`✅ 폴더 설정 완료: ${handle.name}`, 'ok');
+    // 고객 캐시 무효화 - 새 폴더에서 다시 로드
+    if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache();
+    if (typeof initCustomersCache === 'function') initCustomersCache().catch(()=>{});
   } catch(e) {
     if (e.name !== 'AbortError') showToast('폴더 선택 실패: ' + e.message, 'err');
   }
@@ -155,6 +158,7 @@ async function clearPhotoFolder() {
   try { await settingsPut('photoFolderHandle', null); } catch(e) {}
   updateFolderUI(null);
   showToast('폴더 설정 해제됨', 'ok');
+  if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache();
 }
 
 function updateFolderUI(handle, perm) {

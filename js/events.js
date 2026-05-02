@@ -250,7 +250,9 @@ function normalizeUnits(arr) {
     specials: (u.specials||[]).map(s => ({
       ...s,
       photos: normalizePhotos(s.photos)
-    }))
+    })),
+    // customer 필드 기본값 보장 (이전 버전 데이터에는 없을 수 있음)
+    customer: u.customer || { phone: '', address: '', memo: '' }
   }));
 }
 
@@ -339,6 +341,14 @@ async function newWork() {
     }
   }
 
+  // 🆕 고객 정보 저장 (폴더 없어도 customers DB는 별도)
+  try {
+    if (typeof flushAllCustomers === 'function') {
+      const cnt = await flushAllCustomers();
+      if (cnt > 0) console.log(`✓ ${cnt}명 고객 정보 저장`);
+    }
+  } catch(e) { console.warn('고객 저장 실패:', e); }
+
   // 초기화
   units = [];
   nid = 1;
@@ -393,33 +403,153 @@ document.addEventListener('input', e => {
       el.value = formatted;
       try { el.setSelectionRange(cur+1, cur+1); } catch(e2) {}
     }
-
-    // 기존 고객 자동 매칭 (디바운스 - 500ms 후)
-    clearTimeout(el._matchTimer);
-    el._matchTimer = setTimeout(async () => {
-      const phone = normalizePhone(el.value);
-      if (phone && phone.length >= 9) {
-        try {
-          const existing = await customerGet(phone);
-          if (existing) {
-            // 기존 고객이면 주소/메모 자동 채우기 (비어있을 때만)
-            const addrEl = document.querySelector(`.cust-inp[data-uid="${uid}"][data-field="address"]`);
-            const memoEl = document.querySelector(`.cust-memo[data-uid="${uid}"]`);
-            if (addrEl && !addrEl.value && existing.address) {
-              addrEl.value = existing.address;
-              u.customer.address = existing.address;
-            }
-            if (memoEl && !memoEl.value && existing.memo) {
-              memoEl.value = existing.memo;
-              u.customer.memo = existing.memo;
-            }
-            showToast(`🔔 재방문 고객! ${existing.name || phone} (${existing.visitCount}회 방문)`, 'ok');
-          }
-        } catch(e) {}
-      }
-    }, 500);
   }
 
   u.customer[field] = el.value;
   sessionAutoSave();
+
+  // ★★ 입력 후 700ms 동안 추가 입력 없으면 customers DB에 저장
+  // (호수별 단일 타이머 - 같은 호수의 다른 필드 변경 시 타이머 리셋)
+  if (!u._custSaveTimer) u._custSaveTimer = null;
+  clearTimeout(u._custSaveTimer);
+  u._custSaveTimer = setTimeout(async () => {
+    await saveCustomerForUnit(u);
+  }, 700);
+});
+
+// 호수의 고객 정보를 customers DB에 저장 (재방문이면 매칭)
+async function saveCustomerForUnit(u) {
+  if (!u) { console.log('🔴 [고객] u 없음'); return; }
+
+  if (!u.customer) u.customer = { phone: '', address: '', memo: '' };
+
+  let phone = (u.customer.phone || '').trim();
+  if (!phone) {
+    const phoneEl = document.querySelector(`.cust-inp[data-uid="${u.id}"][data-field="phone"]`);
+    if (phoneEl) {
+      phone = phoneEl.value.trim();
+      u.customer.phone = phone;
+    }
+  }
+
+  if (!phone) {
+    console.log(`🟡 [고객] ${u.name} - 전화번호 없음, 스킵`);
+    return;
+  }
+
+  const norm = normalizePhone(phone);
+  const digits = norm.replace(/[^\d]/g, '');
+  if (digits.length < 9) {
+    console.log(`🟡 [고객] ${u.name} - 짧음 (${digits.length}자리), 스킵: ${phone}`);
+    return;
+  }
+
+  console.log(`🔵 [고객] ${u.name} 저장 시도: ${norm}`);
+
+  try {
+    // customerSave 함수 (폴더 + IndexedDB 자동 저장)
+    if (typeof customerSave !== 'function') {
+      throw new Error('customerSave 함수 없음 - customer_storage.js 로드 실패?');
+    }
+
+    const addrEl = document.querySelector(`.cust-inp[data-uid="${u.id}"][data-field="address"]`);
+    const memoEl = document.querySelector(`.cust-memo[data-uid="${u.id}"]`);
+    const address = (addrEl?.value || u.customer.address || '').trim();
+    const memo = (memoEl?.value || u.customer.memo || '').trim();
+
+    const apt = document.getElementById('aptName').value || '';
+    const date = document.getElementById('workDate').value || new Date().toISOString().slice(0, 10);
+    const photoCount = u.before.length + u.after.length;
+
+    // 기존 고객 확인 (재방문 토스트용)
+    const existing = await customerLookup(norm);
+
+    const result = await customerSave({
+      phone: norm,
+      name: '',
+      address: address,
+      memo: memo,
+      visit: {
+        date: date,
+        apt: apt,
+        unit: u.name,
+        work: photoCount > 0
+          ? `Photos: ${photoCount}${u.specials.length ? `, Notes: ${u.specials.length}` : ''}`
+          : (u.specials.length ? `Notes: ${u.specials.length}` : 'In progress')
+      }
+    });
+
+    console.log(`🟢 [고객] ${u.name} 저장 성공:`, result.phone);
+
+    if (!existing) {
+      showToast(`✓ 신규 고객 등록: ${norm}`, 'ok');
+    } else if (u._lastShownExisting !== norm) {
+      showToast(`🔔 재방문 고객! ${existing.name || norm} (${existing.visitCount}회)`, 'ok');
+      u._lastShownExisting = norm;
+
+      if (addrEl && !addrEl.value && existing.address) {
+        addrEl.value = existing.address;
+        u.customer.address = existing.address;
+      }
+      if (memoEl && !memoEl.value && existing.memo) {
+        memoEl.value = existing.memo;
+        u.customer.memo = existing.memo;
+      }
+    }
+
+    return result;
+  } catch(err) {
+    console.error(`🔴 [고객] ${u.name} 저장 실패:`, err);
+    showToast(`고객 저장 실패: ${err.message || err}`, 'err');
+    throw err;
+  }
+}
+
+// 모든 호수의 고객 정보를 customers DB에 저장 (배치)
+async function flushAllCustomers() {
+  if (typeof units === 'undefined' || !units || units.length === 0) {
+    console.log('🟡 [flush] units 비어있음');
+    return 0;
+  }
+  console.log(`🔵 [flush] 시작 - ${units.length}개 호수 검사`);
+  let count = 0;
+  let failed = 0;
+  for (const u of units) {
+    // 메모리 + DOM 양쪽에서 phone 확인
+    const phoneFromMem = (u.customer?.phone || '').trim();
+    const phoneEl = document.querySelector(`.cust-inp[data-uid="${u.id}"][data-field="phone"]`);
+    const phoneFromDom = phoneEl ? phoneEl.value.trim() : '';
+    const phone = phoneFromDom || phoneFromMem;
+
+    if (!phone) {
+      console.log(`  ⏭️ ${u.name}: 전화번호 없음`);
+      continue;
+    }
+
+    // u.customer 동기화
+    if (!u.customer) u.customer = { phone: '', address: '', memo: '' };
+    if (phoneFromDom) u.customer.phone = phoneFromDom;
+
+    try {
+      await saveCustomerForUnit(u);
+      count++;
+    } catch(e) {
+      console.error(`  ❌ ${u.name}:`, e);
+      failed++;
+    }
+  }
+  console.log(`🟢 [flush] 완료 - 성공 ${count}, 실패 ${failed}`);
+  return count;
+}
+
+// 페이지 종료 시 저장
+window.addEventListener('pagehide', () => {
+  flushAllCustomers().then(() => {
+    if (typeof flushCustomersXlsx === 'function') return flushCustomersXlsx();
+  }).catch(()=>{});
+});
+window.addEventListener('beforeunload', () => {
+  flushAllCustomers().then(() => {
+    if (typeof flushCustomersXlsx === 'function') return flushCustomersXlsx();
+  }).catch(()=>{});
 });

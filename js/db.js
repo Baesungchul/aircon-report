@@ -11,27 +11,72 @@ let   photoFolderHandle = null;   // 저장 폴더 핸들 (메모리 캐시)
 
 function openDB() {
   return new Promise((res, rej) => {
-    if (db) { res(db); return; }
+    if (db) {
+      // 이미 열린 DB에 customers 스토어가 있는지 확인
+      if (!db.objectStoreNames.contains(CUSTOMER_STORE)) {
+        console.warn('🟡 customers 스토어 없음 - DB 재오픈 필요');
+        db.close();
+        db = null;
+      } else {
+        res(db);
+        return;
+      }
+    }
+
     const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
+      console.log(`🔵 DB 업그레이드: ${e.oldVersion} → ${e.newVersion}`);
       if (!d.objectStoreNames.contains(STORE)) {
         const s = d.createObjectStore(STORE, { keyPath:'saveId' });
         s.createIndex('savedAt','savedAt',{unique:false});
+        console.log('  ✓ saves 스토어 생성');
       }
-      // v2: settings 스토어 (폴더 핸들 등 저장)
       if (!d.objectStoreNames.contains(SETTINGS_STORE)) {
         d.createObjectStore(SETTINGS_STORE, { keyPath:'key' });
+        console.log('  ✓ settings 스토어 생성');
       }
-      // v3: customers 스토어 (고객 정보 - 전화번호가 키)
       if (!d.objectStoreNames.contains(CUSTOMER_STORE)) {
         const c = d.createObjectStore(CUSTOMER_STORE, { keyPath:'phone' });
         c.createIndex('lastVisit', 'lastVisit', { unique:false });
         c.createIndex('name', 'name', { unique:false });
+        console.log('  ✓ customers 스토어 생성');
       }
     };
-    req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror   = e => rej(e.target.error);
+    req.onsuccess = e => {
+      db = e.target.result;
+      console.log(`🟢 DB 오픈 완료 (v${db.version}). 스토어:`, Array.from(db.objectStoreNames));
+
+      // ★ 안전장치: customers 스토어 없으면 강제 버전 업
+      if (!db.objectStoreNames.contains(CUSTOMER_STORE)) {
+        console.warn('🟡 customers 스토어 없음 - 강제 업그레이드');
+        db.close();
+        db = null;
+        const req2 = indexedDB.open(DB_NAME, DB_VER + 1);
+        req2.onupgradeneeded = e2 => {
+          const d = e2.target.result;
+          if (!d.objectStoreNames.contains(CUSTOMER_STORE)) {
+            const c = d.createObjectStore(CUSTOMER_STORE, { keyPath:'phone' });
+            c.createIndex('lastVisit', 'lastVisit', { unique:false });
+            c.createIndex('name', 'name', { unique:false });
+            console.log('  ✓ customers 스토어 (강제) 생성');
+          }
+        };
+        req2.onsuccess = e2 => {
+          db = e2.target.result;
+          console.log('🟢 DB 강제 업그레이드 완료');
+          res(db);
+        };
+        req2.onerror = e2 => rej(e2.target.error);
+        return;
+      }
+
+      res(db);
+    };
+    req.onerror = e => {
+      console.error('🔴 DB 오픈 실패:', e.target.error);
+      rej(e.target.error);
+    };
   });
 }
 

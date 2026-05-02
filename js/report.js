@@ -30,7 +30,7 @@ function getInfo(){
     apt:    document.getElementById('aptName').value||'OO아파트',
     dateStr:ds,
     worker: document.getElementById('workerName').value||'담당자',
-    coName: document.getElementById('coName').value||'평택에어컨1004',
+    coName: document.getElementById('coName').value||'',
     coBrand:document.getElementById('coBrand')?.value||'',
     coTel:  formatTel(document.getElementById('coTel').value||''),
     coBiz:  formatBiz(document.getElementById('coBiz').value||''),
@@ -38,12 +38,25 @@ function getInfo(){
     coEmail:document.getElementById('coEmail').value||'',
     coWeb:  document.getElementById('coWeb').value||'',
     coDesc: document.getElementById('coDesc').value||'',
-    coIcon: coIconData||''
+    coIcon: coIconData||'',
+    // 업종별 커스텀 호칭 (비어있으면 기본값 사용)
+    coReportTitle: (document.getElementById('coReportTitle')?.value || '').trim(),
+    coUnitLabel:   (document.getElementById('coUnitLabel')?.value   || '').trim() || '호수',
+    coStageLabel:  (document.getElementById('coStageLabel')?.value  || '').trim() || '작업'
   };
 }
 
 function buildReportHTML(){
-  const{apt,dateStr,worker,coName,coBrand,coTel,coBiz,coAddr,coEmail,coWeb,coDesc,coIcon}=getInfo();
+  const{apt,dateStr,worker,coName,coBrand,coTel,coBiz,coAddr,coEmail,coWeb,coDesc,coIcon,coReportTitle,coUnitLabel,coStageLabel}=getInfo();
+
+  // 업종별 동적 라벨 (영어 모드는 BEFORE/AFTER 그대로)
+  const isKo = getCurrentLang() !== 'en';
+  const labelBefore = isKo ? `${coStageLabel} 전` : t('report.detail.before');
+  const labelAfter  = isKo ? `${coStageLabel} 후` : t('report.detail.after');
+  const labelSpecial = isKo ? '특이사항' : t('report.detail.special');
+  const labelUnit = isKo ? coUnitLabel : '';  // "호수" / "현장" 등
+  const unitOfPhoto = isKo ? '장' : '';
+  const unitOfCount = isKo ? '건' : '';
   const total=units.length;
   const complete=units.filter(u=>u.before.length>0&&u.after.length>0).length;
 
@@ -111,7 +124,10 @@ function buildReportHTML(){
 
       <div class="rp-hero-title">
         <div class="rp-eyebrow">${t('report.cover.eyebrow')}</div>
-        <div class="rp-h1">${t('report.cover.title.before')}<br><span class="rp-accent">${t('report.cover.title.after')}</span></div>
+        ${coReportTitle
+          ? `<div class="rp-h1">${escH(coReportTitle)}</div>`
+          : `<div class="rp-h1">${t('report.cover.title.before')}<br><span class="rp-accent">${t('report.cover.title.after')}</span></div>`
+        }
       </div>
 
       ${coDesc?`<div class="rp-desc-box">
@@ -256,11 +272,11 @@ function buildReportHTML(){
         const bc=chunk(u.before,3).length, ac=chunk(u.after,3).length;
         let pc=Math.max(bc,ac,1);
         const sc = u.specials.length;
-        // 특이사항 1~2건 인라인: 마지막 페이지 사진 3장이면 +1 페이지
+        // 특이사항 1~2건 인라인: 마지막 페이지 사진이 3장(꽉 참)이면 인라인용 새 페이지 +1
         if(sc>=1 && sc<=2){
           const lb=(chunk(u.before,3)[pc-1]||[]).length;
           const la=(chunk(u.after,3)[pc-1]||[]).length;
-          if(lb>2||la>2) pc++;
+          if(lb>=3||la>=3) pc++;
         }
         // 특이사항 3건 이상: 각 특이사항별 별도 페이지(사진 4장씩)
         if(sc>=3){
@@ -291,21 +307,22 @@ function buildReportHTML(){
     let aChunks = chunk(u.after,  3);
     let normalPages = Math.max(bChunks.length, aChunks.length, 1);
 
-    // 2) 인라인 특이사항이면 마지막 본페이지에 사진 2장만 들어가도록 조정
+    // 2) 인라인 특이사항: 마지막 사진 페이지가 가득 차있으면(3장) 새 페이지를 추가하여 거기에 인라인 표시
+    //    그렇지 않으면 마지막 페이지를 2슬롯으로 만들어 인라인 표시
+    let inlineExtraPage = false;  // 인라인 전용 별도 페이지 사용 여부
     if (inlineSpec) {
       const lastB = bChunks[normalPages-1] || [];
       const lastA = aChunks[normalPages-1] || [];
-      if (lastB.length > 2 || lastA.length > 2) {
-        const extraB = lastB.slice(2);
-        const extraA = lastA.slice(2);
-        while (bChunks.length < normalPages) bChunks.push([]);
-        while (aChunks.length < normalPages) aChunks.push([]);
-        bChunks[normalPages-1] = lastB.slice(0, 2);
-        aChunks[normalPages-1] = lastA.slice(0, 2);
-        bChunks.push(extraB);
-        aChunks.push(extraA);
+      const maxLast = Math.max(lastB.length, lastA.length);
+
+      if (maxLast >= 3) {
+        // 마지막 페이지 3장 가득 → 새 페이지 추가하여 거기에 인라인 표시 (사진 없음)
+        bChunks.push([]);
+        aChunks.push([]);
         normalPages++;
+        inlineExtraPage = true;
       }
+      // 마지막 페이지 1~2장이면 그대로 두고 인라인 특이사항을 거기에 표시 (슬롯 2개)
     }
 
     // 3) 특이사항 별도 페이지 (3건 이상) — 각 특이사항을 페이지로
@@ -340,7 +357,14 @@ function buildReportHTML(){
       const isFirst    = p===0;
       const isLastNorm = p===normalPages-1;
       const showInlineSpec = isLastNorm && inlineSpec;
-      const slotsPerCol    = showInlineSpec ? 2 : 3;
+      // 인라인 특이사항이고 별도 페이지 사용 시 슬롯 0(사진 없음), 그 외 슬롯 3
+      // 인라인 특이사항이고 같은 페이지 사용 시(사진 1~2장): 슬롯 2장으로 표시
+      let slotsPerCol;
+      if (showInlineSpec) {
+        slotsPerCol = inlineExtraPage ? 0 : 2;
+      } else {
+        slotsPerCol = 3;
+      }
 
       const pageNo = p + 1;
       const pageLabel = totalPagesForUnit>1 ? ` (${pageNo}/${totalPagesForUnit}쪽)` : '';
@@ -352,15 +376,15 @@ function buildReportHTML(){
         ${headBar(`${escH(apt)} | ${dateStr} | ${t('main.worker')}: ${escH(worker)}`)}
         <div class="rp-ubar">
           <div class="rp-uname">${unitTitle}</div>
-          <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel} | ${t('report.detail.before')} ${u.before.length}${getCurrentLang()==='en'?'':'장'} · ${t('report.detail.after')} ${u.after.length}${getCurrentLang()==='en'?'':'장'}${specCount?` · ${t('report.detail.special')} ${specCount}${getCurrentLang()==='en'?'':'건'}`:''}</div>
+          <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel} | ${labelBefore} ${u.before.length}${unitOfPhoto} · ${labelAfter} ${u.after.length}${unitOfPhoto}${specCount?` · ${labelSpecial} ${specCount}${unitOfCount}`:''}</div>
         </div>
         <div class="rp-photos${showInlineSpec?' has-sp':''}">
           <div class="rp-col">
-            <div class="rp-clbl rp-lbl-b">🔴 ${t('report.detail.before').toUpperCase()}${bSlice.length?` — ${p*3+1}~${p*3+bSlice.length}${getCurrentLang()==='en'?'':'장'}`:''}</div>
+            <div class="rp-clbl rp-lbl-b">🔴 ${labelBefore.toUpperCase()}${bSlice.length?` — ${p*3+1}~${p*3+bSlice.length}${unitOfPhoto}`:''}</div>
             ${colPhotosFn(bSlice, slotsPerCol)}
           </div>
           <div class="rp-col">
-            <div class="rp-clbl rp-lbl-a">🟢 ${t('report.detail.after').toUpperCase()}${aSlice.length?` — ${p*3+1}~${p*3+aSlice.length}${getCurrentLang()==='en'?'':'장'}`:''}</div>
+            <div class="rp-clbl rp-lbl-a">🟢 ${labelAfter.toUpperCase()}${aSlice.length?` — ${p*3+1}~${p*3+aSlice.length}${unitOfPhoto}`:''}</div>
             ${colPhotosFn(aSlice, slotsPerCol)}
           </div>
         </div>

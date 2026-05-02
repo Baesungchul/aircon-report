@@ -1123,10 +1123,100 @@ async function doDelSave(saveId) {
    업체 정보 모달
 ═══════════════════════════════ */
 function openCoModal() {
+  // 업종 드롭다운 채우기 (한 번만)
+  populateIndustryDropdowns();
   updateCoPreview();
   applyCoIcon();
   document.getElementById('coModal').classList.add('open');
   document.getElementById('coName').focus();
+}
+
+// 업종 드롭다운 채우기
+function populateIndustryDropdowns() {
+  const majorSel = document.getElementById('coIndustryMajor');
+  const minorSel = document.getElementById('coIndustryMinor');
+  if (!majorSel || !minorSel) return;
+
+  // 이미 채워져있으면 스킵
+  if (majorSel.options.length <= 1 && typeof INDUSTRIES !== 'undefined') {
+    majorSel.innerHTML = '<option value="">선택 안함</option>';
+    INDUSTRIES.forEach(major => {
+      const opt = document.createElement('option');
+      opt.value = major.id;
+      opt.textContent = major.label;
+      majorSel.appendChild(opt);
+    });
+  }
+
+  // 저장된 값 복원
+  try {
+    const ci = JSON.parse(localStorage.getItem(CO_KEY) || '{}');
+    if (ci.coIndustryMajor) {
+      majorSel.value = ci.coIndustryMajor;
+      updateMinorDropdown(ci.coIndustryMajor, ci.coIndustryMinor);
+    }
+  } catch(e) {}
+
+  // 대분류 변경 시 소분류 갱신
+  if (!majorSel._bound) {
+    majorSel.addEventListener('change', () => {
+      updateMinorDropdown(majorSel.value, '');
+      // 대분류 변경 시 소분류 초기화 (자동 적용은 하지 않음 - 사용자가 소분류 선택해야)
+    });
+    majorSel._bound = true;
+  }
+
+  // 소분류 변경 시 자동 입력
+  if (!minorSel._bound) {
+    minorSel.addEventListener('change', () => {
+      const item = findIndustryItem(majorSel.value, minorSel.value);
+      if (item) {
+        // 비어있는 항목만 자동 채우기 (사용자가 이미 입력한 건 보존)
+        const titleEl = document.getElementById('coReportTitle');
+        const unitEl  = document.getElementById('coUnitLabel');
+        const stageEl = document.getElementById('coStageLabel');
+        if (titleEl && !titleEl.value.trim()) titleEl.value = item.title;
+        if (unitEl  && !unitEl.value.trim())  unitEl.value  = item.unit;
+        if (stageEl && !stageEl.value.trim()) stageEl.value = item.stage;
+        // 항상 적용 옵션 - 비어있지 않아도 덮어씀 (사용자 선택)
+        if (confirm(`"${item.label}" 업종으로 자동 입력하시겠습니까?\n\n📄 보고서 제목: ${item.title}\n🏷️ 현장 호칭: ${item.unit}\n🔧 작업 단계: ${item.stage}\n\n[확인] 모두 덮어쓰기 / [취소] 빈 항목만 채우기`)) {
+          if (titleEl) titleEl.value = item.title;
+          if (unitEl)  unitEl.value  = item.unit;
+          if (stageEl) stageEl.value = item.stage;
+        }
+        updateCoPreview();
+      }
+    });
+    minorSel._bound = true;
+  }
+}
+
+function updateMinorDropdown(majorId, currentMinorId) {
+  const minorSel = document.getElementById('coIndustryMinor');
+  if (!minorSel) return;
+  minorSel.innerHTML = '';
+
+  if (!majorId) {
+    minorSel.innerHTML = '<option value="">먼저 대분류 선택</option>';
+    return;
+  }
+
+  const major = INDUSTRIES.find(i => i.id === majorId);
+  if (!major || major.items.length === 0) {
+    minorSel.innerHTML = '<option value="">(직접 입력)</option>';
+    return;
+  }
+
+  minorSel.innerHTML = '<option value="">소분류 선택</option>';
+  major.items.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.id;
+    opt.textContent = item.label;
+    minorSel.appendChild(opt);
+  });
+
+  // 저장된 값 복원
+  if (currentMinorId) minorSel.value = currentMinorId;
 }
 
 function closeCoModal() {
@@ -1151,6 +1241,8 @@ function saveCoInfo() {
     closeCoModal();
     showToast('업체 정보 저장됨 ✓', 'ok');
     sessionAutoSave();
+    // 업종별 호칭 즉시 적용
+    if (typeof applyCustomLabels === 'function') applyCustomLabels();
   } catch(e) {
     if (e.name === 'QuotaExceededError') {
       showToast('이미지가 너무 큽니다. 더 작은 이미지를 사용하세요', 'err');

@@ -4,7 +4,7 @@
 let units = [];
 let nid   = 1;
 const CO_KEY  = 'ac_co_v2';
-const CO_FIELDS = ['coName','coBrand','coTel','coBiz','coAddr','coEmail','coWeb','coDesc'];
+const CO_FIELDS = ['coName','coBrand','coTel','coBiz','coAddr','coEmail','coWeb','coDesc','coReportTitle','coUnitLabel','coStageLabel','coIndustryMajor','coIndustryMinor'];
 let coIconData = '';   // '' = 기본, 이모지 1글자, 또는 'data:image/...' (업로드 이미지)
 const CO_ICON_KEY = 'ac_co_icon_v1';
 
@@ -22,6 +22,8 @@ async function init() {
       if (el && ci[id]) el.value = ci[id];
     });
     updateCoHdrBtn();
+    // 업종별 호칭이 있으면 메인 화면 라벨 변경
+    applyCustomLabels();
   } catch(e){}
 
   // 아이콘 로드
@@ -274,3 +276,30 @@ function setupBackButtonHandler() {
     bind();
   }
 })();
+
+// 업체정보의 호칭 설정에 따라 메인 화면 라벨/플레이스홀더 동적 변경
+function applyCustomLabels() {
+  try {
+    const ci = JSON.parse(localStorage.getItem(CO_KEY) || '{}');
+    const unitLabel = (ci.coUnitLabel || '').trim();  // "호수" / "현장" / "차량" 등
+    const stageLabel = (ci.coStageLabel || '').trim(); // "작업" / "시공" / "청소" 등
+
+    if (unitLabel) {
+      // newName placeholder
+      const newName = document.getElementById('newName');
+      if (newName) newName.placeholder = `${unitLabel} 입력`;
+
+      // 호수 검색 placeholder
+      const searchInp = document.getElementById('searchUnit');
+      if (searchInp) searchInp.placeholder = `🔍 ${unitLabel} 검색`;
+    }
+
+    // app.js의 작업명 placeholder도 변경 가능
+    if (stageLabel) {
+      const aptName = document.getElementById('aptName');
+      if (aptName && !aptName.placeholder.includes('현장')) {
+        aptName.placeholder = `${stageLabel}명을 입력하세요`;
+      }
+    }
+  } catch(e) {}
+}

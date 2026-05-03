@@ -94,7 +94,11 @@ function renderAll() {
           <button class="add-sp-btn" data-uid="${u.id}">＋ 특이사항 추가</button>
         </div>
         <div class="cust-sec">
-          <div class="cust-hdr">📞 고객 정보 <span class="cust-hint">(전화번호 입력 시 자동 저장)</span></div>
+          <div class="cust-hdr">
+            <span>📞 고객 정보</span>
+            <button class="cust-save-btn ${(u.customer?.phone||'').replace(/[^\d]/g,'').length<9?'disabled':''}" data-uid="${u.id}" ${(u.customer?.phone||'').replace(/[^\d]/g,'').length<9?'disabled':''}>💾 저장</button>
+          </div>
+          <div class="cust-save-status" data-uid="${u.id}">${(u.customer?.phone||'').trim() ? '' : '<span style="color:var(--mu);">전화번호를 입력하세요</span>'}</div>
           <div class="cust-grid">
             <input class="cust-inp" type="text" inputmode="tel" placeholder="📞 전화번호 (예: 010-1234-5678)" data-uid="${u.id}" data-field="phone" value="${escH(u.customer?.phone || '')}">
             <input class="cust-inp" type="text" placeholder="🏠 주소 (선택)" data-uid="${u.id}" data-field="address" value="${escH(u.customer?.address || '')}">

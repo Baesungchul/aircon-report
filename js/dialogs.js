@@ -407,7 +407,7 @@ async function doSave() {
         try {
           await customerSave({
             phone: norm,
-            name: '',
+            // name 미전달 - 기존 이름 보존, 신규 시 visit.unit 사용
             address: u.customer.address || '',
             memo: u.customer.memo || '',
             visit: {

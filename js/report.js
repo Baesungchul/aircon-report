@@ -424,7 +424,7 @@ function buildReportHTML(){
       if (i < photos.length) {
         items.push(`<div class="rp-pitem"><img src="${photoUrl(photos[i])}"></div>`);
       } else {
-        items.push(`<div class="rp-pitem empty"></div>`);
+        items.push(`<div class="rp-pitem rp-empty"></div>`);
       }
     }
     return `<div class="rp-plist">${items.join('')}</div>`;
@@ -504,15 +504,21 @@ async function buildAndPreview(){
   const scroll=document.getElementById('pvScroll');
   scroll.innerHTML='';
   const pages=document.getElementById('rpWrap').querySelectorAll('.rpage');
-  const scale=Math.min(0.72,(window.innerWidth-40)/794);
+  const baseScale=Math.min(0.72,(window.innerWidth-40)/794);
   pages.forEach((pg,i)=>{
     const wrap=document.createElement('div'); wrap.className='pv-pg-wrap';
     const lbl=document.createElement('div'); lbl.className='pv-pg-num'; lbl.textContent=`${i+1} / ${pages.length}페이지`;
-    const clone=pg.cloneNode(true); clone.style.transform=`scale(${scale})`; clone.style.transformOrigin='top left'; clone.style.width='794px';
-    const box=document.createElement('div'); box.className='pv-pg-scaled'; box.style.width=`${794*scale}px`; box.style.height=`${1123*scale}px`;
+    const clone=pg.cloneNode(true);
+    clone.style.transform=`scale(${baseScale})`;
+    clone.style.transformOrigin='top left';
+    clone.style.width='794px';
+    clone.dataset.baseScale = baseScale;  // ★ 기본 스케일 저장
+    const box=document.createElement('div'); box.className='pv-pg-scaled'; box.style.width=`${794*baseScale}px`; box.style.height=`${1123*baseScale}px`;
     box.appendChild(clone); wrap.appendChild(lbl); wrap.appendChild(box); scroll.appendChild(wrap);
   });
   document.getElementById('pvModal').classList.add('open');
+  // 미리보기 열렸으니 손가락 줌 허용
+  if (typeof setViewportZoom === 'function') setViewportZoom(true);
   showToast(`보고서 ${pages.length}페이지 준비됨`,'ok');
 }
 

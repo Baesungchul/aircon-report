@@ -53,21 +53,40 @@ async function initCustomersCache() {
     if (ws) {
       const rows = XLSX.utils.sheet_to_json(ws);
       rows.forEach(r => {
-        const phone = (r.phone || '').trim();
+        const rawPhone = (r.phone || '').trim();
+        if (!rawPhone) return;
+        // ★ 정규화 - 하이픈 형식 통일
+        const phone = normalizePhone(rawPhone);
         if (!phone) return;
-        _customersCache.set(phone, {
-          phone: phone,
-          name: r.name || '',
-          address: r.address || '',
-          email: r.email || '',
-          memo: r.memo || '',
-          firstVisit: r.first_visit || '',
-          lastVisit: r.last_visit || '',
-          visitCount: parseInt(r.visit_count) || 0,
-          createdAt: r.created_at || '',
-          updatedAt: r.updated_at || '',
-          visits: []  // Visits 시트에서 채워짐
-        });
+
+        // 이미 같은 정규화 phone이 있으면 병합 (xlsx에서 중복 발견 시)
+        const existing = _customersCache.get(phone);
+        if (existing) {
+          // 더 최신 데이터로 병합
+          if ((r.updated_at || '') > (existing.updatedAt || '')) {
+            existing.name = r.name || existing.name;
+            existing.address = r.address || existing.address;
+            existing.email = r.email || existing.email;
+            existing.memo = r.memo || existing.memo;
+            existing.lastVisit = r.last_visit || existing.lastVisit;
+            existing.visitCount = parseInt(r.visit_count) || existing.visitCount;
+            existing.updatedAt = r.updated_at || existing.updatedAt;
+          }
+        } else {
+          _customersCache.set(phone, {
+            phone: phone,
+            name: r.name || '',
+            address: r.address || '',
+            email: r.email || '',
+            memo: r.memo || '',
+            firstVisit: r.first_visit || '',
+            lastVisit: r.last_visit || '',
+            visitCount: parseInt(r.visit_count) || 0,
+            createdAt: r.created_at || '',
+            updatedAt: r.updated_at || '',
+            visits: []
+          });
+        }
       });
     }
 
@@ -76,16 +95,26 @@ async function initCustomersCache() {
     if (wsV) {
       const visits = XLSX.utils.sheet_to_json(wsV);
       visits.forEach(v => {
-        const phone = (v.phone || '').trim();
+        const rawPhone = (v.phone || '').trim();
+        if (!rawPhone) return;
+        const phone = normalizePhone(rawPhone);
         if (!phone) return;
         const c = _customersCache.get(phone);
         if (c) {
-          c.visits.push({
-            date: v.date || '',
-            apt: v.work_site || '',
-            unit: v.unit || '',
-            work: v.work_detail || ''
-          });
+          // 같은 날짜+호수+작업장 중복 방지
+          const dup = c.visits.find(vv =>
+            vv.date === (v.date || '') &&
+            vv.unit === (v.unit || '') &&
+            vv.apt === (v.work_site || '')
+          );
+          if (!dup) {
+            c.visits.push({
+              date: v.date || '',
+              apt: v.work_site || '',
+              unit: v.unit || '',
+              work: v.work_detail || ''
+            });
+          }
         }
       });
     }
@@ -126,7 +155,7 @@ async function initCustomersCache() {
 // 고객 추가/업데이트 (캐시 + 디바운스 후 파일 쓰기)
 // ════════════════════════════════════════
 async function customerSave(info) {
-  // info: { phone, name, address, email, memo, visit }
+  // info: { phone, name, address, email, memo, visit, allowEmpty }
   await initCustomersCache();
 
   const phone = normalizePhone(info.phone);
@@ -140,16 +169,17 @@ async function customerSave(info) {
   let customer = _customersCache.get(phone);
 
   if (customer) {
-    // 기존 고객
-    if (info.name && info.name.trim())     customer.name    = info.name.trim();
-    if (info.address && info.address.trim()) customer.address = info.address.trim();
-    if (info.email && info.email.trim())   customer.email   = info.email.trim();
-    if (info.memo && info.memo.trim())     customer.memo    = info.memo.trim();
+    // 기존 고객 - 모든 필드를 항상 업데이트 (빈 문자열도 반영)
+    // info에 명시된 필드는 항상 적용 (undefined만 보존)
+    if (info.name !== undefined)    customer.name    = (info.name || '').trim();
+    if (info.address !== undefined) customer.address = (info.address || '').trim();
+    if (info.email !== undefined)   customer.email   = (info.email || '').trim();
+    if (info.memo !== undefined)    customer.memo    = (info.memo || '').trim();
 
     if (visit) {
       customer.lastVisit = visit.date || now.slice(0, 10);
       customer.visits = customer.visits || [];
-      // 같은 날짜+호수 중복 방지
+      // 같은 날짜+호수+작업장 중복 방지
       const dupIdx = customer.visits.findIndex(v =>
         v.date === visit.date && v.unit === visit.unit && v.apt === visit.apt
       );
@@ -161,11 +191,16 @@ async function customerSave(info) {
       customer.visitCount = customer.visits.length;
     }
     customer.updatedAt = now;
+
+    // ★ 이름이 비었고 visit 있으면 호수명 적용 (단, 사용자가 빈 값으로 명시 갱신한 경우는 호수명 적용)
+    if (!customer.name && visit?.unit) {
+      customer.name = visit.unit;
+    }
   } else {
     // 신규
     customer = {
       phone,
-      name: (info.name || '').trim(),
+      name: (info.name || '').trim() || (visit?.unit || ''),  // 신규 시 비어있으면 호수명
       address: (info.address || '').trim(),
       email: (info.email || '').trim(),
       memo: (info.memo || '').trim(),
@@ -176,11 +211,6 @@ async function customerSave(info) {
       createdAt: now,
       updatedAt: now
     };
-  }
-
-  // 이름 비어있으면 호수명 사용
-  if (!customer.name && visit?.unit) {
-    customer.name = visit.unit;
   }
 
   // 캐시 업데이트

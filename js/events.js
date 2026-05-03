@@ -53,14 +53,50 @@ function bindAll() {
   document.getElementById('btnJPG').addEventListener('click', exportJPG);
   document.getElementById('btnPDF2').addEventListener('click', exportPDF);
   document.getElementById('btnJPG2').addEventListener('click', exportJPG);
-  document.getElementById('btnPvClose').addEventListener('click', ()=>document.getElementById('pvModal').classList.remove('open'));
+  document.getElementById('btnPvClose').addEventListener('click', () => {
+    document.getElementById('pvModal').classList.remove('open');
+    // 줌 리셋 - 기본 스케일로 복귀
+    document.querySelectorAll('#pvScroll .rpage').forEach(p => {
+      const baseScale = parseFloat(p.dataset.baseScale) || 0.72;
+      p.style.transform = `scale(${baseScale})`;
+      const box = p.parentElement;
+      if (box && box.classList.contains('pv-pg-scaled')) {
+        box.style.width = `${794 * baseScale}px`;
+        box.style.height = `${1123 * baseScale}px`;
+      }
+    });
+    _pvZoom = 1;
+    // viewport 손가락 줌 차단으로 복귀
+    setViewportZoom(false);
+  });
 
-  // 미리보기 줌 컨트롤
+  // viewport 메타 변경 - 손가락 줌 활성/비활성
+  function setViewportZoom(allow) {
+    const meta = document.getElementById('metaViewport');
+    if (!meta) return;
+    if (allow) {
+      meta.setAttribute('content', 'width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes');
+    } else {
+      meta.setAttribute('content', 'width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no');
+    }
+  }
+  // 전역 노출 (다른 파일에서도 호출 가능)
+  window.setViewportZoom = setViewportZoom;
+
+  // 미리보기 줌 컨트롤 - 기본 스케일에 사용자 줌 배율 적용
   let _pvZoom = 1;
   function setPvZoom(z) {
     _pvZoom = Math.max(0.5, Math.min(3, z));
     document.querySelectorAll('#pvScroll .rpage').forEach(p => {
-      p.style.transform = `scale(${_pvZoom})`;
+      const baseScale = parseFloat(p.dataset.baseScale) || 0.72;
+      const finalScale = baseScale * _pvZoom;
+      p.style.transform = `scale(${finalScale})`;
+      // 부모 박스도 같이 크기 변경 (스크롤 영역 위해)
+      const box = p.parentElement;
+      if (box && box.classList.contains('pv-pg-scaled')) {
+        box.style.width = `${794 * finalScale}px`;
+        box.style.height = `${1123 * finalScale}px`;
+      }
     });
   }
   document.getElementById('btnPvZoomIn')?.addEventListener('click', () => setPvZoom(_pvZoom + 0.2));
@@ -406,15 +442,71 @@ document.addEventListener('input', e => {
   }
 
   u.customer[field] = el.value;
+  u.customer._dirty = true;  // 미저장 변경 표시
   sessionAutoSave();
 
-  // ★★ 입력 후 700ms 동안 추가 입력 없으면 customers DB에 저장
-  // (호수별 단일 타이머 - 같은 호수의 다른 필드 변경 시 타이머 리셋)
-  if (!u._custSaveTimer) u._custSaveTimer = null;
-  clearTimeout(u._custSaveTimer);
-  u._custSaveTimer = setTimeout(async () => {
+  // 호수 카드의 저장 버튼 상태 갱신
+  updateCustSaveBtnState(u.id);
+});
+
+// 호수 카드의 저장 버튼 상태 표시 갱신
+function updateCustSaveBtnState(unitId) {
+  const u = units.find(x => String(x.id) === String(unitId));
+  if (!u) return;
+  const statusEl = document.querySelector(`.cust-save-status[data-uid="${unitId}"]`);
+  const btnEl = document.querySelector(`.cust-save-btn[data-uid="${unitId}"]`);
+  if (!statusEl || !btnEl) return;
+
+  const hasPhone = (u.customer?.phone || '').trim().length >= 9;
+  const dirty = u.customer?._dirty;
+
+  if (!hasPhone) {
+    btnEl.disabled = true;
+    btnEl.classList.add('disabled');
+    statusEl.innerHTML = '<span style="color:var(--mu);">전화번호를 입력하세요</span>';
+  } else if (dirty) {
+    btnEl.disabled = false;
+    btnEl.classList.remove('disabled');
+    statusEl.innerHTML = '<span style="color:var(--wn);">● 저장 안 됨</span>';
+  } else if (u.customer?._savedAt) {
+    btnEl.disabled = false;
+    btnEl.classList.remove('disabled');
+    statusEl.innerHTML = `<span style="color:var(--ac2);">✓ ${u.customer._savedAt} 저장됨</span>`;
+  } else {
+    btnEl.disabled = false;
+    btnEl.classList.remove('disabled');
+    statusEl.innerHTML = '';
+  }
+}
+
+// 호수 카드의 저장 버튼 클릭 (이벤트 위임)
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.cust-save-btn');
+  if (!btn) return;
+  e.stopPropagation();
+
+  const uid = btn.dataset.uid;
+  const u = units.find(x => String(x.id) === String(uid));
+  if (!u) return;
+
+  if (!u.customer?.phone || u.customer.phone.replace(/[^\d]/g,'').length < 9) {
+    showToast('올바른 전화번호를 입력하세요', 'err');
+    return;
+  }
+
+  try {
+    btn.disabled = true;
     await saveCustomerForUnit(u);
-  }, 700);
+    u.customer._dirty = false;
+    const now = new Date();
+    u.customer._savedAt = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    updateCustSaveBtnState(uid);
+    // 폴더 xlsx 즉시 쓰기
+    if (typeof flushCustomersXlsx === 'function') flushCustomersXlsx().catch(()=>{});
+  } catch(err) {
+    btn.disabled = false;
+    showToast('저장 실패: ' + (err.message || err), 'err');
+  }
 });
 
 // 호수의 고객 정보를 customers DB에 저장 (재방문이면 매칭)
@@ -466,7 +558,7 @@ async function saveCustomerForUnit(u) {
 
     const result = await customerSave({
       phone: norm,
-      name: '',
+      // name은 보내지 않음 - 기존 이름 보존, 신규 시에만 visit.unit 사용
       address: address,
       memo: memo,
       visit: {
@@ -532,6 +624,14 @@ async function flushAllCustomers() {
 
     try {
       await saveCustomerForUnit(u);
+      // dirty 해제 + 저장 시각 기록
+      if (u.customer) {
+        u.customer._dirty = false;
+        const now = new Date();
+        u.customer._savedAt = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      }
+      // UI 갱신 (열려있는 카드만)
+      if (typeof updateCustSaveBtnState === 'function') updateCustSaveBtnState(u.id);
       count++;
     } catch(e) {
       console.error(`  ❌ ${u.name}:`, e);

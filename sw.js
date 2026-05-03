@@ -1,5 +1,5 @@
-// 서비스워커 v28 - 고객 화면 개선 (기간/수정/엑셀)
-const CACHE = 'ac1004-v28';
+// 서비스워커 v31 - 엑셀 직접 실행 + 컴팩트 카드 + 타이틀 줄바꿈
+const CACHE = 'ac1004-v31';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

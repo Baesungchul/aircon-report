@@ -1,5 +1,5 @@
-// 서비스워커 v20 - 첫 실행 온보딩
-const CACHE = 'ac1004-v20';
+// 서비스워커 v24 - 줌 버그 수정
+const CACHE = 'ac1004-v24';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

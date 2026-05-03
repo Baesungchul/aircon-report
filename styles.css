@@ -377,10 +377,10 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .rp-lbl-b{background:#fff0ee;color:#c62828;border:2px solid #fecaca;}
 .rp-lbl-a{background:#e8f5e9;color:#2e7d32;border:2px solid #bbf7d0;}
 .rp-plist{display:flex;flex-direction:column;gap:6px;overflow:hidden;flex:1;height:100%;}
-.rp-plist .rp-pitem{flex:1 1 0 !important;min-height:0;height:0;}
-.rp-pitem{border-radius:7px;overflow:hidden;border:1px solid #e0e4f0;background:#fafafa;display:flex;align-items:center;justify-content:center;}
+.rp-plist .rp-pitem{flex:1 1 0 !important;min-height:0;height:0;padding:0 !important;}
+.rp-pitem{border-radius:7px;overflow:hidden;border:1px solid #e0e4f0;background:#fafafa;display:flex;align-items:center;justify-content:center;padding:0;}
 .rp-pitem img{width:100%;height:100%;object-fit:cover;display:block;}
-.rp-pitem.empty{background:#f5f5f5;border:1px dashed #e0e0e0;}
+.rp-pitem.rp-empty{background:#f5f5f5;border:1px dashed #e0e0e0;padding:0 !important;}
 .rp-empty-ph{display:flex;align-items:center;justify-content:center;background:#f7f8fc;border-radius:6px;border:1.5px dashed #d0d5ea;flex:1;font-size:26px;color:#ccc;}
 
 /* ── 특이사항 섹션 ── */
@@ -931,10 +931,37 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
   border-radius:10px;
 }
 .cust-hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
   font-size:13px;
   font-weight:700;
   color:var(--ac);
+  margin-bottom:6px;
+}
+.cust-save-btn{
+  background:var(--ac);
+  color:#fff;
+  border:none;
+  border-radius:6px;
+  padding:5px 10px;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+  flex-shrink:0;
+}
+.cust-save-btn:active{transform:scale(.95);}
+.cust-save-btn.disabled,
+.cust-save-btn:disabled{
+  background:var(--sf3);
+  color:var(--mu);
+  cursor:not-allowed;
+}
+.cust-save-status{
+  font-size:11px;
   margin-bottom:8px;
+  min-height:14px;
+  font-weight:600;
 }
 .cust-hint{
   font-size:10px;

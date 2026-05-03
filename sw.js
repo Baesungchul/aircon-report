@@ -1,5 +1,5 @@
-// 서비스워커 v35 - 불러오기 시 저장 확인 + 같은 작업 처리
-const CACHE = 'ac1004-v35';
+// 서비스워커 v38 - 작업 중복 표시 방지
+const CACHE = 'ac1004-v38';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

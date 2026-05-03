@@ -959,10 +959,54 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 ═══════════════════════════════════════════════ */
 .cust-sec{
   margin-top:12px;
-  padding:12px;
+  padding:0;
   background:rgba(77,208,225,.06);
   border:1px solid rgba(77,208,225,.2);
   border-radius:10px;
+  overflow:hidden;
+}
+.cust-toggle{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 12px;
+  cursor:pointer;
+  user-select:none;
+  gap:8px;
+}
+.cust-toggle:active{background:rgba(77,208,225,.1);}
+.cust-toggle-label{
+  font-size:13px;
+  font-weight:700;
+  color:var(--ac);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:1;
+  min-width:0;
+}
+.cust-toggle-info{
+  font-size:11px;
+  color:var(--tx);
+  font-weight:500;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  min-width:0;
+}
+.cust-toggle-empty{
+  font-size:11px;
+  color:var(--mu);
+  font-weight:400;
+}
+.cust-toggle-arrow{
+  font-size:10px;
+  color:var(--mu);
+  flex-shrink:0;
+}
+.cust-content{
+  padding:0 12px 12px 12px;
+  border-top:1px solid rgba(77,208,225,.15);
 }
 .cust-hdr{
   display:flex;
@@ -971,8 +1015,30 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
   font-size:13px;
   font-weight:700;
   color:var(--ac);
+  margin-top:10px;
   margin-bottom:6px;
 }
+
+/* 복사 버튼들 */
+.cust-copy-row{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-bottom:8px;
+}
+.cust-copy-btn{
+  background:rgba(77,208,225,.12);
+  color:var(--ac);
+  border:1px dashed var(--ac);
+  border-radius:6px;
+  padding:6px 10px;
+  font-size:11px;
+  font-weight:600;
+  cursor:pointer;
+  flex:1;
+  min-width:140px;
+}
+.cust-copy-btn:active{transform:scale(.96);background:rgba(77,208,225,.2);}
 .cust-save-btn{
   background:var(--ac);
   color:#fff;

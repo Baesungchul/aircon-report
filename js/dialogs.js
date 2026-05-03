@@ -243,7 +243,9 @@ async function saveToFolder() {
       name: u.name,
       beforeCount: u.before.length,
       afterCount: u.after.length,
-      specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length }))
+      specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length })),
+      // 고객 정보 포함 (마케팅 데이터)
+      customer: u.customer || { phone: '', address: '', memo: '' }
     }))
   };
 
@@ -652,6 +654,8 @@ async function renderLoadList() {
       const unitArr = s.data.units || [];
       const uc = unitArr.length;
       const phc = unitArr.reduce((a,u)=>a+(u.beforeCount||0)+(u.afterCount||0),0);
+      // 전화번호가 있는 호수 카운트
+      const custCount = unitArr.filter(u => u.customer?.phone).length;
 
       // 호수 미리보기 (최대 5개까지 표시, 그 이상은 +N)
       const unitNames = unitArr.map(u => u.name).filter(n => n);
@@ -667,7 +671,7 @@ async function renderLoadList() {
         <div class="sl-info" data-fload="${s.name}" style="cursor:pointer;">
           <div class="sl-name">📁 ${escH(s.data.apt || '작업')} <span style="font-size:11px;color:var(--mu);font-weight:500;">· ${s.data.date || s.name}</span></div>
           ${unitsPreview ? `<div class="sl-units" style="font-size:11px;color:var(--ac2);margin:3px 0;line-height:1.4;word-break:break-all;">🏠 ${unitsPreview}</div>` : ''}
-          <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장</div>
+          <div class="sl-meta">${ts} · ${uc}호수 · 사진 ${phc}장${custCount > 0 ? ` · 📞${custCount}명` : ''}</div>
         </div>
         <div class="sl-btns">
           <button class="btn b-blue b-xs" data-fload="${s.name}">불러오기</button>
@@ -1004,7 +1008,9 @@ async function restoreFromData(data, dateDir) {
       before: [],
       after: [],
       specials: (u.specials||[]).map(s => ({ desc:s.desc||'', photos:[] })),
-      open: false
+      open: false,
+      // 고객 정보 복원
+      customer: u.customer || { phone: '', address: '', memo: '' }
     };
 
     if (restorePhotos && dateDir) {

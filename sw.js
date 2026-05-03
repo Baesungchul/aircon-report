@@ -1,5 +1,5 @@
-// 서비스워커 v31 - 엑셀 직접 실행 + 컴팩트 카드 + 타이틀 줄바꿈
-const CACHE = 'ac1004-v31';
+// 서비스워커 v33 - 작업 기록 통합 (전화번호 없는 작업도 표시)
+const CACHE = 'ac1004-v33';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

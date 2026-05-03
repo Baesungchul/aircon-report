@@ -88,7 +88,7 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .hf input[type="date"]::-webkit-date-and-time-value{text-align:center;}
 
 /* 버튼 그리드 (4열 균등) */
-.hdr-btns{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;width:100%;}
+.hdr-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:100%;}
 .hdr-btns .btn{min-height:36px;width:100%;justify-content:center;padding:6px 4px;font-size:11px;font-weight:600;}
 .hdr-btns .co-hdr-btn{min-height:36px;width:100%;font-size:11px;}
 
@@ -1097,6 +1097,16 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
   color:var(--mu);
   overflow:hidden;
   text-overflow:ellipsis;
+}
+/* 작업 카드 (전화번호 없는 작업) - 살짝 회색 */
+.cust-card-work{
+  background:var(--sf2);
+  border-color:var(--bd);
+  opacity:.92;
+}
+.cust-card-work .cust-card-name{
+  color:var(--mu);
+  font-weight:600;
 }
 
 /* ═══════════════════════════════════════════════

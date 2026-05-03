@@ -31,7 +31,7 @@
     <div class="logo-ic" id="appLogoIcon">❄️</div>
     <div><div class="logo-tx"><span class="logo-tx-1">작업</span> <span class="logo-tx-2">보고서 작성기</span></div></div>
     <div class="save-status" id="saveStatus">💾 저장됨</div>
-    <button class="hdr-icon-btn" id="btnCustomersHdr" title="고객 목록">👥</button>
+    <button class="hdr-icon-btn" id="btnCustomersHdr" title="작업 기록">📋</button>
     <button class="hdr-toggle" id="hdrToggle" title="메뉴 접기/펼치기">▲</button>
   </div>
   <div class="hdr-collapsible" id="hdrCollapsible">
@@ -41,13 +41,12 @@
       <div class="hf"><label data-i18n="main.worker">담당자</label><input id="workerName" data-i18n-placeholder="main.placeholder.workerName" placeholder="성함"></div>
     </div>
     <div class="hdr-btns">
-      <!-- 1행: 데이터 관리 (4열) -->
+      <!-- 1행: 데이터 관리 (3열) -->
       <button class="co-hdr-btn" id="btnSettings" data-i18n="btn.settings">⚙️ 설정</button>
       <button class="btn b-orange" id="btnNew" data-i18n="btn.newWork">🆕 새작업</button>
       <button class="btn b-gold" id="btnSave" data-i18n="btn.save">💾 저장</button>
-      <button class="btn b-ghost" id="btnLoad" data-i18n="btn.load">📂 불러오기</button>
-      <!-- 2행: 보고서 출력 -->
-      <button class="btn b-blue" id="btnGen" disabled style="grid-column:span 2" data-i18n="btn.preview">📄 미리보기</button>
+      <!-- 2행: 보고서 출력 (3열) -->
+      <button class="btn b-blue" id="btnGen" disabled data-i18n="btn.preview">📄 미리보기</button>
       <button class="btn b-green" id="btnPDF" disabled data-i18n="btn.pdf">⬇️ PDF</button>
       <button class="btn b-orange" id="btnJPG" disabled data-i18n="btn.jpg">🖼️ JPG</button>
     </div>
@@ -385,11 +384,12 @@
 <div class="rd-modal" id="customerModal">
   <div class="rd-box">
     <div class="rd-head">
-      <div class="rd-title" id="customerTitle">👥 고객 목록</div>
+      <div class="rd-title" id="customerTitle">📋 작업 기록</div>
       <button class="rd-close-btn" id="customerClose">✕</button>
     </div>
     <div class="rd-body" id="customerBody"></div>
     <div class="rd-foot">
+      <button class="btn b-blue" id="customerOpenAll">📂 모든 작업</button>
       <button class="btn b-green" id="customerOpenXlsx">📊 엑셀 열기</button>
       <button class="btn b-ghost" id="customerCloseFoot">닫기</button>
     </div>

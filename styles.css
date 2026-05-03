@@ -88,9 +88,18 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .hf input[type="date"]::-webkit-date-and-time-value{text-align:center;}
 
 /* 버튼 그리드 (4열 균등) */
-.hdr-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:100%;}
-.hdr-btns .btn{min-height:36px;width:100%;justify-content:center;padding:6px 4px;font-size:11px;font-weight:600;}
-.hdr-btns .co-hdr-btn{min-height:36px;width:100%;font-size:11px;}
+.hdr-btns{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:100%;}
+.hdr-btns .btn{min-height:36px;width:100%;justify-content:center;padding:5px 2px;font-size:11px;font-weight:600;letter-spacing:-0.3px;}
+.hdr-btns .co-hdr-btn{min-height:36px;width:100%;font-size:11px;letter-spacing:-0.3px;}
+
+/* 좁은 화면에서는 자동 축소 */
+@media (max-width:600px){
+  .hdr-btns{gap:3px;}
+  .hdr-btns .btn,.hdr-btns .co-hdr-btn{font-size:10px;padding:4px 1px;letter-spacing:-0.5px;}
+}
+@media (max-width:380px){
+  .hdr-btns .btn,.hdr-btns .co-hdr-btn{font-size:9px;}
+}
 
 /* BUTTONS - 터치 친화적 크기 */
 .btn{padding:10px 14px;border-radius:8px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;touch-action:manipulation;min-height:40px;}

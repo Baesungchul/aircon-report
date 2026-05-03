@@ -1,5 +1,5 @@
-// 서비스워커 v33 - 작업 기록 통합 (전화번호 없는 작업도 표시)
-const CACHE = 'ac1004-v33';
+// 서비스워커 v35 - 불러오기 시 저장 확인 + 같은 작업 처리
+const CACHE = 'ac1004-v35';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

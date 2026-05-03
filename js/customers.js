@@ -240,7 +240,7 @@ async function exportCustomersXlsx() {
     XLSX.utils.book_append_sheet(wb, ws1, '고객목록');
     XLSX.utils.book_append_sheet(wb, ws2, '방문내역');
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = kstDateStr();
     XLSX.writeFile(wb, `고객목록_${today}.xlsx`);
     showToast(`✓ ${customers.length}명 내보내기 완료`, 'ok');
   } catch(e) {
@@ -274,17 +274,22 @@ async function updateCustomerSummary() {
 
 // 이벤트 바인딩
 function bindCustomerEvents() {
-  const openBtn = document.getElementById('setOpenCustomers');
+  // 헤더의 고객 버튼 (메인)
+  const hdrBtn = document.getElementById('btnCustomersHdr');
+  // 설정 안의 고객 버튼 (호환용 - 이젠 없을 수도)
+  const setBtn = document.getElementById('setOpenCustomers');
   const closeBtn = document.getElementById('customerClose');
   const closeFoot = document.getElementById('customerCloseFoot');
   const exportBtn = document.getElementById('customerExportXlsx');
   const flushBtn = document.getElementById('customerForceFlush');
 
-  if (openBtn) openBtn.addEventListener('click', () => {
-    closeSettings && closeSettings();
+  if (hdrBtn) hdrBtn.addEventListener('click', openCustomerModal);
+
+  if (setBtn) setBtn.addEventListener('click', () => {
     document.getElementById('settingsModal')?.classList.remove('open');
     openCustomerModal();
   });
+
   if (closeBtn) closeBtn.addEventListener('click', closeCustomerModal);
   if (closeFoot) closeFoot.addEventListener('click', closeCustomerModal);
   if (exportBtn) exportBtn.addEventListener('click', exportCustomersXlsx);

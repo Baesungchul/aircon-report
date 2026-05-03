@@ -9,10 +9,57 @@ let coIconData = '';   // '' = 기본, 이모지 1글자, 또는 'data:image/...
 const CO_ICON_KEY = 'ac_co_icon_v1';
 
 /* ═══════════════════════════════
+   시간 헬퍼 (브라우저 로컬 시간대)
+   - localDateStr: YYYY-MM-DD (로컬 기준)
+   - localIsoString: YYYY-MM-DDTHH:mm:ss±HH:MM (로컬 + 오프셋)
+   - localTimeStr: HHMM (로컬)
+═══════════════════════════════ */
+
+// 로컬 시간 기준 YYYY-MM-DD (UTC 변환 없음)
+function localDateStr(d) {
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// 로컬 시간 기준 ISO 8601 (시간대 오프셋 포함)
+// 예: 2026-05-03T10:30:00+09:00 (한국)
+//     2026-05-03T01:30:00+00:00 (영국)
+function localIsoString(d) {
+  d = d || new Date();
+  const tz = -d.getTimezoneOffset();  // 분 단위 (한국 = +540)
+  const sign = tz >= 0 ? '+' : '-';
+  const tzAbs = Math.abs(tz);
+  const tzH = String(Math.floor(tzAbs / 60)).padStart(2, '0');
+  const tzM = String(tzAbs % 60).padStart(2, '0');
+  const y = d.getFullYear();
+  const M = String(d.getMonth() + 1).padStart(2, '0');
+  const D = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${M}-${D}T${h}:${m}:${s}${sign}${tzH}:${tzM}`;
+}
+
+// 로컬 시간 기준 HHMM
+function localTimeStr(d) {
+  d = d || new Date();
+  return String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+}
+
+// 호환성 - 기존 함수명 유지 (모두 브라우저 로컬 시간 사용)
+function kstDateStr(d) { return localDateStr(d); }
+function kstIsoString(d) { return localIsoString(d); }
+function kstTimeStr(d) { return localTimeStr(d); }
+function nowKST() { return new Date(); }
+
+/* ═══════════════════════════════
    INIT
 ═══════════════════════════════ */
 async function init() {
-  document.getElementById('workDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('workDate').value = kstDateStr();
 
   // 회사정보 불러오기
   try {
@@ -115,13 +162,13 @@ async function init() {
         units = [];
         nid = 1;
         document.getElementById('aptName').value    = s.apt||'';
-        document.getElementById('workDate').value   = s.date||new Date().toISOString().split('T')[0];
+        document.getElementById('workDate').value   = s.date||kstDateStr();
         document.getElementById('workerName').value = s.worker||'';
       } else if (s.units && s.units.length > 0) {
         units = normalizeUnits(s.units);
         nid   = s.nid || units.length + 1;
         document.getElementById('aptName').value    = s.apt||'';
-        document.getElementById('workDate').value   = s.date||new Date().toISOString().split('T')[0];
+        document.getElementById('workDate').value   = s.date||kstDateStr();
         document.getElementById('workerName').value = s.worker||'';
       }
       // 업체정보는 항상 복원

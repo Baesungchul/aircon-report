@@ -193,7 +193,7 @@ async function customerUpsert(info) {
   if (!phone) throw new Error('전화번호가 필요합니다');
 
   const existing = await customerGet(phone);
-  const now = new Date().toISOString();
+  const now = kstIsoString();
   const visit = info.visit || null;
 
   let customer;

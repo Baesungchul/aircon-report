@@ -172,11 +172,8 @@ async function saveToFolder() {
         console.warn('기존 폴더 정리 실패:', e.message);
       }
     } else if (candidates.length > 0) {
-      // 같은 작업명은 없지만 다른 작업이 있음 → 시간 추가
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      dateFolderName = `${date}_${hh}${mm}`;
+      // 같은 작업명은 없지만 다른 작업이 있음 → 시간 추가 (KST)
+      dateFolderName = `${date}_${kstTimeStr()}`;
       console.log(`📁 같은 날짜 다른 작업 감지 → ${dateFolderName} 폴더 사용`);
     }
     // candidates 비어있으면 dateFolderName = date 그대로 사용
@@ -231,7 +228,7 @@ async function saveToFolder() {
   const sessionData = {
     version: 1,
     type: 'aircon-report',
-    savedAt: new Date().toISOString(),
+    savedAt: kstIsoString(),
     apt: currentApt,  // 정규화된 작업명 저장
     date,
     worker:  document.getElementById('workerName').value || '',
@@ -387,7 +384,7 @@ async function doSave() {
       label:       name,
       apt:         document.getElementById('aptName').value,
       date:        document.getElementById('workDate').value,
-      savedAt:     new Date().toISOString(),
+      savedAt:     kstIsoString(),
       worker:      document.getElementById('workerName').value,
       companyName: document.getElementById('coName').value,
       companyTel:  document.getElementById('coTel').value,
@@ -414,7 +411,7 @@ async function doSave() {
             address: u.customer.address || '',
             memo: u.customer.memo || '',
             visit: {
-              date: date || new Date().toISOString().slice(0, 10),
+              date: date || kstDateStr(),
               apt: apt,
               unit: u.name,
               work: `Photos: ${u.before.length + u.after.length}${u.specials.length ? `, Notes: ${u.specials.length}` : ''}`
@@ -444,13 +441,9 @@ async function doSave() {
 let _loadDateFrom = null;  // 기간 필터 시작
 let _loadDateTo = null;    // 기간 필터 종료
 
-// 로컬 시간대 기준 YYYY-MM-DD 반환 (UTC 변환 방지)
+// 한국 시간 기준 YYYY-MM-DD 반환
 function getLocalDateStr(d) {
-  d = d || new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return kstDateStr(d);
 }
 
 async function openLoadList() {

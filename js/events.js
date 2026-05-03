@@ -310,7 +310,7 @@ function clearAll() {
 async function newWork() {
   // 작업 내용이 없으면 확인 없이 바로 초기화
   if (units.length === 0) {
-    document.getElementById('workDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('workDate').value = kstDateStr();
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
     showToast('🆕 새 작업', 'ok');
@@ -357,7 +357,7 @@ async function newWork() {
   document.getElementById('btnJPG').disabled = true;
   document.getElementById('aptName').value = '';
   document.getElementById('aptName').placeholder = '작업명을 입력하세요';
-  document.getElementById('workDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('workDate').value = kstDateStr();
 
   if (typeof _indexCounter !== 'undefined') _indexCounter.clear();
   if (typeof _unitWorkNumber !== 'undefined') _unitWorkNumber.clear();
@@ -458,7 +458,7 @@ async function saveCustomerForUnit(u) {
     const memo = (memoEl?.value || u.customer.memo || '').trim();
 
     const apt = document.getElementById('aptName').value || '';
-    const date = document.getElementById('workDate').value || new Date().toISOString().slice(0, 10);
+    const date = document.getElementById('workDate').value || kstDateStr();
     const photoCount = u.before.length + u.after.length;
 
     // 기존 고객 확인 (재방문 토스트용)

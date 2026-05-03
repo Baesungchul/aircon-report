@@ -583,11 +583,8 @@ async function exportPDF(){
         }
         fileName = `${baseName}.pdf`;
       } else {
-        // 새 파일: 시간 추가
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2,'0');
-        const mm = String(now.getMinutes()).padStart(2,'0');
-        fileName = `${baseName}_${hh}${mm}.pdf`;
+        // 새 파일: 시간 추가 (KST)
+        fileName = `${baseName}_${kstTimeStr()}.pdf`;
       }
     }
 
@@ -654,10 +651,8 @@ async function exportJPG(){
         baseFileName = baseName;
       } else {
         // 새 파일: 시간 추가
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2,'0');
-        const mm = String(now.getMinutes()).padStart(2,'0');
-        baseFileName = `${baseName}_${hh}${mm}`;
+        // KST 시간
+        baseFileName = `${baseName}_${kstTimeStr()}`;
       }
     }
   }

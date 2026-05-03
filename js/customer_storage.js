@@ -134,7 +134,7 @@ async function customerSave(info) {
   const digits = phone.replace(/[^\d]/g, '');
   if (digits.length < 9) throw new Error('Phone too short');
 
-  const now = new Date().toISOString();
+  const now = kstIsoString();
   const visit = info.visit || null;
 
   let customer = _customersCache.get(phone);

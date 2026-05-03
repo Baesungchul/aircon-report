@@ -1,5 +1,5 @@
-// 서비스워커 v24 - 줌 버그 수정
-const CACHE = 'ac1004-v24';
+// 서비스워커 v28 - 고객 화면 개선 (기간/수정/엑셀)
+const CACHE = 'ac1004-v28';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

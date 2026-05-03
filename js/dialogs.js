@@ -1,6 +1,34 @@
 /* ═══════════════════════════════
    SAVE DIALOG
 ═══════════════════════════════ */
+
+// 변경 추적: 마지막 저장 후 변경 사항이 있는지
+let _dataDirty = true;  // 처음엔 dirty (한 번은 저장 필요)
+let _lastSaveSnapshot = '';  // 마지막 저장 시점의 데이터 스냅샷
+
+// 데이터 변경 시 호출 (외부에서 사용)
+function markDataDirty() {
+  _dataDirty = true;
+}
+window.markDataDirty = markDataDirty;
+
+// 현재 데이터의 빠른 스냅샷 (변경 비교용 - 사진 ID + 호수명 + 특이사항)
+function quickSnapshot() {
+  try {
+    const apt = document.getElementById('aptName').value || '';
+    const date = document.getElementById('workDate').value || '';
+    const worker = document.getElementById('workerName').value || '';
+    const unitsKey = units.map(u => {
+      const bIds = u.before.map(p => p.id || p.name || '').join('|');
+      const aIds = u.after.map(p => p.id || p.name || '').join('|');
+      const sp = u.specials.map(s => s.desc + ':' + s.photos.length).join(';');
+      const cust = u.customer ? `${u.customer.phone}|${u.customer.address}|${u.customer.memo}` : '';
+      return `${u.name}::${bIds}::${aIds}::${sp}::${cust}`;
+    }).join('@@');
+    return `${apt}|${date}|${worker}|${unitsKey}`;
+  } catch(e) { return Math.random().toString(); }  // 에러 시 항상 dirty로 처리
+}
+
 // 저장 버튼 메인 핸들러 - 상황에 맞게 자동 분기
 async function handleSaveClick() {
   if (units.length === 0) {
@@ -19,7 +47,19 @@ async function handleSaveClick() {
 }
 
 // 폴더 저장 - 사진 + 세션 정보를 한번에
-async function saveToFolder() {
+async function saveToFolder(opts) {
+  opts = opts || {};
+  const isAutoSave = opts.auto === true;  // 자동 저장 (새작업/종료 시)
+
+  // ★ 변경 없으면 빠른 스킵 (자동 저장 시에만)
+  if (isAutoSave) {
+    const currentSnap = quickSnapshot();
+    if (!_dataDirty && currentSnap === _lastSaveSnapshot) {
+      console.log('✓ 변경 없음 - 저장 스킵');
+      return;
+    }
+  }
+
   // 권한 확인 (자동 요청)
   let permOk = false;
   try {
@@ -342,9 +382,18 @@ async function saveToFolder() {
 
   hideOverlay();
 
-  // 결과 토스트
+  // ★ 저장 성공 시 dirty 해제 + 스냅샷 갱신
   if (sessionFileSaved) {
-    if (failed > 0) {
+    _dataDirty = false;
+    _lastSaveSnapshot = quickSnapshot();
+  }
+
+  // 결과 토스트 (자동 저장은 조용히)
+  if (sessionFileSaved) {
+    if (isAutoSave) {
+      // 자동 저장 - 토스트 없음 (조용히)
+      console.log(`💾 자동 저장 완료 - 사진 ${saved}장`);
+    } else if (failed > 0) {
       showToast(`💾 사진 ${saved}장 저장 (${failed}장 실패) ✓ 작업 정보 저장됨`, 'ok');
     } else if (saved === 0) {
       showToast(`💾 작업 정보 저장 완료 (사진은 이미 저장됨)`, 'ok');
@@ -352,7 +401,9 @@ async function saveToFolder() {
       showToast(`💾 사진 ${saved}장 + 작업 정보 저장 완료 ✓`, 'ok');
     }
   } else {
-    showToast('저장 실패: 작업 정보를 저장하지 못했습니다', 'err');
+    if (!isAutoSave) {
+      showToast('저장 실패: 작업 정보를 저장하지 못했습니다', 'err');
+    }
   }
 }
 
@@ -993,8 +1044,48 @@ async function restoreFromData(data, dateDir) {
   units = [];
   nid = 1;
 
+  // ★ customers DB에서 이 작업의 고객 정보 미리 로드 (호수별 역조회용)
+  let customersByUnit = new Map();  // "apt::unit" → customer
+  try {
+    if (typeof customerListAll === 'function') {
+      const allCustomers = await customerListAll();
+      const apt = data.apt || '';
+      allCustomers.forEach(c => {
+        (c.visits || []).forEach(v => {
+          if (v.apt === apt && v.unit) {
+            const key = `${apt}::${v.unit}`;
+            // 같은 호수에 여러 고객이 있어도 가장 최근 것 사용
+            const existing = customersByUnit.get(key);
+            if (!existing || (c.lastVisit || '') > (existing.lastVisit || '')) {
+              customersByUnit.set(key, c);
+            }
+          }
+        });
+      });
+      if (customersByUnit.size > 0) {
+        console.log(`[Load] customers DB에서 ${customersByUnit.size}개 호수 매칭`);
+      }
+    }
+  } catch(e) { console.warn('customers 역조회 실패:', e); }
+
   for (let ui = 0; ui < data.units.length; ui++) {
     const u = data.units[ui];
+
+    // customer 정보: 1차로 저장된 데이터 사용, 없으면 customers DB에서 역조회
+    let customerData = u.customer || { phone: '', address: '', memo: '' };
+    if (!customerData.phone) {
+      const apt = data.apt || '';
+      const matchedCust = customersByUnit.get(`${apt}::${u.name}`);
+      if (matchedCust) {
+        customerData = {
+          phone: matchedCust.phone || '',
+          address: matchedCust.address || '',
+          memo: matchedCust.memo || ''
+        };
+        console.log(`  ✓ ${u.name}: customers DB에서 ${matchedCust.phone} 매칭`);
+      }
+    }
+
     const newUnit = {
       id: nid++,
       name: u.name,
@@ -1002,8 +1093,7 @@ async function restoreFromData(data, dateDir) {
       after: [],
       specials: (u.specials||[]).map(s => ({ desc:s.desc||'', photos:[] })),
       open: false,
-      // 고객 정보 복원
-      customer: u.customer || { phone: '', address: '', memo: '' }
+      customer: customerData
     };
 
     if (restorePhotos && dateDir) {
@@ -1143,6 +1233,34 @@ async function doLoad(saveId) {
     document.getElementById('coName').value=s.companyName||'';
     document.getElementById('coTel').value=s.companyTel||'';
     document.getElementById('coDesc').value=s.companyDesc||'';
+
+    // ★ customers DB에서 빈 customer 자동 채우기
+    try {
+      if (typeof customerListAll === 'function') {
+        const allCustomers = await customerListAll();
+        const apt = s.apt || '';
+        units.forEach(u => {
+          if (!u.customer) u.customer = { phone: '', address: '', memo: '' };
+          if (u.customer.phone) return;  // 이미 있으면 스킵
+          // 매칭 검색
+          let matched = null;
+          for (const c of allCustomers) {
+            const v = (c.visits || []).find(v => v.apt === apt && v.unit === u.name);
+            if (v && (!matched || (c.lastVisit || '') > (matched.lastVisit || ''))) {
+              matched = c;
+            }
+          }
+          if (matched) {
+            u.customer = {
+              phone: matched.phone || '',
+              address: matched.address || '',
+              memo: matched.memo || ''
+            };
+          }
+        });
+      }
+    } catch(e) { console.warn('customers 역조회 실패:', e); }
+
     renderAll(); updateStats();
     document.getElementById('slModal').classList.remove('open');
     hideOverlay();

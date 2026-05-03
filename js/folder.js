@@ -4,6 +4,8 @@
 let _autoSaveTimer = null;
 
 function sessionAutoSave() {
+  // 데이터 변경 표시 (saveToFolder가 변경 감지하도록)
+  if (typeof markDataDirty === 'function') markDataDirty();
   // 변경 후 1.5초 대기 후 저장 (디바운스)
   clearTimeout(_autoSaveTimer);
   showSaveStatus('saving', '저장 중...');

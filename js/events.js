@@ -367,13 +367,12 @@ async function newWork() {
 
   if (!confirm(msg)) return;
 
-  // 폴더 있으면 자동으로 저장 (사용자 추가 확인 없이)
+  // 폴더 있으면 자동으로 저장 (변경 없으면 빠르게 스킵됨)
   if (photoFolderHandle) {
     try {
-      await saveToFolder();
+      await saveToFolder({ auto: true });
     } catch(e) {
       console.warn('자동 저장 실패:', e);
-      // 저장 실패해도 새 작업은 진행 (세션은 IndexedDB에 백업되어 있음)
     }
   }
 
@@ -643,13 +642,17 @@ async function flushAllCustomers() {
 }
 
 // 페이지 종료 시 저장
-window.addEventListener('pagehide', () => {
+// 페이지 종료/숨김 시: 변경 있을 때만 저장 (빠르게)
+function onPageEnd() {
+  // 변경 없으면 스킵 (빠르게 종료)
+  if (typeof _dataDirty !== 'undefined' && !_dataDirty) {
+    return;
+  }
+  // 변경 있을 때만 customer 정보 저장 시도 (비동기, 결과 안 기다림)
   flushAllCustomers().then(() => {
     if (typeof flushCustomersXlsx === 'function') return flushCustomersXlsx();
   }).catch(()=>{});
-});
-window.addEventListener('beforeunload', () => {
-  flushAllCustomers().then(() => {
-    if (typeof flushCustomersXlsx === 'function') return flushCustomersXlsx();
-  }).catch(()=>{});
-});
+}
+
+window.addEventListener('pagehide', onPageEnd);
+window.addEventListener('beforeunload', onPageEnd);

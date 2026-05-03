@@ -238,7 +238,7 @@ async function init() {
 // 뒤로가기 처리: 모달 닫기 → 메인 → 종료 확인
 // ═══════════════════════════════
 function setupBackButtonHandler() {
-  // history에 더미 상태 추가
+  // 메인 상태 1개만 유지
   history.pushState({ page: 'main' }, '', location.href);
 
   window.addEventListener('popstate', (e) => {
@@ -254,9 +254,9 @@ function setupBackButtonHandler() {
     }
 
     if (openModal) {
-      // 모달 닫기 (메인으로)
+      // 모달 닫기 (메인으로 돌아오기만)
       openModal.classList.remove('open');
-      // history 상태 다시 추가 (뒤로가기 다시 가능하게)
+      // 메인 상태 다시 pushState - 다음 뒤로가기를 위함
       history.pushState({ page: 'main' }, '', location.href);
       return;
     }
@@ -265,13 +265,31 @@ function setupBackButtonHandler() {
     const confirmExit = confirm('앱을 종료하시겠습니까?\n\n작업 내용은 자동으로 저장되어 있어 다음에 다시 열 수 있습니다.');
 
     if (confirmExit) {
-      // 자동저장 후 종료
-      try { sessionAutoSaveNow(); } catch(e) {}
-      // 페이지 닫기 시도 (window.close는 일반적으로 작동 안함)
-      // 대신 history 더 뒤로 이동하여 브라우저가 자연스럽게 처리
-      window.history.back();
+      // 변경 있을 때만 저장 (변경 없으면 빠르게 종료)
+      if (typeof _dataDirty === 'undefined' || _dataDirty) {
+        try { sessionAutoSaveNow(); } catch(e) {}
+        try { if (typeof flushAllCustomers === 'function') flushAllCustomers(); } catch(e) {}
+      }
+
+      // 종료 시도:
+      // PWA/Chrome 앱 환경에서는 window.close()가 동작
+      try { window.close(); } catch(e) {}
+
+      // 동작 안 하면 빈 페이지로 이동 (사용자가 한번 더 뒤로가기 누르면 종료)
+      // 더 확실한 방법: location.replace로 진입 페이지로 가서 사용자가 한 번 더 누르면 종료
+      try {
+        // history 0개로 만들기 시도
+        const totalDepth = history.length;
+        if (totalDepth > 1) {
+          history.go(-(totalDepth - 1));
+        } else {
+          window.history.back();
+        }
+      } catch(e) {
+        window.history.back();
+      }
     } else {
-      // 취소 → 현재 페이지 유지 (history 상태 다시 추가)
+      // 취소 → 메인 상태 다시 pushState
       history.pushState({ page: 'main' }, '', location.href);
     }
   });

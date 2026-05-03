@@ -1,6 +1,44 @@
 /* ═══════════════════════════════
    RENDER
 ═══════════════════════════════ */
+
+// 고객 정보 복사 버튼 - 다른 호수에서 가져오기
+function renderCustomerCopyButtons(u) {
+  // 같은 작업 안의 다른 호수 중 전화번호가 입력된 것 찾기
+  const others = units.filter(other =>
+    other.id !== u.id &&
+    other.customer?.phone &&
+    other.customer.phone.replace(/[^\d]/g, '').length >= 9
+  );
+
+  if (others.length === 0) return '';
+
+  // 직전 호수 (현재 호수 바로 위)
+  const myIdx = units.findIndex(x => x.id === u.id);
+  const prevUnit = myIdx > 0 ? units[myIdx - 1] : null;
+  const prevHasPhone = prevUnit && prevUnit.customer?.phone &&
+    prevUnit.customer.phone.replace(/[^\d]/g, '').length >= 9;
+
+  // 현재 호수에 이미 전화번호 있으면 복사 버튼 숨김
+  const myPhone = (u.customer?.phone || '').replace(/[^\d]/g, '');
+  if (myPhone.length >= 9) return '';
+
+  let html = '<div class="cust-copy-row">';
+
+  // 직전 호수 복사
+  if (prevHasPhone) {
+    html += `<button class="cust-copy-btn cust-copy-prev" data-uid="${u.id}" data-from="${prevUnit.id}">⬆️ 위 호수와 동일 (${escH(prevUnit.name)})</button>`;
+  }
+
+  // 다른 호수 선택
+  if (others.length > (prevHasPhone ? 1 : 0)) {
+    html += `<button class="cust-copy-btn cust-copy-other" data-uid="${u.id}">📋 다른 호수에서 복사</button>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
 function renderAll() {
   const q=document.getElementById('srch').value.trim().toLowerCase();
   const filtered=q?units.filter(u=>u.name.toLowerCase().includes(q)):units;
@@ -94,16 +132,28 @@ function renderAll() {
           <button class="add-sp-btn" data-uid="${u.id}">＋ 특이사항 추가</button>
         </div>
         <div class="cust-sec">
-          <div class="cust-hdr">
-            <span>📞 고객 정보</span>
-            <button class="cust-save-btn ${(u.customer?.phone||'').replace(/[^\d]/g,'').length<9?'disabled':''}" data-uid="${u.id}" ${(u.customer?.phone||'').replace(/[^\d]/g,'').length<9?'disabled':''}>💾 저장</button>
+          <div class="cust-toggle" data-uid="${u.id}">
+            <span class="cust-toggle-label">
+              📞 고객 정보
+              ${u.customer?.phone ? `<span class="cust-toggle-info">${escH(u.customer.phone)}${u.customer.address?' · '+escH(u.customer.address):''}</span>` : '<span class="cust-toggle-empty">미입력</span>'}
+            </span>
+            <span class="cust-toggle-arrow">${u.customerOpen ? '▼' : '▶'}</span>
           </div>
-          <div class="cust-save-status" data-uid="${u.id}">${(u.customer?.phone||'').trim() ? '' : '<span style="color:var(--mu);">전화번호를 입력하세요</span>'}</div>
-          <div class="cust-grid">
-            <input class="cust-inp" type="text" inputmode="tel" placeholder="📞 전화번호 (예: 010-1234-5678)" data-uid="${u.id}" data-field="phone" value="${escH(u.customer?.phone || '')}">
-            <input class="cust-inp" type="text" placeholder="🏠 주소 (선택)" data-uid="${u.id}" data-field="address" value="${escH(u.customer?.address || '')}">
+          <div class="cust-content" style="${u.customerOpen ? '' : 'display:none;'}">
+            <div class="cust-hdr">
+              <span style="font-size:11px;color:var(--mu);">변경 후 💾 버튼을 눌러주세요</span>
+              <button class="cust-save-btn ${(u.customer?.phone||'').replace(/[^\d]/g,'').length<9?'disabled':''}" data-uid="${u.id}" ${(u.customer?.phone||'').replace(/[^\d]/g,'').length<9?'disabled':''}>💾 저장</button>
+            </div>
+            <div class="cust-save-status" data-uid="${u.id}">${(u.customer?.phone||'').trim() ? '' : '<span style="color:var(--mu);">전화번호를 입력하세요</span>'}</div>
+
+            ${renderCustomerCopyButtons(u)}
+
+            <div class="cust-grid">
+              <input class="cust-inp" type="text" inputmode="tel" placeholder="📞 전화번호 (예: 010-1234-5678)" data-uid="${u.id}" data-field="phone" value="${escH(u.customer?.phone || '')}">
+              <input class="cust-inp" type="text" placeholder="🏠 주소 (선택)" data-uid="${u.id}" data-field="address" value="${escH(u.customer?.address || '')}">
+            </div>
+            <textarea class="cust-memo" rows="2" placeholder="💬 메모 (요청사항, 결제 방법, 추천인 등)" data-uid="${u.id}" data-field="memo">${escH(u.customer?.memo || '')}</textarea>
           </div>
-          <textarea class="cust-memo" rows="2" placeholder="💬 메모 (요청사항, 결제 방법, 추천인 등)" data-uid="${u.id}" data-field="memo">${escH(u.customer?.memo || '')}</textarea>
         </div>
       </div>
     </div>`;

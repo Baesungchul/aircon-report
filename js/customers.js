@@ -37,7 +37,9 @@ function getDefaultDateFrom() {
 // ════════════════════════════════════════
 async function loadCombinedRecords() {
   const items = [];
-  const customerVisitKeys = new Set();  // "apt::unit::date" 형태 - 중복 방지용
+  // ★ 폴더(apt+date) 키로 작업 추적 - 고객 카드가 하나라도 있으면 작업 카드 생략
+  const customerAptDateKeys = new Set();  // "apt::date" - 작업 카드 표시 여부 결정
+  const customerVisitKeys = new Set();    // "apt::unit::date" - 호수별 매칭
 
   // 1. 고객 데이터 로드
   try {
@@ -48,22 +50,23 @@ async function loadCombinedRecords() {
         sortDate: c.lastVisit || '',
         data: c
       });
-      // 이 고객의 visits를 키 셋에 추가 (작업 카드와 중복 방지)
+      // 이 고객의 visits를 키 셋에 추가
       (c.visits || []).forEach(v => {
-        const key = `${v.apt || ''}::${v.unit || ''}::${v.date || ''}`;
-        customerVisitKeys.add(key);
+        const aptDate = `${v.apt || ''}::${v.date || ''}`;
+        customerAptDateKeys.add(aptDate);  // 폴더 단위
+        const fullKey = `${v.apt || ''}::${v.unit || ''}::${v.date || ''}`;
+        customerVisitKeys.add(fullKey);  // 호수 단위
       });
     });
   } catch(e) { console.warn('고객 로드 실패:', e); }
 
-  // 2. 폴더의 모든 작업 로드 (전화번호 없는 작업 포함)
+  // 2. 폴더의 모든 작업 로드 (전화번호 없는 작업만)
   if (photoFolderHandle) {
     try {
-      const seenAptDate = new Set();  // 같은 작업 중복 방지
+      const seenAptDate = new Set();
 
       for await (const entry of photoFolderHandle.values()) {
         if (entry.kind !== 'directory') continue;
-        // 폴더명: YYYY-MM-DD 또는 YYYY-MM-DD_HHMM
         if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
 
         try {
@@ -77,28 +80,16 @@ async function loadCombinedRecords() {
           const apt = data.apt || '';
           const date = data.date || entry.name.slice(0, 10);
 
-          // 이 작업의 호수 중 하나라도 customer.visits에 있으면, 그 호수는 customer 카드로 표시됨
-          // 모든 호수가 customer로 표시되는지 확인
-          const allInCustomers = data.units.every(u => {
-            const key = `${apt}::${u.name || ''}::${date}`;
-            return customerVisitKeys.has(key);
-          });
+          // ★ 이 작업(apt+date)에 고객 카드가 하나라도 있으면 작업 카드 생략
+          // (일부 호수만 입력한 경우에도 작업 카드 중복 방지)
+          const aptDateKey = `${apt}::${date}`;
+          if (customerAptDateKeys.has(aptDateKey)) continue;
 
-          if (allInCustomers) continue;  // 모두 customer로 표시되면 작업 카드 생략
-
-          // 일부 또는 전부가 customer 없는 호수 → 작업 카드로 표시
-          const aptDateKey = `${apt}::${date}::${entry.name}`;
+          // 폴더 중복 체크
           if (seenAptDate.has(aptDateKey)) continue;
           seenAptDate.add(aptDateKey);
 
-          // 전화번호 없는 호수만 카운트
-          const unitsWithoutPhone = data.units.filter(u => {
-            const key = `${apt}::${u.name || ''}::${date}`;
-            return !customerVisitKeys.has(key);
-          });
-
-          if (unitsWithoutPhone.length === 0) continue;
-
+          // 작업 카드는 모든 호수 표시 (전부 미입력이므로)
           items.push({
             type: 'work',
             sortDate: date,
@@ -108,7 +99,7 @@ async function loadCombinedRecords() {
               apt: apt,
               date: date,
               worker: data.worker || '',
-              units: unitsWithoutPhone,  // 전화번호 없는 호수만
+              units: data.units,
               totalUnits: data.units.length,
               totalPhotos: data.units.reduce((s, u) => s + (u.beforeCount || 0) + (u.afterCount || 0), 0),
               session: data
@@ -311,12 +302,86 @@ async function renderCustomerList() {
       e.stopPropagation();
       const folder = btn.dataset.folder;
       if (!confirm(`작업 "${folder}"을 삭제할까요?\n폴더의 모든 사진과 데이터가 삭제됩니다.`)) return;
+
+      // 권한 체크
       try {
-        await photoFolderHandle.removeEntry(folder, { recursive: true });
-        await renderCustomerList();
-        showToast('✓ 작업 삭제됨', 'ok');
+        let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+          if (perm !== 'granted') {
+            showToast('쓰기 권한이 거부되어 삭제할 수 없습니다', 'err');
+            return;
+          }
+        }
       } catch(e) {
-        showToast('삭제 실패: ' + e.message, 'err');
+        showToast('권한 확인 실패: ' + e.message, 'err');
+        return;
+      }
+
+      showOverlay('삭제 중...');
+      const safetyTimeout = setTimeout(() => {
+        hideOverlay();
+        showToast('삭제 시간 초과 - 다시 시도해주세요', 'err');
+      }, 30000);
+
+      try {
+        // 폴더 존재 확인
+        let dirHandle;
+        try {
+          dirHandle = await photoFolderHandle.getDirectoryHandle(folder);
+        } catch(err) {
+          clearTimeout(safetyTimeout);
+          hideOverlay();
+          // 이미 없으면 목록 갱신만
+          await renderCustomerList();
+          showToast('이미 삭제된 폴더입니다', 'ok');
+          return;
+        }
+
+        let deleted = false;
+
+        // 1차: recursive (데스크톱)
+        try {
+          await photoFolderHandle.removeEntry(folder, { recursive: true });
+          deleted = true;
+        } catch(e1) {
+          console.warn('recursive 삭제 실패:', e1.message);
+        }
+
+        // 2차: 수동 재귀 삭제 (안드로이드)
+        if (!deleted && typeof deleteDirectoryContents === 'function') {
+          try {
+            await deleteDirectoryContents(dirHandle);
+            await photoFolderHandle.removeEntry(folder);
+            deleted = true;
+          } catch(e2) {
+            console.warn('수동 삭제 실패:', e2.message);
+          }
+        }
+
+        // 3차: 빈 폴더 직접 삭제
+        if (!deleted) {
+          try {
+            await photoFolderHandle.removeEntry(folder);
+            deleted = true;
+          } catch(e3) {
+            console.warn('빈 폴더 삭제도 실패:', e3.message);
+          }
+        }
+
+        clearTimeout(safetyTimeout);
+        hideOverlay();
+
+        if (deleted) {
+          await renderCustomerList();
+          showToast('✓ 작업 삭제됨', 'ok');
+        } else {
+          showToast('삭제 실패: 다시 시도해주세요', 'err');
+        }
+      } catch(err) {
+        clearTimeout(safetyTimeout);
+        hideOverlay();
+        showToast('삭제 실패: ' + err.message, 'err');
       }
     });
   });

@@ -480,6 +480,49 @@ function updateCustSaveBtnState(unitId) {
 
 // 호수 카드의 저장 버튼 클릭 (이벤트 위임)
 document.addEventListener('click', async e => {
+  // ★ 1) 고객 정보 토글 (접기/펼치기)
+  const toggleEl = e.target.closest('.cust-toggle');
+  if (toggleEl) {
+    e.stopPropagation();
+    const uid = toggleEl.dataset.uid;
+    const u = units.find(x => String(x.id) === String(uid));
+    if (!u) return;
+    u.customerOpen = !u.customerOpen;
+    // 부분 갱신 (전체 리렌더보다 빠름)
+    const sec = toggleEl.closest('.cust-sec');
+    if (sec) {
+      const content = sec.querySelector('.cust-content');
+      const arrow = sec.querySelector('.cust-toggle-arrow');
+      if (content) content.style.display = u.customerOpen ? '' : 'none';
+      if (arrow) arrow.textContent = u.customerOpen ? '▼' : '▶';
+    }
+    return;
+  }
+
+  // ★ 2) 위 호수와 동일 (직전 호수 복사)
+  const copyPrevBtn = e.target.closest('.cust-copy-prev');
+  if (copyPrevBtn) {
+    e.stopPropagation();
+    const uid = copyPrevBtn.dataset.uid;
+    const fromId = copyPrevBtn.dataset.from;
+    const u = units.find(x => String(x.id) === String(uid));
+    const fromU = units.find(x => String(x.id) === String(fromId));
+    if (u && fromU && fromU.customer) {
+      copyCustomerInfo(u, fromU);
+    }
+    return;
+  }
+
+  // ★ 3) 다른 호수에서 복사 (선택)
+  const copyOtherBtn = e.target.closest('.cust-copy-other');
+  if (copyOtherBtn) {
+    e.stopPropagation();
+    const uid = copyOtherBtn.dataset.uid;
+    showCopyFromOtherDialog(uid);
+    return;
+  }
+
+  // ★ 4) 저장 버튼
   const btn = e.target.closest('.cust-save-btn');
   if (!btn) return;
   e.stopPropagation();
@@ -500,13 +543,107 @@ document.addEventListener('click', async e => {
     const now = new Date();
     u.customer._savedAt = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     updateCustSaveBtnState(uid);
-    // 폴더 xlsx 즉시 쓰기
     if (typeof flushCustomersXlsx === 'function') flushCustomersXlsx().catch(()=>{});
   } catch(err) {
     btn.disabled = false;
     showToast('저장 실패: ' + (err.message || err), 'err');
   }
 });
+
+// 고객 정보 복사 (전화번호/주소/메모)
+function copyCustomerInfo(targetUnit, fromUnit) {
+  if (!targetUnit.customer) targetUnit.customer = { phone:'', address:'', memo:'' };
+  targetUnit.customer.phone = fromUnit.customer.phone || '';
+  targetUnit.customer.address = fromUnit.customer.address || '';
+  targetUnit.customer.memo = fromUnit.customer.memo || '';
+  targetUnit.customer._dirty = true;
+  delete targetUnit.customer._savedAt;
+
+  // UI에 즉시 반영 - 입력 필드들 업데이트
+  const card = document.querySelector(`.cust-toggle[data-uid="${targetUnit.id}"]`)?.closest('.cust-sec');
+  if (card) {
+    const phoneInp = card.querySelector(`.cust-inp[data-field="phone"]`);
+    const addrInp = card.querySelector(`.cust-inp[data-field="address"]`);
+    const memoInp = card.querySelector(`.cust-memo[data-field="memo"]`);
+    if (phoneInp) phoneInp.value = targetUnit.customer.phone;
+    if (addrInp) addrInp.value = targetUnit.customer.address;
+    if (memoInp) memoInp.value = targetUnit.customer.memo;
+  }
+
+  // 복사 버튼 영역 갱신 (이제 복사 버튼 숨겨야 함)
+  // 그리고 토글 라벨도 갱신 필요 → 부분 리렌더
+  if (typeof renderAll === 'function') {
+    targetUnit.customerOpen = true;  // 펼친 상태 유지
+    renderAll();
+  }
+
+  if (typeof markDataDirty === 'function') markDataDirty();
+  if (typeof sessionAutoSave === 'function') sessionAutoSave();
+
+  showToast(`✓ ${fromUnit.name} 정보 복사됨`, 'ok');
+}
+
+// 다른 호수에서 복사 - 선택 다이얼로그
+function showCopyFromOtherDialog(uid) {
+  const u = units.find(x => String(x.id) === String(uid));
+  if (!u) return;
+
+  const candidates = units.filter(other =>
+    other.id !== u.id &&
+    other.customer?.phone &&
+    other.customer.phone.replace(/[^\d]/g, '').length >= 9
+  );
+
+  if (candidates.length === 0) {
+    showToast('복사할 수 있는 호수가 없습니다', 'err');
+    return;
+  }
+
+  const html = `
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:700;display:flex;align-items:center;justify-content:center;padding:16px;" id="copyOtherOverlay">
+      <div style="background:var(--sf);border-radius:14px;padding:20px;max-width:480px;width:100%;max-height:80vh;display:flex;flex-direction:column;">
+        <div style="font-size:16px;font-weight:800;margin-bottom:6px;">📋 어느 호수에서 복사할까요?</div>
+        <div style="font-size:12px;color:var(--mu);margin-bottom:14px;">선택한 호수의 전화번호/주소/메모가 ${escapeHtml(u.name)}에 복사됩니다.</div>
+        <div style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+          ${candidates.map(c => `
+            <button class="btn b-ghost copy-from-btn" data-from="${c.id}" style="width:100%;justify-content:flex-start;text-align:left;padding:12px;">
+              <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
+                <div style="font-weight:700;color:var(--ac);">🏠 ${escapeHtml(c.name)}</div>
+                <div style="font-size:12px;">📞 ${escapeHtml(c.customer.phone)}</div>
+                ${c.customer.address ? `<div style="font-size:11px;color:var(--mu);">${escapeHtml(c.customer.address)}</div>` : ''}
+              </div>
+            </button>
+          `).join('')}
+        </div>
+        <button class="btn b-ghost" id="copyOtherCancel" style="margin-top:14px;">취소</button>
+      </div>
+    </div>
+  `;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap.firstElementChild);
+
+  const close = () => document.getElementById('copyOtherOverlay')?.remove();
+
+  document.querySelectorAll('.copy-from-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const fromId = btn.dataset.from;
+      const fromU = units.find(x => String(x.id) === String(fromId));
+      if (fromU) {
+        copyCustomerInfo(u, fromU);
+      }
+      close();
+    });
+  });
+
+  document.getElementById('copyOtherCancel').addEventListener('click', close);
+}
+
+// HTML 이스케이프 (간단 버전)
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 // 호수의 고객 정보를 customers DB에 저장 (재방문이면 매칭)
 async function saveCustomerForUnit(u) {

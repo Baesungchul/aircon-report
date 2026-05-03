@@ -44,6 +44,8 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 
 /* 헤더 접기/펼치기 */
 .hdr-toggle{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:14px;flex-shrink:0;transition:transform .3s;display:flex;align-items:center;justify-content:center;}
+.hdr-icon-btn{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:6px;}
+.hdr-icon-btn:active{background:var(--ac);color:#fff;}
 .hdr-toggle:active{background:var(--sf3);}
 .hdr-collapsible{display:flex;flex-direction:column;gap:10px;width:100%;max-height:500px;overflow:hidden;transition:max-height .35s ease,opacity .25s;opacity:1;}
 .hdr.collapsed .hdr-collapsible{max-height:0;opacity:0;gap:0;}

@@ -31,6 +31,7 @@
     <div class="logo-ic" id="appLogoIcon">❄️</div>
     <div><div class="logo-tx">작업 보고서 생성기</div></div>
     <div class="save-status" id="saveStatus">💾 저장됨</div>
+    <button class="hdr-icon-btn" id="btnCustomersHdr" title="고객 목록">👥</button>
     <button class="hdr-toggle" id="hdrToggle" title="메뉴 접기/펼치기">▲</button>
   </div>
   <div class="hdr-collapsible" id="hdrCollapsible">
@@ -106,13 +107,6 @@
         <div class="set-sec-title" data-i18n="set.company">🏢 업체정보</div>
         <div id="setCoSummary" style="font-size:12px;color:var(--mu);background:var(--sf2);border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6;display:none;"></div>
         <button class="btn b-blue" id="setOpenCoInfo" style="width:100%;justify-content:center;" data-i18n="set.company.edit">업체정보 편집</button>
-      </div>
-
-      <!-- 고객 관리 -->
-      <div class="set-sec">
-        <div class="set-sec-title">👥 고객 관리</div>
-        <div id="setCustomerSummary" style="font-size:12px;color:var(--mu);background:var(--sf2);border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6;">고객 0명</div>
-        <button class="btn b-blue" id="setOpenCustomers" style="width:100%;justify-content:center;">📋 고객 목록 보기</button>
       </div>
 
       <!-- 저장 폴더 -->
@@ -439,8 +433,8 @@
 <!-- 스크립트 (순서 중요) -->
 <script src="./js/i18n.js"></script>
 <script src="./js/industries.js"></script>
-<script src="./js/db.js"></script>
 <script src="./js/state.js"></script>
+<script src="./js/db.js"></script>
 <script src="./js/image.js"></script>
 <script src="./js/render.js"></script>
 <script src="./js/events.js"></script>

@@ -1,5 +1,5 @@
-// 서비스워커 v16 - 불러오기 시 customer 복원
-const CACHE = 'ac1004-v16';
+// 서비스워커 v19 - 헤더에 고객 버튼
+const CACHE = 'ac1004-v19';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

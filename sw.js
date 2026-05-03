@@ -1,5 +1,5 @@
-// 서비스워커 v15 - customers.xlsx 폴더 저장
-const CACHE = 'ac1004-v15';
+// 서비스워커 v16 - 불러오기 시 customer 복원
+const CACHE = 'ac1004-v16';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

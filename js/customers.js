@@ -187,40 +187,36 @@ async function renderCustomerList() {
 function renderCustomerCard(c) {
   const lastVisit = c.lastVisit || '-';
   const visitText = c.visitCount >= 2
-    ? `<span style="color:var(--ac2);font-weight:700;">${c.visitCount}회 방문</span>`
-    : `<span style="color:var(--mu);">1회 방문</span>`;
+    ? `<span style="color:var(--ac2);font-weight:700;">${c.visitCount}회</span>`
+    : `<span style="color:var(--mu);">1회</span>`;
 
   const lastWork = (c.visits && c.visits.length > 0)
     ? c.visits[c.visits.length - 1]
     : null;
 
-  // ★ 작업명 + 호수를 카드 제목에 함께 표시
   const apt = lastWork?.apt || '';
   const unit = lastWork?.unit || c.name || c.phone;
-  const titleMain = apt ? `${escHtmlSafe(apt)}` : escHtmlSafe(unit);
-  const titleSub = apt ? `${escHtmlSafe(unit)}` : '';
+
+  // 작업명 + 호수 한 줄
+  let titleLine = '';
+  if (apt && unit) titleLine = `${escHtmlSafe(apt)} · ${escHtmlSafe(unit)}`;
+  else if (apt) titleLine = escHtmlSafe(apt);
+  else titleLine = escHtmlSafe(unit);
 
   return `
     <div class="cust-card" data-phone="${escHtmlSafe(c.phone)}" title="클릭하여 작업 열기">
       <div class="cust-card-head">
-        <div class="cust-card-title">
-          <div class="cust-card-name">${titleMain}</div>
-          ${titleSub ? `<div class="cust-card-sub">🏠 ${titleSub}</div>` : ''}
-        </div>
+        <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
           <button class="cust-card-btn cust-card-edit" data-phone="${escHtmlSafe(c.phone)}" title="정보 수정">✏️</button>
           <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" title="삭제">🗑️</button>
         </div>
       </div>
-      <div class="cust-card-body">
-        <div>📞 ${escHtmlSafe(c.phone)}</div>
-        ${c.address ? `<div>🏠 ${escHtmlSafe(c.address)}</div>` : ''}
-        ${c.memo ? `<div style="color:var(--mu);font-size:12px;">💬 ${escHtmlSafe(c.memo)}</div>` : ''}
-        <div style="display:flex;gap:10px;font-size:11px;color:var(--mu);margin-top:4px;flex-wrap:wrap;">
-          <span>${visitText}</span>
-          <span>최근: ${lastVisit}</span>
-        </div>
-        <div style="font-size:11px;color:var(--ac);margin-top:6px;">👆 클릭하여 작업 열기</div>
+      <div class="cust-card-line">📞 ${escHtmlSafe(c.phone)}${c.address ? ` · 🏠 ${escHtmlSafe(c.address)}` : ''}</div>
+      <div class="cust-card-line cust-card-meta">
+        <span>${visitText} 방문</span>
+        <span>· ${lastVisit}</span>
+        ${c.memo ? `<span class="cust-card-memo">· 💬 ${escHtmlSafe(c.memo)}</span>` : ''}
       </div>
     </div>
   `;
@@ -504,7 +500,7 @@ async function openCustomerEdit(phone) {
   document.getElementById('custEditCancel').addEventListener('click', closeEdit);
 }
 
-// 엑셀 파일 열기
+// 엑셀 파일 열기 - 파일 자체를 OS의 엑셀 앱으로 직접 실행
 async function openCustomersXlsxFile() {
   if (!photoFolderHandle) {
     showToast('저장 폴더가 설정되지 않았습니다', 'err');
@@ -512,57 +508,57 @@ async function openCustomersXlsxFile() {
   }
 
   try {
+    // 최신 데이터로 갱신
     if (typeof flushCustomersXlsx === 'function') {
       await flushCustomersXlsx();
     }
 
     const fileHandle = await photoFolderHandle.getFileHandle('customers.xlsx');
     const file = await fileHandle.getFile();
-
-    // ★ 모바일/데스크톱에서 엑셀 앱이 자동으로 열리도록
     const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
-    if (isMobile && navigator.share && file.size < 50 * 1024 * 1024) {
-      // 모바일: Web Share API → "엑셀로 열기" 옵션 자동 표시
+    // ★ 모바일: Web Share API → "Excel로 열기" 옵션 즉시 표시
+    if (isMobile && navigator.canShare) {
       try {
         const shareFile = new File([file], 'customers.xlsx', {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         });
-        if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+        if (navigator.canShare({ files: [shareFile] })) {
           await navigator.share({
             files: [shareFile],
             title: '고객 목록'
           });
-          showToast('📊 엑셀 앱 선택', 'ok');
           return;
         }
       } catch(e) {
-        if (e.name === 'AbortError') return;  // 사용자 취소
-        console.warn('share 실패, 다운로드로 폴백:', e);
+        if (e.name === 'AbortError') return;
+        console.warn('share 실패:', e);
       }
     }
 
-    // 폴백: 다운로드 (브라우저가 자동으로 엑셀 앱에 연결)
+    // ★ 데스크톱: Blob URL을 새 탭으로 → 브라우저가 엑셀 자동 실행
     const blob = new Blob([await file.arrayBuffer()], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
     const url = URL.createObjectURL(blob);
 
-    // 새 탭 열기 시도 (데스크톱에선 엑셀 자동 실행 가능성 있음)
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'customers.xlsx';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 100);
+    // 새 탭에서 열기 (브라우저가 .xlsx를 엑셀로 연결)
+    const opened = window.open(url, '_blank');
 
-    showToast(isMobile
-      ? '📥 다운로드됨. 알림창에서 파일을 탭하세요'
-      : '📊 customers.xlsx 다운로드됨', 'ok');
+    if (!opened) {
+      // 팝업 차단 시 다운로드 폴백
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'customers.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => document.body.removeChild(a), 100);
+      showToast('📊 다운로드 후 엑셀로 열기', 'ok');
+    } else {
+      showToast('📊 엑셀에서 여는 중...', 'ok');
+    }
+
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch(e) {
     if (e.name === 'NotFoundError') {
       showToast('아직 customers.xlsx 파일이 없습니다.', 'err');

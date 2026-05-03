@@ -366,24 +366,23 @@ function applyCustomLabels() {
     }
 
     // ★ 메인 타이틀 변경
-    // "에어컨 청소 보고서" → "에어컨청소 보고서작성기"
-    // "도배 시공 보고서" → "도배시공 보고서작성기"
-    // (마지막 단어 "보고서"를 떼고 나머지를 붙여서 + "보고서작성기")
+    // "에어컨 청소 보고서" → "에어컨 보고서 작성기" (좁아지면 "에어컨" + "보고서 작성기")
+    // "도배 시공 보고서" → "도배 보고서 작성기"
+    // (첫 단어만 사용)
     const logoTx = document.querySelector('.logo-tx');
     const titleTag = document.querySelector('title');
     if (logoTx) {
-      let mainTitle = '작업 보고서 생성기';  // 기본값
+      let firstPart = '작업';
+      let secondPart = '보고서 작성기';
       if (reportTitle) {
-        // 마지막 "보고서" 단어 제거
-        let prefix = reportTitle.replace(/\s*보고서\s*$/, '').trim();
-        // 공백 제거하여 한 단어로 (좁은 화면 친화)
-        prefix = prefix.replace(/\s+/g, '');
-        if (prefix) {
-          mainTitle = `${prefix} 보고서작성기`;
+        const firstWord = reportTitle.split(/\s+/)[0];
+        if (firstWord) {
+          firstPart = firstWord;
         }
       }
-      logoTx.textContent = mainTitle;
-      if (titleTag) titleTag.textContent = mainTitle;
+      // span으로 분리 - 좁아지면 두 span 사이에서만 줄바꿈
+      logoTx.innerHTML = `<span class="logo-tx-1">${firstPart}</span> <span class="logo-tx-2">보고서 작성기</span>`;
+      if (titleTag) titleTag.textContent = `${firstPart} 보고서 작성기`;
     }
   } catch(e) {}
 }

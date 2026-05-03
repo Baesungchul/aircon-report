@@ -1013,3 +1013,164 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
   color:var(--tx);
   line-height:1.6;
 }
+
+/* ═══════════════════════════════════════════════
+   온보딩 (첫 실행 가이드)
+═══════════════════════════════════════════════ */
+.ob-modal{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.85);
+  z-index:600;
+  align-items:center;justify-content:center;
+  padding:16px;
+}
+.ob-modal.open{display:flex;}
+.ob-box{
+  background:var(--sf);
+  border-radius:18px;
+  width:100%;max-width:560px;
+  max-height:90vh;
+  display:flex;flex-direction:column;
+  position:relative;
+  overflow:hidden;
+  box-shadow:0 10px 40px rgba(0,0,0,.5);
+}
+/* 진행 바 */
+.ob-progress{
+  height:4px;background:var(--sf3);
+  position:relative;flex-shrink:0;
+}
+.ob-progress-bar{
+  height:100%;background:linear-gradient(90deg,var(--ac),var(--ac2));
+  width:20%;transition:width .3s ease;
+}
+.ob-step-counter{
+  position:absolute;top:12px;left:18px;
+  font-size:12px;color:var(--mu);font-weight:700;
+}
+.ob-skip{
+  position:absolute;top:8px;right:8px;
+  background:transparent;border:none;color:var(--mu);
+  font-size:12px;cursor:pointer;padding:6px 10px;
+  border-radius:6px;
+}
+.ob-skip:active{background:var(--sf3);}
+
+.ob-content{
+  flex:1;overflow-y:auto;
+  padding:36px 24px 16px;
+}
+.ob-step{
+  display:flex;flex-direction:column;
+  align-items:center;text-align:center;
+}
+.ob-icon-big{
+  font-size:54px;margin-bottom:12px;
+}
+.ob-title{
+  font-size:22px;font-weight:800;
+  color:var(--tx);margin:0 0 6px;
+  letter-spacing:-.02em;
+}
+.ob-subtitle{
+  font-size:13px;color:var(--mu);
+  margin:0 0 20px;line-height:1.5;
+}
+.ob-hint{
+  font-size:12px;color:var(--mu);
+  margin:14px 0 0;line-height:1.5;
+}
+
+/* 환영 페이지 - 기능 리스트 */
+.ob-features{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;
+  width:100%;margin:14px 0;
+}
+.ob-feature{
+  display:flex;align-items:flex-start;gap:8px;
+  background:var(--sf2);
+  border:1px solid var(--bd);
+  border-radius:10px;padding:10px;
+  text-align:left;
+}
+.ob-feature-ic{
+  font-size:22px;flex-shrink:0;
+}
+.ob-feature-name{
+  font-size:13px;font-weight:700;color:var(--tx);
+  margin-bottom:2px;
+}
+.ob-feature-desc{
+  font-size:11px;color:var(--mu);line-height:1.3;
+}
+
+/* 폼 */
+.ob-form{
+  width:100%;
+  display:flex;flex-direction:column;gap:12px;
+  text-align:left;
+}
+.ob-field{
+  display:flex;flex-direction:column;gap:5px;
+}
+.ob-field label{
+  font-size:12px;color:var(--mu);
+  font-weight:700;
+}
+.ob-input{
+  background:var(--sf2);
+  border:1px solid var(--bd);
+  border-radius:8px;
+  padding:10px 12px;
+  color:var(--tx);
+  font-family:inherit;
+  font-size:14px;
+}
+.ob-input:focus{outline:none;border-color:var(--ac);}
+
+/* 아이콘 선택 */
+.ob-icon-picker{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
+}
+.ob-icon-opt{
+  background:var(--sf2);
+  border:2px solid var(--bd);
+  border-radius:10px;
+  padding:12px;
+  font-size:24px;
+  cursor:pointer;
+  transition:all .15s;
+}
+.ob-icon-opt:active{transform:scale(.95);}
+.ob-icon-opt.selected{
+  border-color:var(--ac);
+  background:var(--sf3);
+  box-shadow:0 0 0 1px var(--ac) inset;
+}
+
+/* 푸터 */
+.ob-footer{
+  display:flex;gap:10px;
+  padding:14px 18px;
+  border-top:1px solid var(--bd);
+  flex-shrink:0;
+}
+
+/* 완료 애니메이션 */
+@keyframes obBounce{
+  0%   { transform:scale(0); opacity:0; }
+  50%  { transform:scale(1.2); opacity:1; }
+  70%  { transform:scale(.9); }
+  100% { transform:scale(1); }
+}
+.ob-done .ob-icon-big{
+  animation:obBounce .6s cubic-bezier(.34,1.56,.64,1);
+}
+
+/* 모바일 */
+@media (max-width:480px){
+  .ob-features{grid-template-columns:1fr;}
+  .ob-content{padding:32px 18px 14px;}
+  .ob-icon-big{font-size:48px;}
+  .ob-title{font-size:20px;}
+}

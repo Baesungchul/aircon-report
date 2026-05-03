@@ -107,6 +107,7 @@
         <div class="set-sec-title" data-i18n="set.company">🏢 업체정보</div>
         <div id="setCoSummary" style="font-size:12px;color:var(--mu);background:var(--sf2);border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6;display:none;"></div>
         <button class="btn b-blue" id="setOpenCoInfo" style="width:100%;justify-content:center;" data-i18n="set.company.edit">업체정보 편집</button>
+        <button class="btn b-ghost" id="setReplayOnboarding" style="width:100%;justify-content:center;margin-top:6px;font-size:12px;">📋 초기 설정 다시 하기</button>
       </div>
 
       <!-- 저장 폴더 -->
@@ -396,6 +397,26 @@
   </div>
 </div>
 
+<!-- 온보딩 (첫 실행 가이드) -->
+<div class="ob-modal" id="onboardingModal">
+  <div class="ob-box">
+    <div class="ob-progress">
+      <div class="ob-progress-bar" id="obProgressBar"></div>
+    </div>
+    <div class="ob-step-counter" id="obStepCounter">1 / 5</div>
+    <button class="ob-skip" id="obSkip">건너뛰기 ✕</button>
+
+    <div class="ob-content" id="obContent">
+      <!-- 단계별 콘텐츠가 동적으로 들어감 -->
+    </div>
+
+    <div class="ob-footer">
+      <button class="btn b-ghost" id="obPrev" style="display:none;">← 이전</button>
+      <button class="btn b-blue" id="obNext" style="margin-left:auto;">다음 →</button>
+    </div>
+  </div>
+</div>
+
 <!-- 미리보기 -->
 <div class="pv-modal" id="pvModal">
   <div class="pv-bar">
@@ -444,6 +465,7 @@
 <script src="./js/settings.js"></script>
 <script src="./js/customer_storage.js"></script>
 <script src="./js/customers.js"></script>
+<script src="./js/onboarding.js"></script>
 <script src="./js/app.js"></script>
 
 </body>

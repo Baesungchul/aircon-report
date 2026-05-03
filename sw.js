@@ -1,5 +1,5 @@
-// 서비스워커 v19 - 헤더에 고객 버튼
-const CACHE = 'ac1004-v19';
+// 서비스워커 v20 - 첫 실행 온보딩
+const CACHE = 'ac1004-v20';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

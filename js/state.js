@@ -346,25 +346,44 @@ function setupBackButtonHandler() {
 function applyCustomLabels() {
   try {
     const ci = JSON.parse(localStorage.getItem(CO_KEY) || '{}');
-    const unitLabel = (ci.coUnitLabel || '').trim();  // "호수" / "현장" / "차량" 등
-    const stageLabel = (ci.coStageLabel || '').trim(); // "작업" / "시공" / "청소" 등
+    const unitLabel = (ci.coUnitLabel || '').trim();
+    const stageLabel = (ci.coStageLabel || '').trim();
+    const reportTitle = (ci.coReportTitle || '').trim();  // "에어컨 청소 보고서"
 
     if (unitLabel) {
-      // newName placeholder
       const newName = document.getElementById('newName');
       if (newName) newName.placeholder = `${unitLabel} 입력`;
 
-      // 호수 검색 placeholder
       const searchInp = document.getElementById('searchUnit');
       if (searchInp) searchInp.placeholder = `🔍 ${unitLabel} 검색`;
     }
 
-    // app.js의 작업명 placeholder도 변경 가능
     if (stageLabel) {
       const aptName = document.getElementById('aptName');
       if (aptName && !aptName.placeholder.includes('현장')) {
         aptName.placeholder = `${stageLabel}명을 입력하세요`;
       }
+    }
+
+    // ★ 메인 타이틀 변경
+    // "에어컨 청소 보고서" → "에어컨청소 보고서작성기"
+    // "도배 시공 보고서" → "도배시공 보고서작성기"
+    // (마지막 단어 "보고서"를 떼고 나머지를 붙여서 + "보고서작성기")
+    const logoTx = document.querySelector('.logo-tx');
+    const titleTag = document.querySelector('title');
+    if (logoTx) {
+      let mainTitle = '작업 보고서 생성기';  // 기본값
+      if (reportTitle) {
+        // 마지막 "보고서" 단어 제거
+        let prefix = reportTitle.replace(/\s*보고서\s*$/, '').trim();
+        // 공백 제거하여 한 단어로 (좁은 화면 친화)
+        prefix = prefix.replace(/\s+/g, '');
+        if (prefix) {
+          mainTitle = `${prefix} 보고서작성기`;
+        }
+      }
+      logoTx.textContent = mainTitle;
+      if (titleTag) titleTag.textContent = mainTitle;
     }
   } catch(e) {}
 }

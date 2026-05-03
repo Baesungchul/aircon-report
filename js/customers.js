@@ -322,6 +322,43 @@ async function renderCustomerList() {
   });
 }
 
+// 현재 화면이 같은 작업인지 확인 (apt + date)
+function isSameAsCurrent(targetApt, targetDate) {
+  try {
+    const curApt = (document.getElementById('aptName').value || '').trim();
+    const curDate = (document.getElementById('workDate').value || '').trim();
+    return curApt === (targetApt || '').trim() && curDate === (targetDate || '').trim();
+  } catch(e) { return false; }
+}
+
+// 다른 작업 열기 전 - 저장 확인
+// 반환: true → 진행 / false → 취소
+async function confirmBeforeLoad() {
+  // 작업 없으면 그냥 진행
+  if (typeof units === 'undefined' || !units || units.length === 0) return true;
+
+  // 변경 없으면 그냥 진행
+  if (typeof _dataDirty !== 'undefined' && !_dataDirty) return true;
+
+  // 저장 확인
+  const result = confirm('현재 작업이 저장되지 않았습니다.\n\n저장하시겠습니까?\n\n[확인] 저장 후 진행\n[취소] 저장하지 않고 진행');
+  if (result) {
+    // 저장
+    if (photoFolderHandle && typeof saveToFolder === 'function') {
+      try {
+        await saveToFolder({ auto: true });
+      } catch(e) {
+        if (!confirm('저장 실패. 그래도 진행할까요?')) return false;
+      }
+    } else if (typeof sessionAutoSaveNow === 'function') {
+      try { await sessionAutoSaveNow(); } catch(e) {}
+    }
+  }
+  // 취소든 확인이든 진행
+  return true;
+}
+
+
 // 폴더명으로 작업 직접 열기
 async function openWorkByFolder(folderName) {
   if (!photoFolderHandle) {
@@ -329,15 +366,33 @@ async function openWorkByFolder(folderName) {
     return;
   }
 
+  // 먼저 _session.json 읽어서 현재 작업과 같은지 확인
+  let dirHandle, data;
+  try {
+    dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
+    const sessionFile = await dirHandle.getFileHandle('_session.json');
+    const file = await sessionFile.getFile();
+    data = JSON.parse(await file.text());
+  } catch(e) {
+    showToast('작업 정보를 읽을 수 없습니다: ' + e.message, 'err');
+    return;
+  }
+
+  // 현재 작업과 같은 작업이면 그냥 닫기 (이미 열려있음)
+  if (isSameAsCurrent(data.apt, data.date)) {
+    closeCustomerModal();
+    showToast('이미 현재 작업입니다', 'ok');
+    return;
+  }
+
+  // 저장되지 않은 변경사항 확인
+  const proceed = await confirmBeforeLoad();
+  if (!proceed) return;
+
   closeCustomerModal();
   showOverlay('작업 불러오는 중...');
 
   try {
-    const dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
-    const sessionFile = await dirHandle.getFileHandle('_session.json');
-    const file = await sessionFile.getFile();
-    const data = JSON.parse(await file.text());
-
     if (typeof loadFromDateFolder === 'function') {
       await loadFromDateFolder(dirHandle, data);
     } else {
@@ -583,6 +638,17 @@ async function loadWorkByVisit(visit) {
     showToast('작업 정보가 부족합니다', 'err');
     return;
   }
+
+  // 현재 작업과 같으면 그냥 닫기
+  if (isSameAsCurrent(visit.apt, visit.date)) {
+    closeCustomerModal();
+    showToast('이미 현재 작업입니다', 'ok');
+    return;
+  }
+
+  // 저장 확인
+  const proceed = await confirmBeforeLoad();
+  if (!proceed) return;
 
   closeCustomerModal();
   showOverlay('작업 불러오는 중...');

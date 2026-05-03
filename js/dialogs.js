@@ -1010,6 +1010,36 @@ async function loadWorkFromFile(file) {
 
 // 날짜 폴더에서 작업 복원 (목록에서 선택한 경우)
 async function loadFromDateFolder(dateDir, data) {
+  // 현재 작업과 같으면 그냥 닫기 (모든 모달 닫기)
+  try {
+    const curApt = (document.getElementById('aptName').value || '').trim();
+    const curDate = (document.getElementById('workDate').value || '').trim();
+    if (curApt === (data.apt || '').trim() && curDate === (data.date || '').trim()) {
+      document.getElementById('slModal')?.classList.remove('open');
+      document.getElementById('customerModal')?.classList.remove('open');
+      showToast('이미 현재 작업입니다', 'ok');
+      return;
+    }
+  } catch(e) {}
+
+  // 저장되지 않은 변경사항 확인
+  if (typeof units !== 'undefined' && units && units.length > 0) {
+    if (typeof _dataDirty !== 'undefined' && _dataDirty) {
+      const result = confirm('현재 작업이 저장되지 않았습니다.\n\n저장하시겠습니까?\n\n[확인] 저장 후 진행\n[취소] 저장하지 않고 진행');
+      if (result) {
+        if (photoFolderHandle && typeof saveToFolder === 'function') {
+          try {
+            await saveToFolder({ auto: true });
+          } catch(e) {
+            if (!confirm('저장 실패. 그래도 진행할까요?')) return;
+          }
+        } else if (typeof sessionAutoSaveNow === 'function') {
+          try { await sessionAutoSaveNow(); } catch(e) {}
+        }
+      }
+    }
+  }
+
   await restoreFromData(data, dateDir);
 }
 
@@ -1219,7 +1249,23 @@ function photoId() {
 
 // 폴더에서 세션 목록 읽기
 async function doLoad(saveId) {
-  if(units.length>0&&!confirm('현재 작업이 사라집니다.\n불러올까요?')) return;
+  // 현재 작업이 있고 저장 안 된 경우 - 저장 확인
+  if (units.length > 0) {
+    if (typeof _dataDirty !== 'undefined' && _dataDirty) {
+      const result = confirm('현재 작업이 저장되지 않았습니다.\n\n저장하시겠습니까?\n\n[확인] 저장 후 진행\n[취소] 저장하지 않고 진행');
+      if (result) {
+        if (photoFolderHandle && typeof saveToFolder === 'function') {
+          try {
+            await saveToFolder({ auto: true });
+          } catch(e) {
+            if (!confirm('저장 실패. 그래도 진행할까요?')) return;
+          }
+        } else if (typeof sessionAutoSaveNow === 'function') {
+          try { await sessionAutoSaveNow(); } catch(e) {}
+        }
+      }
+    } else if (!confirm('현재 작업이 사라집니다.\n불러올까요?')) return;
+  }
   showOverlay('불러오는 중...');
   try {
     const saves=await dbGetAll();

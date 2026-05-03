@@ -26,7 +26,7 @@ function bindAll() {
   // 저장/불러오기
   document.getElementById('btnNew').addEventListener('click', newWork);
   document.getElementById('btnSave').addEventListener('click', handleSaveClick);
-  document.getElementById('btnLoad').addEventListener('click', openLoadList);
+  document.getElementById('btnLoad')?.addEventListener('click', openLoadList);
 
   // 헤더 접기/펼치기
   const hdr = document.querySelector('.hdr');

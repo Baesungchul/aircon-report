@@ -28,15 +28,115 @@ function getDefaultDateFrom() {
   return localDateStr(d);
 }
 
+// ════════════════════════════════════════
+// 통합 데이터 로딩
+//   - 고객 (customers DB)
+//   - 폴더의 모든 작업 (_session.json) - 전화번호 없는 것도 포함
+//   - 중복 제거: 같은 작업이 customer.visits에 있으면 작업 카드는 생략
+// 반환: [{ type: 'customer'|'work', sortDate, data }, ...]
+// ════════════════════════════════════════
+async function loadCombinedRecords() {
+  const items = [];
+  const customerVisitKeys = new Set();  // "apt::unit::date" 형태 - 중복 방지용
+
+  // 1. 고객 데이터 로드
+  try {
+    const customers = await customerListAll();
+    customers.forEach(c => {
+      items.push({
+        type: 'customer',
+        sortDate: c.lastVisit || '',
+        data: c
+      });
+      // 이 고객의 visits를 키 셋에 추가 (작업 카드와 중복 방지)
+      (c.visits || []).forEach(v => {
+        const key = `${v.apt || ''}::${v.unit || ''}::${v.date || ''}`;
+        customerVisitKeys.add(key);
+      });
+    });
+  } catch(e) { console.warn('고객 로드 실패:', e); }
+
+  // 2. 폴더의 모든 작업 로드 (전화번호 없는 작업 포함)
+  if (photoFolderHandle) {
+    try {
+      const seenAptDate = new Set();  // 같은 작업 중복 방지
+
+      for await (const entry of photoFolderHandle.values()) {
+        if (entry.kind !== 'directory') continue;
+        // 폴더명: YYYY-MM-DD 또는 YYYY-MM-DD_HHMM
+        if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+
+        try {
+          const sessionFile = await entry.getFileHandle('_session.json');
+          const file = await sessionFile.getFile();
+          const text = await file.text();
+          const data = JSON.parse(text);
+
+          if (!data.units || data.units.length === 0) continue;
+
+          const apt = data.apt || '';
+          const date = data.date || entry.name.slice(0, 10);
+
+          // 이 작업의 호수 중 하나라도 customer.visits에 있으면, 그 호수는 customer 카드로 표시됨
+          // 모든 호수가 customer로 표시되는지 확인
+          const allInCustomers = data.units.every(u => {
+            const key = `${apt}::${u.name || ''}::${date}`;
+            return customerVisitKeys.has(key);
+          });
+
+          if (allInCustomers) continue;  // 모두 customer로 표시되면 작업 카드 생략
+
+          // 일부 또는 전부가 customer 없는 호수 → 작업 카드로 표시
+          const aptDateKey = `${apt}::${date}::${entry.name}`;
+          if (seenAptDate.has(aptDateKey)) continue;
+          seenAptDate.add(aptDateKey);
+
+          // 전화번호 없는 호수만 카운트
+          const unitsWithoutPhone = data.units.filter(u => {
+            const key = `${apt}::${u.name || ''}::${date}`;
+            return !customerVisitKeys.has(key);
+          });
+
+          if (unitsWithoutPhone.length === 0) continue;
+
+          items.push({
+            type: 'work',
+            sortDate: date,
+            data: {
+              folderName: entry.name,
+              dirHandle: entry,
+              apt: apt,
+              date: date,
+              worker: data.worker || '',
+              units: unitsWithoutPhone,  // 전화번호 없는 호수만
+              totalUnits: data.units.length,
+              totalPhotos: data.units.reduce((s, u) => s + (u.beforeCount || 0) + (u.afterCount || 0), 0),
+              session: data
+            }
+          });
+        } catch(e) {
+          // _session.json 없는 폴더는 스킵
+        }
+      }
+    } catch(e) { console.warn('폴더 작업 로드 실패:', e); }
+  }
+
+  // 최근순 정렬
+  items.sort((a, b) => (b.sortDate || '').localeCompare(a.sortDate || ''));
+
+  return items;
+}
+
 async function renderCustomerList() {
   const body = document.getElementById('customerBody');
   if (!body) return;
 
-  let allCustomers = [];
+  // ★ 통합 데이터 로딩: 고객(전화번호 있음) + 폴더의 작업(전화번호 없는 것 포함)
+  let items = [];
   try {
-    allCustomers = await customerListAll();
+    items = await loadCombinedRecords();
   } catch(e) {
-    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--mu);">고객 목록 로드 실패: ${e.message}</div>`;
+    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--mu);">목록 로드 실패: ${e.message}</div>`;
     return;
   }
 
@@ -48,12 +148,12 @@ async function renderCustomerList() {
     dateTo = localDateStr();
   }
 
-  let customers = allCustomers;
+  let filtered = items;
   if (dateFrom || dateTo) {
-    customers = allCustomers.filter(c => {
-      if (!c.lastVisit) return false;
-      if (dateFrom && c.lastVisit < dateFrom) return false;
-      if (dateTo && c.lastVisit > dateTo) return false;
+    filtered = items.filter(it => {
+      if (!it.sortDate) return false;
+      if (dateFrom && it.sortDate < dateFrom) return false;
+      if (dateTo && it.sortDate > dateTo) return false;
       return true;
     });
   }
@@ -61,13 +161,29 @@ async function renderCustomerList() {
   // 검색 필터
   const q = _customerSearch.trim().toLowerCase();
   if (q) {
-    customers = customers.filter(c =>
-      (c.name || '').toLowerCase().includes(q) ||
-      (c.phone || '').includes(q) ||
-      (c.address || '').toLowerCase().includes(q)
-    );
+    filtered = filtered.filter(it => {
+      if (it.type === 'customer') {
+        const c = it.data;
+        if ((c.name || '').toLowerCase().includes(q)) return true;
+        if ((c.phone || '').includes(q)) return true;
+        if ((c.address || '').toLowerCase().includes(q)) return true;
+        if ((c.memo || '').toLowerCase().includes(q)) return true;
+        if (c.visits && c.visits.some(v =>
+          (v.apt || '').toLowerCase().includes(q) ||
+          (v.unit || '').toLowerCase().includes(q)
+        )) return true;
+      } else {
+        // 작업 카드
+        const w = it.data;
+        if ((w.apt || '').toLowerCase().includes(q)) return true;
+        if (w.units && w.units.some(u => (u.name || '').toLowerCase().includes(q))) return true;
+      }
+      return false;
+    });
   }
 
+  // 통계 (고객만)
+  const allCustomers = items.filter(it => it.type === 'customer').map(it => it.data);
   const total = allCustomers.length;
   const repeat = allCustomers.filter(c => (c.visitCount || 0) >= 2).length;
   const recent = allCustomers.filter(c => {
@@ -114,21 +230,21 @@ async function renderCustomerList() {
     <div style="background:var(--sf2);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--mu);font-weight:700;">📅 기간:</span>
       <span style="font-size:13px;color:var(--ac);font-weight:700;">${periodLabel}</span>
-      <span style="font-size:11px;color:var(--mu);">(${customers.length}명)</span>
+      <span style="font-size:11px;color:var(--mu);">(${filtered.length}건)</span>
       <button class="btn b-ghost b-xs" id="custDateBtn" style="margin-left:auto;">기간 변경</button>
       ${!_customerUseDefault ? `<button class="btn b-ghost b-xs" id="custDateReset">최근 ${CUSTOMER_DEFAULT_DAYS}일</button>` : ''}
     </div>
 
-    <input class="cust-inp" id="customerSearchInp" type="text" placeholder="🔍 이름/전화번호/주소 검색" value="${escHtmlSafe(_customerSearch)}" style="width:100%;margin-bottom:12px;">
+    <input class="cust-inp" id="customerSearchInp" type="text" placeholder="🔍 작업명/호수/이름/전화번호 검색" value="${escHtmlSafe(_customerSearch)}" style="width:100%;margin-bottom:12px;">
 
     <div style="display:flex;flex-direction:column;gap:8px;">
-      ${customers.length === 0
+      ${filtered.length === 0
         ? '<div style="padding:30px 14px;text-align:center;color:var(--mu);">' +
           (q ? '검색 결과가 없습니다' :
-            (_customerUseDefault ? `최근 ${CUSTOMER_DEFAULT_DAYS}일 내 방문 고객이 없습니다.<br>"기간 변경"으로 이전 고객도 볼 수 있어요.` : '해당 기간에 고객이 없습니다')
+            (_customerUseDefault ? `최근 ${CUSTOMER_DEFAULT_DAYS}일 내 작업이 없습니다.<br>"기간 변경"으로 이전 작업도 볼 수 있어요.` : '해당 기간에 작업이 없습니다')
           ) +
           '</div>'
-        : customers.map(c => renderCustomerCard(c)).join('')
+        : filtered.map(it => it.type === 'customer' ? renderCustomerCard(it.data) : renderWorkCard(it.data)).join('')
       }
     </div>
   `;
@@ -157,7 +273,13 @@ async function renderCustomerList() {
     card.addEventListener('click', e => {
       if (e.target.closest('.cust-card-del')) return;
       if (e.target.closest('.cust-card-edit')) return;
-      openWorkForCustomer(card.dataset.phone);
+      if (e.target.closest('.cust-card-work-del')) return;
+      // 작업 카드면 폴더로 열기, 고객 카드면 전화번호로 열기
+      if (card.classList.contains('cust-card-work')) {
+        openWorkByFolder(card.dataset.folder);
+      } else {
+        openWorkForCustomer(card.dataset.phone);
+      }
     });
   });
 
@@ -182,6 +304,51 @@ async function renderCustomerList() {
       }
     });
   });
+
+  // 작업 카드 삭제 (폴더 전체)
+  body.querySelectorAll('.cust-card-work-del').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const folder = btn.dataset.folder;
+      if (!confirm(`작업 "${folder}"을 삭제할까요?\n폴더의 모든 사진과 데이터가 삭제됩니다.`)) return;
+      try {
+        await photoFolderHandle.removeEntry(folder, { recursive: true });
+        await renderCustomerList();
+        showToast('✓ 작업 삭제됨', 'ok');
+      } catch(e) {
+        showToast('삭제 실패: ' + e.message, 'err');
+      }
+    });
+  });
+}
+
+// 폴더명으로 작업 직접 열기
+async function openWorkByFolder(folderName) {
+  if (!photoFolderHandle) {
+    showToast('저장 폴더가 설정되지 않았습니다', 'err');
+    return;
+  }
+
+  closeCustomerModal();
+  showOverlay('작업 불러오는 중...');
+
+  try {
+    const dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
+    const sessionFile = await dirHandle.getFileHandle('_session.json');
+    const file = await sessionFile.getFile();
+    const data = JSON.parse(await file.text());
+
+    if (typeof loadFromDateFolder === 'function') {
+      await loadFromDateFolder(dirHandle, data);
+    } else {
+      hideOverlay();
+      showToast('불러오기 함수를 찾을 수 없습니다', 'err');
+    }
+  } catch(e) {
+    hideOverlay();
+    console.error(e);
+    showToast('작업 불러오기 실패: ' + e.message, 'err');
+  }
 }
 
 function renderCustomerCard(c) {
@@ -217,6 +384,36 @@ function renderCustomerCard(c) {
         <span>${visitText} 방문</span>
         <span>· ${lastVisit}</span>
         ${c.memo ? `<span class="cust-card-memo">· 💬 ${escHtmlSafe(c.memo)}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// 작업 카드 (전화번호 없는 작업) - 회색 톤으로 구분
+function renderWorkCard(w) {
+  const unitNames = w.units.map(u => u.name).filter(n => n);
+  let unitText = '';
+  if (unitNames.length > 0) {
+    const shown = unitNames.slice(0, 3);
+    const remain = unitNames.length - shown.length;
+    unitText = shown.join(', ') + (remain > 0 ? ` +${remain}` : '');
+  }
+
+  const titleLine = `${escHtmlSafe(w.apt || '작업')} · ${unitText ? escHtmlSafe(unitText) : `${w.units.length}호수`}`;
+
+  return `
+    <div class="cust-card cust-card-work" data-folder="${escHtmlSafe(w.folderName)}" title="클릭하여 작업 열기">
+      <div class="cust-card-head">
+        <div class="cust-card-name">📁 ${titleLine}</div>
+        <div class="cust-card-actions">
+          <button class="cust-card-btn cust-card-work-del" data-folder="${escHtmlSafe(w.folderName)}" title="삭제">🗑️</button>
+        </div>
+      </div>
+      <div class="cust-card-line cust-card-meta">
+        <span style="color:var(--mu);">${escHtmlSafe(w.date)}</span>
+        <span>· 사진 ${w.totalPhotos}장</span>
+        ${w.worker ? `<span>· ${escHtmlSafe(w.worker)}</span>` : ''}
+        <span style="color:var(--mu);font-style:italic;">· 📞 미입력</span>
       </div>
     </div>
   `;
@@ -595,6 +792,7 @@ function bindCustomerEvents() {
   const closeBtn = document.getElementById('customerClose');
   const closeFoot = document.getElementById('customerCloseFoot');
   const xlsxBtn = document.getElementById('customerOpenXlsx');
+  const allBtn = document.getElementById('customerOpenAll');
 
   if (hdrBtn) hdrBtn.addEventListener('click', openCustomerModal);
 
@@ -606,6 +804,16 @@ function bindCustomerEvents() {
   if (closeBtn) closeBtn.addEventListener('click', closeCustomerModal);
   if (closeFoot) closeFoot.addEventListener('click', closeCustomerModal);
   if (xlsxBtn) xlsxBtn.addEventListener('click', openCustomersXlsxFile);
+
+  // 모든 작업 보기 - 기존 불러오기 모달 열기 (고객 정보 없는 옛날 작업 접근)
+  if (allBtn) allBtn.addEventListener('click', () => {
+    closeCustomerModal();
+    if (typeof openLoadList === 'function') {
+      openLoadList();
+    } else {
+      showToast('불러오기 함수를 찾을 수 없습니다', 'err');
+    }
+  });
 }
 
 if (document.readyState === 'loading') {

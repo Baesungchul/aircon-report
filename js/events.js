@@ -712,7 +712,7 @@ async function saveCustomerForUnit(u) {
     if (!existing) {
       showToast(`✓ 신규 고객 등록: ${norm}`, 'ok');
     } else if (u._lastShownExisting !== norm) {
-      showToast(`🔔 재방문 고객! ${existing.name || norm} (${existing.visitCount}회)`, 'ok');
+      showToast(`🔔 재의뢰 고객! ${existing.name || norm} (${existing.visitCount}회)`, 'ok');
       u._lastShownExisting = norm;
 
       if (addrEl && !addrEl.value && existing.address) {

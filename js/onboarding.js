@@ -121,7 +121,7 @@ function renderStep1Welcome(c) {
           <div class="ob-feature-ic">👥</div>
           <div>
             <div class="ob-feature-name">고객 자동 관리</div>
-            <div class="ob-feature-desc">전화번호로 재방문 추적</div>
+            <div class="ob-feature-desc">전화번호로 재의뢰 추적</div>
           </div>
         </div>
         <div class="ob-feature">

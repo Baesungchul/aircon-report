@@ -243,7 +243,7 @@ async function renderCustomerList() {
           <div style="font-size:20px;font-weight:800;color:var(--ac);">${total}</div>
         </div>
         <div>
-          <div style="font-size:11px;color:var(--mu);">재방문</div>
+          <div style="font-size:11px;color:var(--mu);">재작업</div>
           <div style="font-size:20px;font-weight:800;color:var(--ac2);">${repeat}</div>
         </div>
         <div>
@@ -314,7 +314,8 @@ async function renderCustomerList() {
       if (card.classList.contains('cust-card-work')) {
         openWorkByFolder(card.dataset.folder);
       } else {
-        openWorkForCustomer(card.dataset.phone);
+        const aptFilter = card.dataset.aptFilter || '';
+        openWorkForCustomer(card.dataset.phone, aptFilter);
       }
     });
   });
@@ -330,7 +331,7 @@ async function renderCustomerList() {
     btn.addEventListener('click', async e => {
       e.stopPropagation();
       const phone = btn.dataset.phone;
-      if (!confirm(`${phone} 고객을 삭제할까요?\n방문 내역도 함께 삭제됩니다.`)) return;
+      if (!confirm(`${phone} 고객을 삭제할까요?\n작업 기록도 함께 삭제됩니다.`)) return;
       try {
         await customerRemove(phone);
         await renderCustomerList();
@@ -543,17 +544,17 @@ function renderCustomerCard(c) {
   else titleLine = escHtmlSafe(unit);
 
   return `
-    <div class="cust-card" data-phone="${escHtmlSafe(c.phone)}" title="클릭하여 작업 열기">
+    <div class="cust-card" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" title="클릭하여 작업 열기">
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
           <button class="cust-card-btn cust-card-edit" data-phone="${escHtmlSafe(c.phone)}" title="정보 수정">✏️</button>
-          <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" title="삭제">🗑️</button>
+          <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" title="삭제">🗑️</button>
         </div>
       </div>
       <div class="cust-card-line">📞 ${escHtmlSafe(c.phone)}${c.address ? ` · 🏠 ${escHtmlSafe(c.address)}` : ''}</div>
       <div class="cust-card-line cust-card-meta">
-        <span>${visitText} 방문</span>
+        <span>${visitText} 작업</span>
         <span>· ${lastVisit}</span>
         ${totalPhotos > 0 ? `<span>· 사진 ${totalPhotos}장</span>` : ''}
         ${c.memo ? `<span class="cust-card-memo">· 💬 ${escHtmlSafe(c.memo)}</span>` : ''}
@@ -689,14 +690,20 @@ function openCustomerDateFilter() {
 }
 
 // 작업 열기
-async function openWorkForCustomer(phone) {
+async function openWorkForCustomer(phone, aptFilter) {
   const c = await customerLookup(phone);
   if (!c) {
     showToast('고객 정보를 찾을 수 없습니다', 'err');
     return;
   }
 
-  const visits = c.visits || [];
+  let visits = c.visits || [];
+
+  // apt 필터 적용 (해당 작업장의 visits만)
+  if (aptFilter) {
+    visits = visits.filter(v => (v.apt || '') === aptFilter);
+  }
+
   if (visits.length === 0) {
     showToast('연결된 작업이 없습니다', 'err');
     return;
@@ -767,8 +774,8 @@ function showVisitSelector(customer, visits) {
           `다음 작업을 삭제할까요?\n\n` +
           `${visit.apt || ''} · ${visit.unit || ''}\n` +
           `${visit.date || ''}\n\n` +
-          `※ 이 고객의 방문 기록과 폴더 데이터가 삭제됩니다.\n` +
-          `(다른 방문 기록은 유지됩니다)`
+          `※ 이 고객의 작업 기록과 폴더 데이터가 삭제됩니다.\n` +
+          `(다른 작업 기록은 유지됩니다)`
         )) return;
 
         try {
@@ -1065,7 +1072,7 @@ async function updateCustomerSummary() {
     const total = customers.length;
     const repeat = customers.filter(c => (c.visitCount || 0) >= 2).length;
     el.innerHTML = `<b style="color:var(--ac);">총 ${total}명</b>` +
-      (repeat > 0 ? ` · 재방문 ${repeat}명` : '');
+      (repeat > 0 ? ` · 재작업 ${repeat}명` : '');
   } catch(e) {
     el.textContent = '고객 0명';
   }

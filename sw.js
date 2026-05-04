@@ -1,5 +1,5 @@
-// 서비스워커 v49 - 1.002: 단일 진실 공급원 도입 (V2)
-const CACHE = 'ac1004-v49';
+// 서비스워커 v51 - 1.004: 작업 기록 모달 권한 자동 요청
+const CACHE = 'ac1004-v51';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

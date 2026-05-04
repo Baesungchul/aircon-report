@@ -1,5 +1,5 @@
-// 서비스워커 v47 - 정식 버전 1.0 출시
-const CACHE = 'ac1004-v47';
+// 서비스워커 v48 - 1.001: 호수명 변경 후 customer visits 완전 동기화
+const CACHE = 'ac1004-v48';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

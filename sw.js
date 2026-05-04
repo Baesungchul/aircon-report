@@ -1,5 +1,5 @@
-// 서비스워커 v51 - 1.004: 작업 기록 모달 권한 자동 요청
-const CACHE = 'ac1004-v51';
+// 서비스워커 v53 - 1.006: xlsx 디바운스 + 호수 삭제 시 캐시 무효화
+const CACHE = 'ac1004-v53';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

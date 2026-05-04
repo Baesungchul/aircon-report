@@ -1,5 +1,5 @@
-// 서비스워커 v41 - 카드에 사진 수 표시
-const CACHE = 'ac1004-v41';
+// 서비스워커 v42 - apt 필터 + 방문→작업 표현
+const CACHE = 'ac1004-v42';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

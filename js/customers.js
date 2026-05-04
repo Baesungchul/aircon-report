@@ -36,7 +36,32 @@ function saveCustomerFilter() {
 async function openCustomerModal() {
   document.getElementById('customerModal').classList.add('open');
   _customerSearch = '';
-  // 기간 필터는 유지 (localStorage에서 이미 로드됨)
+
+  // ★ 폴더 권한 강제 보장 - V2는 _session.json 스캔이 필수
+  // readwrite 모드로 요청해야 사용자 제스처 컨텍스트에서 안정적으로 동작
+  let permGranted = false;
+  if (photoFolderHandle) {
+    try {
+      let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        // 사용자 제스처 (모달 열기 클릭) 직후라 권한 요청 가능
+        perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      }
+      if (perm === 'granted') {
+        permGranted = true;
+        // 캐시 무효화 → 최신 _session.json 스캔
+        if (typeof invalidateCustomersCache === 'function') {
+          invalidateCustomersCache();
+        }
+      } else {
+        console.warn('[작업기록] 폴더 권한 거부');
+        showToast('폴더 권한이 필요합니다. "모든 작업"을 눌러주세요', 'err');
+      }
+    } catch(e) {
+      console.warn('[작업기록] 권한 확인 실패:', e);
+    }
+  }
+
   await renderCustomerList();
 }
 
@@ -59,8 +84,22 @@ function getDefaultDateFrom() {
 // ════════════════════════════════════════
 async function loadCombinedRecords() {
   const items = [];
-  const customerWorkIds = new Set();      // workId 기반 (메인 - 작업 카드 중복 방지)
-  const customerAptDateKeys = new Set();  // apt+date 기반 (legacy 호환)
+  const customerWorkIds = new Set();
+  const customerAptDateKeys = new Set();
+
+  // ★ 폴더 권한 보장 (V2는 _session.json 스캔이 필수)
+  if (photoFolderHandle) {
+    try {
+      let perm = await photoFolderHandle.queryPermission({ mode: 'read' });
+      if (perm !== 'granted') {
+        perm = await photoFolderHandle.requestPermission({ mode: 'read' });
+        if (perm !== 'granted') {
+          // 권한 없으면 안내 (작업 카드는 표시 못 함)
+          showToast('폴더 권한이 필요합니다', 'err');
+        }
+      }
+    } catch(e) { console.warn('[작업기록] 권한 체크 실패:', e); }
+  }
 
   // 1. 고객 데이터 로드 - workId별로 그룹화
   try {
@@ -342,13 +381,164 @@ async function renderCustomerList() {
     btn.addEventListener('click', async e => {
       e.stopPropagation();
       const phone = btn.dataset.phone;
-      if (!confirm(`${phone} 고객을 삭제할까요?\n작업 기록도 함께 삭제됩니다.`)) return;
+      const aptFilter = btn.dataset.aptFilter || '';
+      const workIdFilter = btn.dataset.workid || '';
+
+      // 어떤 visits를 삭제할지 결정
+      const c = await customerLookup(phone);
+      if (!c) {
+        showToast('고객을 찾을 수 없습니다', 'err');
+        return;
+      }
+
+      let visitsToDelete = c.visits || [];
+      if (workIdFilter) {
+        visitsToDelete = visitsToDelete.filter(v => v.workId === workIdFilter);
+      } else if (aptFilter) {
+        visitsToDelete = visitsToDelete.filter(v => (v.apt || '') === aptFilter);
+      }
+
+      // 작업 폴더 목록 (workId/folderName으로)
+      const folderNames = new Set();
+      visitsToDelete.forEach(v => {
+        if (v.folderName) folderNames.add(v.folderName);
+      });
+
+      // 만약 folderName 없는 visits면 폴더 검색
+      const needFolderSearch = visitsToDelete.some(v => !v.folderName);
+
+      // 사용자 확인
+      const aptLabel = aptFilter || (visitsToDelete[0]?.apt) || '작업';
+      const totalVisits = c.visits?.length || 0;
+      const visitCount = visitsToDelete.length;
+
+      let confirmMsg = '';
+      if (visitCount === totalVisits) {
+        confirmMsg = `${phone} 고객을 완전히 삭제하시겠습니까?\n\n` +
+          `📞 고객 정보 + ${visitCount}개 작업 폴더가 모두 삭제됩니다.\n` +
+          `⚠️ 사진 파일도 모두 삭제됩니다.`;
+      } else {
+        confirmMsg = `"${aptLabel}" 작업을 삭제하시겠습니까?\n\n` +
+          `${visitCount}개 작업 폴더가 삭제됩니다.\n` +
+          `(다른 작업 ${totalVisits - visitCount}개는 유지)`;
+      }
+
+      if (!confirm(confirmMsg)) return;
+
+      // 권한 체크
       try {
-        await customerRemove(phone);
+        let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+          if (perm !== 'granted') {
+            showToast('쓰기 권한이 거부되었습니다', 'err');
+            return;
+          }
+        }
+      } catch(err) {
+        showToast('권한 확인 실패: ' + err.message, 'err');
+        return;
+      }
+
+      showOverlay('삭제 중...');
+      const safetyTimeout = setTimeout(() => {
+        hideOverlay();
+        showToast('삭제 시간 초과', 'err');
+      }, 60000);
+
+      try {
+        let folderDeleted = 0;
+        let folderFailed = 0;
+
+        // 폴더 검색 (folderName 없는 visit 처리)
+        if (needFolderSearch) {
+          for await (const entry of photoFolderHandle.values()) {
+            if (entry.kind !== 'directory') continue;
+            if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+
+            try {
+              const sessionFile = await entry.getFileHandle('_session.json');
+              const file = await sessionFile.getFile();
+              const data = JSON.parse(await file.text());
+
+              // workId 매칭
+              if (workIdFilter && data.workId === workIdFilter) {
+                folderNames.add(entry.name);
+                continue;
+              }
+              // apt 매칭 (legacy)
+              if (!workIdFilter && aptFilter && data.apt === aptFilter) {
+                // 호수 중 하나라도 이 phone에 속하면 폴더 삭제 대상
+                const hasMatchingPhone = (data.units || []).some(u => {
+                  const p = (u.customer?.phone || '').replace(/[^\d]/g, '');
+                  return p && normalizePhone(u.customer.phone) === normalizePhone(phone);
+                });
+                if (hasMatchingPhone) folderNames.add(entry.name);
+              }
+            } catch(e) {}
+          }
+        }
+
+        // 폴더 삭제
+        for (const folderName of folderNames) {
+          try {
+            // 1차: recursive
+            try {
+              await photoFolderHandle.removeEntry(folderName, { recursive: true });
+              folderDeleted++;
+              continue;
+            } catch(e1) {
+              console.warn(`recursive 삭제 실패 (${folderName}):`, e1.message);
+            }
+
+            // 2차: 수동
+            if (typeof deleteDirectoryContents === 'function') {
+              try {
+                const dh = await photoFolderHandle.getDirectoryHandle(folderName);
+                await deleteDirectoryContents(dh);
+                await photoFolderHandle.removeEntry(folderName);
+                folderDeleted++;
+                continue;
+              } catch(e2) {
+                console.warn(`수동 삭제 실패 (${folderName}):`, e2.message);
+              }
+            }
+
+            folderFailed++;
+          } catch(e) {
+            folderFailed++;
+            console.error(`폴더 ${folderName} 삭제 실패:`, e);
+          }
+        }
+
+        // 모든 visits 삭제 시 → 메타도 삭제
+        if (visitCount === totalVisits) {
+          try { await customerRemove(phone); } catch(e) {}
+        }
+
+        // V2: 캐시 무효화 + xlsx 재생성
+        if (typeof invalidateCustomersCache === 'function') {
+          invalidateCustomersCache();
+        }
+        if (typeof flushCustomersXlsx === 'function') {
+          await flushCustomersXlsx();
+        }
+
+        clearTimeout(safetyTimeout);
+        hideOverlay();
+
         await renderCustomerList();
-        showToast('✓ 고객 삭제됨', 'ok');
-      } catch(e) {
-        showToast('삭제 실패: ' + e.message, 'err');
+
+        if (folderFailed === 0) {
+          showToast(`✓ ${folderDeleted}개 폴더 삭제됨`, 'ok');
+        } else {
+          showToast(`${folderDeleted}개 삭제, ${folderFailed}개 실패`, 'err');
+        }
+      } catch(err) {
+        clearTimeout(safetyTimeout);
+        hideOverlay();
+        console.error(err);
+        showToast('삭제 실패: ' + err.message, 'err');
       }
     });
   });
@@ -430,6 +620,13 @@ async function renderCustomerList() {
         hideOverlay();
 
         if (deleted) {
+          // V2: 캐시 무효화 + xlsx 재생성
+          if (typeof invalidateCustomersCache === 'function') {
+            invalidateCustomersCache();
+          }
+          if (typeof flushCustomersXlsx === 'function') {
+            await flushCustomersXlsx();
+          }
           await renderCustomerList();
           showToast('✓ 작업 삭제됨', 'ok');
         } else {

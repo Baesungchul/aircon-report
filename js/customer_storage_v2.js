@@ -114,6 +114,19 @@ async function rebuildCustomersFromSessions(opts = {}) {
     return [];
   }
 
+  // ★ 권한 체크 - 권한 없으면 캐시 안 만들고 빈 배열 반환 (다음 호출에 재시도)
+  try {
+    const perm = await photoFolderHandle.queryPermission({ mode: 'read' });
+    if (perm !== 'granted') {
+      console.warn('[v2] 폴더 읽기 권한 없음 - 스캔 스킵');
+      // 캐시 안 저장 → 다음 호출 시 다시 시도
+      return [];
+    }
+  } catch(e) {
+    console.warn('[v2] 권한 확인 실패:', e);
+    return [];
+  }
+
   await loadCustomerMeta();
 
   // 전화번호별 visits 수집

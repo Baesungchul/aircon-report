@@ -772,6 +772,51 @@ async function flushAllCustomers() {
     return 0;
   }
   console.log(`🔵 [flush] 시작 - ${units.length}개 호수 검사`);
+
+  // ★ 현재 작업의 모든 호수에 대해 (전화번호 있는 호수만)
+  // 1) 현재 작업(workId)의 옛 visits를 customer에서 미리 제거
+  // 2) 그 다음 현재 호수 정보로 새로 저장
+  // 이렇게 하면 호수명 변경/삭제도 정확하게 반영됨
+  if (currentWorkId && typeof customerListAll === 'function') {
+    try {
+      const allCustomers = await customerListAll();
+      // 현재 메모리에 있는 (전화번호 있는) 호수의 phone 목록
+      const currentPhones = new Set();
+      units.forEach(u => {
+        if (u.customer?.phone) {
+          const p = u.customer.phone.replace(/[^\d]/g, '');
+          if (p.length >= 9) currentPhones.add(normalizePhone(u.customer.phone));
+        }
+      });
+
+      // 각 고객에 대해 현재 작업(workId)의 visits 제거
+      // (다음에 saveCustomerForUnit이 새로 추가함)
+      for (const c of allCustomers) {
+        if (!c.visits || c.visits.length === 0) continue;
+
+        // 이번 작업과 관련 있을 수 있는 customer만 처리
+        // (이번 작업 phone에 포함되거나, 이번 workId의 visits이 있거나)
+        const norm = normalizePhone(c.phone);
+        const hasCurrentWorkId = c.visits.some(v => v.workId === currentWorkId);
+        if (!currentPhones.has(norm) && !hasCurrentWorkId) continue;
+
+        // workId가 같은 visits 제거
+        const filteredVisits = c.visits.filter(v => v.workId !== currentWorkId);
+
+        if (filteredVisits.length !== c.visits.length) {
+          console.log(`🟢 [flush] ${c.phone} - 옛 visits 정리 (${c.visits.length} → ${filteredVisits.length})`);
+          if (typeof customerUpdateVisits === 'function') {
+            try {
+              await customerUpdateVisits(c.phone, filteredVisits);
+            } catch(e) { console.warn('customerUpdateVisits 실패:', e); }
+          }
+        }
+      }
+    } catch(e) {
+      console.warn('🔴 [flush] visits 정리 실패:', e);
+    }
+  }
+
   let count = 0;
   let failed = 0;
   for (const u of units) {

@@ -1,5 +1,5 @@
-// 서비스워커 v42 - apt 필터 + 방문→작업 표현
-const CACHE = 'ac1004-v42';
+// 서비스워커 v47 - 정식 버전 1.0 출시
+const CACHE = 'ac1004-v47';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

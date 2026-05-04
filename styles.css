@@ -45,6 +45,13 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
   line-height:1.2;
   word-break:keep-all;  /* 한국어 단어 단위 줄바꿈 */
 }
+.logo-ver{
+  font-size:10px;
+  color:var(--mu);
+  font-weight:500;
+  margin-top:2px;
+  letter-spacing:0.3px;
+}
 /* 각 부분은 단어 안에서 잘리지 않음 */
 .logo-tx-1, .logo-tx-2{
   white-space:nowrap;

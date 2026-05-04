@@ -1,5 +1,5 @@
-// 서비스워커 v38 - 작업 중복 표시 방지
-const CACHE = 'ac1004-v38';
+// 서비스워커 v41 - 카드에 사진 수 표시
+const CACHE = 'ac1004-v41';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -1,5 +1,5 @@
-// 서비스워커 v48 - 1.001: 호수명 변경 후 customer visits 완전 동기화
-const CACHE = 'ac1004-v48';
+// 서비스워커 v49 - 1.002: 단일 진실 공급원 도입 (V2)
+const CACHE = 'ac1004-v49';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

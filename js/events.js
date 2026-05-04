@@ -768,82 +768,31 @@ async function saveCustomerForUnit(u) {
 // 모든 호수의 고객 정보를 customers DB에 저장 (배치)
 async function flushAllCustomers() {
   if (typeof units === 'undefined' || !units || units.length === 0) {
-    console.log('🟡 [flush] units 비어있음');
     return 0;
   }
-  console.log(`🔵 [flush] 시작 - ${units.length}개 호수 검사`);
 
-  // ★ 현재 작업의 모든 호수에 대해 (전화번호 있는 호수만)
-  // 1) 현재 작업(workId)의 옛 visits를 customer에서 미리 제거
-  // 2) 그 다음 현재 호수 정보로 새로 저장
-  // 이렇게 하면 호수명 변경/삭제도 정확하게 반영됨
-  if (currentWorkId && typeof customerListAll === 'function') {
-    try {
-      const allCustomers = await customerListAll();
-      // 현재 메모리에 있는 (전화번호 있는) 호수의 phone 목록
-      const currentPhones = new Set();
-      units.forEach(u => {
-        if (u.customer?.phone) {
-          const p = u.customer.phone.replace(/[^\d]/g, '');
-          if (p.length >= 9) currentPhones.add(normalizePhone(u.customer.phone));
-        }
-      });
-
-      // 각 고객에 대해 현재 작업(workId)의 visits 제거
-      // (다음에 saveCustomerForUnit이 새로 추가함)
-      for (const c of allCustomers) {
-        if (!c.visits || c.visits.length === 0) continue;
-
-        // 이번 작업과 관련 있을 수 있는 customer만 처리
-        // (이번 작업 phone에 포함되거나, 이번 workId의 visits이 있거나)
-        const norm = normalizePhone(c.phone);
-        const hasCurrentWorkId = c.visits.some(v => v.workId === currentWorkId);
-        if (!currentPhones.has(norm) && !hasCurrentWorkId) continue;
-
-        // workId가 같은 visits 제거
-        const filteredVisits = c.visits.filter(v => v.workId !== currentWorkId);
-
-        if (filteredVisits.length !== c.visits.length) {
-          console.log(`🟢 [flush] ${c.phone} - 옛 visits 정리 (${c.visits.length} → ${filteredVisits.length})`);
-          if (typeof customerUpdateVisits === 'function') {
-            try {
-              await customerUpdateVisits(c.phone, filteredVisits);
-            } catch(e) { console.warn('customerUpdateVisits 실패:', e); }
-          }
-        }
-      }
-    } catch(e) {
-      console.warn('🔴 [flush] visits 정리 실패:', e);
-    }
-  }
-
+  // V2 모드 (1.002+): 메타만 저장 (visits는 _session.json이 진실)
+  // 기존 V1 호환을 위해 saveCustomerForUnit 호출은 유지
   let count = 0;
   let failed = 0;
   for (const u of units) {
-    // 메모리 + DOM 양쪽에서 phone 확인
     const phoneFromMem = (u.customer?.phone || '').trim();
     const phoneEl = document.querySelector(`.cust-inp[data-uid="${u.id}"][data-field="phone"]`);
     const phoneFromDom = phoneEl ? phoneEl.value.trim() : '';
     const phone = phoneFromDom || phoneFromMem;
 
-    if (!phone) {
-      console.log(`  ⏭️ ${u.name}: 전화번호 없음`);
-      continue;
-    }
+    if (!phone) continue;
 
-    // u.customer 동기화
     if (!u.customer) u.customer = { phone: '', address: '', memo: '' };
     if (phoneFromDom) u.customer.phone = phoneFromDom;
 
     try {
       await saveCustomerForUnit(u);
-      // dirty 해제 + 저장 시각 기록
       if (u.customer) {
         u.customer._dirty = false;
         const now = new Date();
         u.customer._savedAt = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
       }
-      // UI 갱신 (열려있는 카드만)
       if (typeof updateCustSaveBtnState === 'function') updateCustSaveBtnState(u.id);
       count++;
     } catch(e) {
@@ -851,6 +800,12 @@ async function flushAllCustomers() {
       failed++;
     }
   }
+
+  // V2: 캐시 무효화 (다음 조회 시 _session.json 다시 스캔)
+  if (typeof invalidateCustomersCache === 'function') {
+    invalidateCustomersCache();
+  }
+
   console.log(`🟢 [flush] 완료 - 성공 ${count}, 실패 ${failed}`);
   return count;
 }

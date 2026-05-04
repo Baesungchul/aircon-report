@@ -395,7 +395,6 @@ async function saveToFolder(opts) {
   // 결과 토스트 (자동 저장은 조용히)
   if (sessionFileSaved) {
     if (isAutoSave) {
-      // 자동 저장 - 토스트 없음 (조용히)
       console.log(`💾 자동 저장 완료 - 사진 ${saved}장`);
     } else if (failed > 0) {
       showToast(`💾 사진 ${saved}장 저장 (${failed}장 실패) ✓ 작업 정보 저장됨`, 'ok');
@@ -403,6 +402,14 @@ async function saveToFolder(opts) {
       showToast(`💾 작업 정보 저장 완료 (사진은 이미 저장됨)`, 'ok');
     } else {
       showToast(`💾 사진 ${saved}장 + 작업 정보 저장 완료 ✓`, 'ok');
+    }
+
+    // ★ v2: customers.xlsx 자동 재생성 (단일 진실 공급원)
+    if (typeof flushCustomersXlsx === 'function') {
+      flushCustomersXlsx().catch(e => console.warn('xlsx 재생성 실패:', e));
+    }
+    if (typeof invalidateCustomersCache === 'function') {
+      invalidateCustomersCache();
     }
   } else {
     if (!isAutoSave) {

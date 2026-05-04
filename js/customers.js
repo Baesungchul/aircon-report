@@ -2,19 +2,41 @@
    고객 관리 (Customers)
 ═══════════════════════════════════════════════ */
 
+const CUSTOMER_FILTER_KEY = 'ac_customer_filter_v1';
+const CUSTOMER_DEFAULT_DAYS = 3;
+
 let _customerSearch = '';
 let _customerDateFrom = null;
 let _customerDateTo = null;
 let _customerUseDefault = true;
 
-const CUSTOMER_DEFAULT_DAYS = 3;
+// 저장된 필터 불러오기
+(function loadSavedFilter(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOMER_FILTER_KEY) || 'null');
+    if (saved) {
+      _customerUseDefault = saved.useDefault !== false;
+      _customerDateFrom = saved.dateFrom || null;
+      _customerDateTo = saved.dateTo || null;
+    }
+  } catch(e) {}
+})();
+
+// 필터 저장
+function saveCustomerFilter() {
+  try {
+    localStorage.setItem(CUSTOMER_FILTER_KEY, JSON.stringify({
+      useDefault: _customerUseDefault,
+      dateFrom: _customerDateFrom,
+      dateTo: _customerDateTo
+    }));
+  } catch(e) {}
+}
 
 async function openCustomerModal() {
   document.getElementById('customerModal').classList.add('open');
   _customerSearch = '';
-  _customerUseDefault = true;
-  _customerDateFrom = null;
-  _customerDateTo = null;
+  // 기간 필터는 유지 (localStorage에서 이미 로드됨)
   await renderCustomerList();
 }
 
@@ -37,25 +59,54 @@ function getDefaultDateFrom() {
 // ════════════════════════════════════════
 async function loadCombinedRecords() {
   const items = [];
-  // ★ 폴더(apt+date) 키로 작업 추적 - 고객 카드가 하나라도 있으면 작업 카드 생략
-  const customerAptDateKeys = new Set();  // "apt::date" - 작업 카드 표시 여부 결정
-  const customerVisitKeys = new Set();    // "apt::unit::date" - 호수별 매칭
+  const customerAptDateKeys = new Set();
+  const customerVisitKeys = new Set();
 
-  // 1. 고객 데이터 로드
+  // 1. 고객 데이터 로드 - apt별로 분리
   try {
     const customers = await customerListAll();
     customers.forEach(c => {
-      items.push({
-        type: 'customer',
-        sortDate: c.lastVisit || '',
-        data: c
-      });
-      // 이 고객의 visits를 키 셋에 추가
-      (c.visits || []).forEach(v => {
+      if (!c.visits || c.visits.length === 0) {
+        // visits 없는 고객은 그냥 1개 카드
+        items.push({
+          type: 'customer',
+          sortDate: c.lastVisit || '',
+          data: c
+        });
+        return;
+      }
+
+      // ★ apt별로 visits 그룹화
+      const visitsByApt = new Map();
+      c.visits.forEach(v => {
+        const apt = v.apt || '(작업명 없음)';
+        if (!visitsByApt.has(apt)) visitsByApt.set(apt, []);
+        visitsByApt.get(apt).push(v);
+
+        // 키 등록 (작업 카드 중복 방지용)
         const aptDate = `${v.apt || ''}::${v.date || ''}`;
-        customerAptDateKeys.add(aptDate);  // 폴더 단위
+        customerAptDateKeys.add(aptDate);
         const fullKey = `${v.apt || ''}::${v.unit || ''}::${v.date || ''}`;
-        customerVisitKeys.add(fullKey);  // 호수 단위
+        customerVisitKeys.add(fullKey);
+      });
+
+      // 각 apt마다 가상 customer 카드 생성
+      visitsByApt.forEach((aptVisits, apt) => {
+        const sortedVisits = [...aptVisits].sort((a, b) =>
+          (b.date || '').localeCompare(a.date || ''));
+        const aptLastVisit = sortedVisits[0]?.date || '';
+
+        items.push({
+          type: 'customer',
+          sortDate: aptLastVisit,
+          data: {
+            ...c,
+            visits: aptVisits,           // 이 apt만의 visits
+            visitCount: aptVisits.length,
+            lastVisit: aptLastVisit,
+            _aptFilter: apt              // 이 카드는 이 apt 한정 표시
+          }
+        });
       });
     });
   } catch(e) { console.warn('고객 로드 실패:', e); }
@@ -80,16 +131,12 @@ async function loadCombinedRecords() {
           const apt = data.apt || '';
           const date = data.date || entry.name.slice(0, 10);
 
-          // ★ 이 작업(apt+date)에 고객 카드가 하나라도 있으면 작업 카드 생략
-          // (일부 호수만 입력한 경우에도 작업 카드 중복 방지)
           const aptDateKey = `${apt}::${date}`;
           if (customerAptDateKeys.has(aptDateKey)) continue;
 
-          // 폴더 중복 체크
           if (seenAptDate.has(aptDateKey)) continue;
           seenAptDate.add(aptDateKey);
 
-          // 작업 카드는 모든 호수 표시 (전부 미입력이므로)
           items.push({
             type: 'work',
             sortDate: date,
@@ -105,14 +152,11 @@ async function loadCombinedRecords() {
               session: data
             }
           });
-        } catch(e) {
-          // _session.json 없는 폴더는 스킵
-        }
+        } catch(e) {}
       }
     } catch(e) { console.warn('폴더 작업 로드 실패:', e); }
   }
 
-  // 최근순 정렬
   items.sort((a, b) => (b.sortDate || '').localeCompare(a.sortDate || ''));
 
   return items;
@@ -257,6 +301,7 @@ async function renderCustomerList() {
     _customerUseDefault = true;
     _customerDateFrom = null;
     _customerDateTo = null;
+    saveCustomerFilter();
     renderCustomerList();
   });
 
@@ -484,6 +529,13 @@ function renderCustomerCard(c) {
   const apt = lastWork?.apt || '';
   const unit = lastWork?.unit || c.name || c.phone;
 
+  // 모든 visits의 사진 수 합계 (work 필드의 "Photos: N" 파싱)
+  let totalPhotos = 0;
+  (c.visits || []).forEach(v => {
+    const m = (v.work || '').match(/Photos:\s*(\d+)/);
+    if (m) totalPhotos += parseInt(m[1]) || 0;
+  });
+
   // 작업명 + 호수 한 줄
   let titleLine = '';
   if (apt && unit) titleLine = `${escHtmlSafe(apt)} · ${escHtmlSafe(unit)}`;
@@ -503,13 +555,14 @@ function renderCustomerCard(c) {
       <div class="cust-card-line cust-card-meta">
         <span>${visitText} 방문</span>
         <span>· ${lastVisit}</span>
+        ${totalPhotos > 0 ? `<span>· 사진 ${totalPhotos}장</span>` : ''}
         ${c.memo ? `<span class="cust-card-memo">· 💬 ${escHtmlSafe(c.memo)}</span>` : ''}
       </div>
     </div>
   `;
 }
 
-// 작업 카드 (전화번호 없는 작업) - 회색 톤으로 구분
+// 작업 카드 (전화번호 없는 작업) - 고객 카드와 동일한 형식
 function renderWorkCard(w) {
   const unitNames = w.units.map(u => u.name).filter(n => n);
   let unitText = '';
@@ -519,21 +572,21 @@ function renderWorkCard(w) {
     unitText = shown.join(', ') + (remain > 0 ? ` +${remain}` : '');
   }
 
+  // 고객 카드와 동일: "작업명 · 호수" 형식
   const titleLine = `${escHtmlSafe(w.apt || '작업')} · ${unitText ? escHtmlSafe(unitText) : `${w.units.length}호수`}`;
 
   return `
     <div class="cust-card cust-card-work" data-folder="${escHtmlSafe(w.folderName)}" title="클릭하여 작업 열기">
       <div class="cust-card-head">
-        <div class="cust-card-name">📁 ${titleLine}</div>
+        <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
           <button class="cust-card-btn cust-card-work-del" data-folder="${escHtmlSafe(w.folderName)}" title="삭제">🗑️</button>
         </div>
       </div>
+      <div class="cust-card-line"><span style="color:var(--mu);font-style:italic;">📞 미입력</span></div>
       <div class="cust-card-line cust-card-meta">
         <span style="color:var(--mu);">${escHtmlSafe(w.date)}</span>
         <span>· 사진 ${w.totalPhotos}장</span>
-        ${w.worker ? `<span>· ${escHtmlSafe(w.worker)}</span>` : ''}
-        <span style="color:var(--mu);font-style:italic;">· 📞 미입력</span>
       </div>
     </div>
   `;
@@ -585,6 +638,7 @@ function openCustomerDateFilter() {
     _customerUseDefault = true;
     _customerDateFrom = null;
     _customerDateTo = null;
+    saveCustomerFilter();
     closeOverlay();
     renderCustomerList();
   });
@@ -595,6 +649,7 @@ function openCustomerDateFilter() {
     _customerUseDefault = false;
     _customerDateFrom = localDateStr(d);
     _customerDateTo = localDateStr();
+    saveCustomerFilter();
     closeOverlay();
     renderCustomerList();
   });
@@ -605,6 +660,7 @@ function openCustomerDateFilter() {
     _customerUseDefault = false;
     _customerDateFrom = localDateStr(d);
     _customerDateTo = localDateStr();
+    saveCustomerFilter();
     closeOverlay();
     renderCustomerList();
   });
@@ -613,6 +669,7 @@ function openCustomerDateFilter() {
     _customerUseDefault = false;
     _customerDateFrom = null;
     _customerDateTo = null;
+    saveCustomerFilter();
     closeOverlay();
     renderCustomerList();
   });
@@ -623,6 +680,7 @@ function openCustomerDateFilter() {
     _customerUseDefault = false;
     _customerDateFrom = f || null;
     _customerDateTo = t || null;
+    saveCustomerFilter();
     closeOverlay();
     renderCustomerList();
   });
@@ -655,21 +713,28 @@ async function openWorkForCustomer(phone) {
 function showVisitSelector(customer, visits) {
   const sorted = [...visits].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
+  function renderItems() {
+    return sorted.map((v, i) => `
+      <div class="visit-sel-row" style="display:flex;gap:6px;align-items:stretch;">
+        <button class="btn b-ghost visit-sel-btn" data-visit-idx="${i}" style="flex:1;justify-content:flex-start;text-align:left;padding:12px;">
+          <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+            <div style="font-weight:700;color:var(--ac);">📁 ${escHtmlSafe(v.apt || '작업')}</div>
+            <div style="font-size:12px;">🏠 ${escHtmlSafe(v.unit || '')} <span style="color:var(--mu);">· ${escHtmlSafe(v.date || '')}</span></div>
+            ${v.work ? `<div style="font-size:11px;color:var(--mu);">${escHtmlSafe(v.work)}</div>` : ''}
+          </div>
+        </button>
+        <button class="btn b-ghost visit-sel-del" data-visit-idx="${i}" title="이 작업 삭제" style="flex-shrink:0;width:48px;padding:0;font-size:18px;">🗑️</button>
+      </div>
+    `).join('');
+  }
+
   const html = `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:700;display:flex;align-items:center;justify-content:center;padding:16px;" id="visitSelOverlay">
       <div style="background:var(--sf);border-radius:14px;padding:20px;max-width:480px;width:100%;max-height:80vh;display:flex;flex-direction:column;">
         <div style="font-size:16px;font-weight:800;margin-bottom:6px;">${escHtmlSafe(customer.name || customer.phone)}</div>
-        <div style="font-size:12px;color:var(--mu);margin-bottom:14px;">${visits.length}개 작업이 있습니다. 선택하세요.</div>
-        <div style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
-          ${sorted.map((v, i) => `
-            <button class="btn b-ghost visit-sel-btn" data-visit-idx="${i}" style="width:100%;justify-content:flex-start;text-align:left;padding:12px;">
-              <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                <div style="font-weight:700;color:var(--ac);">📁 ${escHtmlSafe(v.apt || '작업')}</div>
-                <div style="font-size:12px;">🏠 ${escHtmlSafe(v.unit || '')} <span style="color:var(--mu);">· ${escHtmlSafe(v.date || '')}</span></div>
-                ${v.work ? `<div style="font-size:11px;color:var(--mu);">${escHtmlSafe(v.work)}</div>` : ''}
-              </div>
-            </button>
-          `).join('')}
+        <div style="font-size:12px;color:var(--mu);margin-bottom:14px;">${sorted.length}개 작업이 있습니다. 선택하세요.</div>
+        <div id="visitSelList" style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+          ${renderItems()}
         </div>
         <button class="btn b-ghost" id="visitSelCancel" style="margin-top:14px;">취소</button>
       </div>
@@ -681,15 +746,104 @@ function showVisitSelector(customer, visits) {
 
   const closeSel = () => document.getElementById('visitSelOverlay')?.remove();
 
-  document.querySelectorAll('.visit-sel-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const idx = parseInt(btn.dataset.visitIdx);
-      const visit = sorted[idx];
-      closeSel();
-      await loadWorkByVisit(visit);
+  function bindRowEvents() {
+    document.querySelectorAll('.visit-sel-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = parseInt(btn.dataset.visitIdx);
+        const visit = sorted[idx];
+        closeSel();
+        await loadWorkByVisit(visit);
+      });
     });
-  });
 
+    // 삭제 버튼
+    document.querySelectorAll('.visit-sel-del').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.visitIdx);
+        const visit = sorted[idx];
+
+        if (!confirm(
+          `다음 작업을 삭제할까요?\n\n` +
+          `${visit.apt || ''} · ${visit.unit || ''}\n` +
+          `${visit.date || ''}\n\n` +
+          `※ 이 고객의 방문 기록과 폴더 데이터가 삭제됩니다.\n` +
+          `(다른 방문 기록은 유지됩니다)`
+        )) return;
+
+        try {
+          // 1) 고객의 visits 배열에서 이 항목만 제거
+          const updatedVisits = (customer.visits || []).filter(v =>
+            !(v.apt === visit.apt && v.unit === visit.unit && v.date === visit.date)
+          );
+
+          customer.visits = updatedVisits;
+          customer.visitCount = updatedVisits.length;
+          if (updatedVisits.length > 0) {
+            customer.lastVisit = updatedVisits.reduce((max, v) =>
+              (v.date || '') > (max || '') ? v.date : max, '');
+          } else {
+            customer.lastVisit = '';
+          }
+
+          // 2) customers DB 저장
+          if (typeof customerSave === 'function') {
+            // visits 배열 통째 업데이트가 필요 - 직접 DB 업데이트
+            if (typeof customerUpdateVisits === 'function') {
+              await customerUpdateVisits(customer.phone, updatedVisits);
+            } else {
+              // 폴백: 일단 visits 직접 수정 시도
+              await customerSave({
+                phone: customer.phone,
+                name: customer.name,
+                address: customer.address,
+                memo: customer.memo,
+                _visitsOverride: updatedVisits  // 특수 마커
+              });
+            }
+          }
+
+          // 3) xlsx 갱신
+          if (typeof flushCustomersXlsx === 'function') {
+            await flushCustomersXlsx();
+          }
+
+          // 4) 폴더 삭제 (다른 호수도 함께 있을 수 있으니 신중하게)
+          // → 폴더는 다른 작업과 공유될 수 있으므로 자동 삭제하지 않음
+          //   사용자가 작업 기록의 작업 카드에서 별도로 삭제하도록 안내
+          //   (대신 visits에서만 제거)
+
+          showToast('✓ 작업 기록 삭제됨', 'ok');
+
+          // 5) 모든 visits 삭제됐으면 다이얼로그 닫고 목록 갱신
+          if (updatedVisits.length === 0) {
+            closeSel();
+            await renderCustomerList();
+            return;
+          }
+
+          // 6) 다이얼로그 갱신 (sorted 재구성)
+          sorted.splice(idx, 1);
+          const listEl = document.getElementById('visitSelList');
+          if (listEl) {
+            listEl.innerHTML = renderItems();
+            bindRowEvents();
+          }
+
+          // 1개 남았으면 자동 닫고 그 작업 열기? → 아니, 사용자가 다시 선택하도록
+          if (sorted.length === 0) {
+            closeSel();
+            await renderCustomerList();
+          }
+        } catch(err) {
+          console.error(err);
+          showToast('삭제 실패: ' + (err.message || err), 'err');
+        }
+      });
+    });
+  }
+
+  bindRowEvents();
   document.getElementById('visitSelCancel').addEventListener('click', closeSel);
 }
 

@@ -179,11 +179,29 @@ async function customerSave(info) {
     if (visit) {
       customer.lastVisit = visit.date || now.slice(0, 10);
       customer.visits = customer.visits || [];
-      // 같은 날짜+호수+작업장 중복 방지
-      const dupIdx = customer.visits.findIndex(v =>
+
+      // 1차: 정확 매칭 (date + unit + apt)
+      let dupIdx = customer.visits.findIndex(v =>
         v.date === visit.date && v.unit === visit.unit && v.apt === visit.apt
       );
+
+      // 2차: 작업명 수정 대응 - 같은 날짜+호수에 visit이 있으면 그것을 갱신
+      // (사용자가 같은 날 같은 호수의 작업명만 변경한 경우)
+      if (dupIdx < 0) {
+        dupIdx = customer.visits.findIndex(v =>
+          v.date === visit.date && v.unit === visit.unit
+        );
+      }
+
+      // 3차: 작업명 + 날짜 변경 대응 - sourceFolderName 매칭
+      if (dupIdx < 0 && visit.sourceFolderName) {
+        dupIdx = customer.visits.findIndex(v =>
+          v.sourceFolderName === visit.sourceFolderName && v.unit === visit.unit
+        );
+      }
+
       if (dupIdx >= 0) {
+        // 기존 visit 갱신 (작업명 변경 등 반영)
         customer.visits[dupIdx] = visit;
       } else {
         customer.visits.push(visit);
@@ -246,6 +264,28 @@ async function customerRemove(phone) {
   const norm = normalizePhone(phone);
   _customersCache.delete(norm);
   try { await customerDelete(norm); } catch(e) {}
+  scheduleCustomersWrite();
+}
+
+// 고객의 visits 배열을 통째로 교체 (visit 삭제 등에 사용)
+async function customerUpdateVisits(phone, newVisits) {
+  await initCustomersCache();
+  const norm = normalizePhone(phone);
+  const customer = _customersCache.get(norm);
+  if (!customer) throw new Error('Customer not found');
+
+  customer.visits = newVisits || [];
+  customer.visitCount = customer.visits.length;
+  if (customer.visits.length > 0) {
+    customer.lastVisit = customer.visits.reduce((max, v) =>
+      (v.date || '') > (max || '') ? v.date : max, '');
+  } else {
+    customer.lastVisit = '';
+  }
+  customer.updatedAt = (typeof kstIsoString === 'function') ? kstIsoString() : new Date().toISOString();
+
+  // DB 업데이트
+  try { await customerPut(customer); } catch(e) {}
   scheduleCustomersWrite();
 }
 

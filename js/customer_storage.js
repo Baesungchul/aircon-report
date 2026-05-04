@@ -188,10 +188,25 @@ async function customerSave(info) {
         );
       }
 
+      // 0-B차: workId + 옛 unitName 매칭 (호수명 수정 직후)
+      if (dupIdx < 0 && visit.workId && visit._oldUnitName) {
+        dupIdx = customer.visits.findIndex(v =>
+          v.workId === visit.workId &&
+          (v.unitName === visit._oldUnitName || v.unit === visit._oldUnitName)
+        );
+      }
+
       // 1차: 정확 매칭 (date + unit + apt)
       if (dupIdx < 0) {
         dupIdx = customer.visits.findIndex(v =>
           v.date === visit.date && v.unit === visit.unit && v.apt === visit.apt
+        );
+      }
+
+      // 1-B차: 옛 unit 이름으로 정확 매칭
+      if (dupIdx < 0 && visit._oldUnitName) {
+        dupIdx = customer.visits.findIndex(v =>
+          v.date === visit.date && v.unit === visit._oldUnitName && v.apt === visit.apt
         );
       }
 
@@ -209,11 +224,15 @@ async function customerSave(info) {
         );
       }
 
+      // 저장할 visit 객체 (내부용 _oldUnitName 제외)
+      const visitToSave = { ...visit };
+      delete visitToSave._oldUnitName;
+
       if (dupIdx >= 0) {
-        // 기존 visit 갱신 (작업명/날짜 변경 등 반영)
-        customer.visits[dupIdx] = visit;
+        // 기존 visit 갱신 (작업명/호수명 변경 등 반영)
+        customer.visits[dupIdx] = visitToSave;
       } else {
-        customer.visits.push(visit);
+        customer.visits.push(visitToSave);
       }
       customer.visitCount = customer.visits.length;
     }
@@ -337,19 +356,35 @@ async function writeCustomersXlsx() {
 
     // 메인 시트 데이터
     const customers = Array.from(_customersCache.values());
-    const mainData = customers.map(c => ({
-      phone: c.phone,
-      name: c.name || '',
-      address: c.address || '',
-      email: c.email || '',
-      memo: c.memo || '',
-      first_visit: c.firstVisit || '',
-      last_visit: c.lastVisit || '',
-      visit_count: c.visitCount || 0,
-      is_repeat: (c.visitCount || 0) >= 2 ? 'Y' : 'N',
-      created_at: c.createdAt || '',
-      updated_at: c.updatedAt || ''
-    }));
+    const mainData = customers.map(c => {
+      // ★ 주소 미입력 시 마지막 visit의 apt+unit으로 자동 생성
+      let address = c.address || '';
+      if (!address.trim() && c.visits && c.visits.length > 0) {
+        // 가장 최근 visit 사용
+        const sortedVisits = [...c.visits].sort((a, b) =>
+          (b.date || '').localeCompare(a.date || ''));
+        const v = sortedVisits[0];
+        const apt = (v.apt || '').trim();
+        const unit = (v.unit || v.unitName || '').trim();
+        if (apt && unit) address = `${apt} ${unit}`;
+        else if (apt) address = apt;
+        else if (unit) address = unit;
+      }
+
+      return {
+        phone: c.phone,
+        name: c.name || '',
+        address: address,
+        email: c.email || '',
+        memo: c.memo || '',
+        first_visit: c.firstVisit || '',
+        last_visit: c.lastVisit || '',
+        visit_count: c.visitCount || 0,
+        is_repeat: (c.visitCount || 0) >= 2 ? 'Y' : 'N',
+        created_at: c.createdAt || '',
+        updated_at: c.updatedAt || ''
+      };
+    });
 
     // 방문 시트 데이터
     const visitsData = [];

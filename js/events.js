@@ -325,10 +325,32 @@ function deleteUnit(id) {
 function startEdit(id) {
   const u=findU(id); if(!u) return;
   const el=document.getElementById(`nm-${id}`); if(!el) return;
+  const oldName = u.name;  // ★ 변경 전 이름 기억
   const inp=document.createElement('input');
   inp.className='u-name-inp'; inp.value=u.name;
   inp.addEventListener('click',e=>e.stopPropagation());
-  inp.addEventListener('blur',()=>{ u.name=inp.value.trim()||u.name; renderAll(); updateStats(); sessionAutoSave(); });
+  inp.addEventListener('blur',async ()=>{
+    const newName = inp.value.trim() || u.name;
+    u.name = newName;
+    renderAll();
+    updateStats();
+    sessionAutoSave();
+
+    // ★ 호수명이 실제로 바뀌었고 전화번호가 있으면 customer visit 갱신
+    if (oldName !== newName && u.customer?.phone) {
+      const phone = u.customer.phone.replace(/[^\d]/g, '');
+      if (phone.length >= 9) {
+        try {
+          // 옛 unit 이름 추적용 - saveCustomerForUnit이 매칭하도록
+          u._oldUnitName = oldName;
+          await saveCustomerForUnit(u);
+          if (typeof flushCustomersXlsx === 'function') flushCustomersXlsx().catch(()=>{});
+        } catch(err) {
+          console.warn('호수명 변경 후 customer 갱신 실패:', err);
+        }
+      }
+    }
+  });
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key==='Escape') inp.blur(); e.stopPropagation(); });
   el.replaceWith(inp); inp.focus(); inp.select();
 }
@@ -702,8 +724,9 @@ async function saveCustomerForUnit(u) {
       address: address,
       memo: memo,
       visit: {
-        workId: currentWorkId || '',  // ★ 작업 일련번호
-        unitName: u.name,              // ★ 호수명 (작업 내 식별)
+        workId: currentWorkId || '',
+        unitName: u.name,
+        _oldUnitName: u._oldUnitName || null,  // ★ 호수명 변경 추적
         date: date,
         apt: apt,
         unit: u.name,
@@ -712,6 +735,9 @@ async function saveCustomerForUnit(u) {
           : (u.specials.length ? `Notes: ${u.specials.length}` : 'In progress')
       }
     });
+
+    // 갱신 완료 후 _oldUnitName 정리
+    delete u._oldUnitName;
 
     console.log(`🟢 [고객] ${u.name} 저장 성공:`, result.phone);
 

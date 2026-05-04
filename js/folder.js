@@ -91,6 +91,10 @@ async function initPhotoFolder() {
     // 2단계: 이미 granted면 바로 사용 (PWA + 영구권한 케이스)
     if (perm === 'granted') {
       updateFolderUI(handle, 'granted');
+      // ★ 첫 실행이면 마이그레이션 (조용히)
+      if (typeof maybeRunMigration === 'function') {
+        setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
+      }
       return;
     }
 
@@ -100,6 +104,10 @@ async function initPhotoFolder() {
       const autoPerm = await handle.requestPermission({ mode: 'readwrite' });
       if (autoPerm === 'granted') {
         updateFolderUI(handle, 'granted');
+        // ★ 마이그레이션
+        if (typeof maybeRunMigration === 'function') {
+          setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
+        }
         return;
       }
     } catch(e) {
@@ -126,6 +134,10 @@ async function resumeFolderPermission() {
       if (pendingSaves.length > 0) {
         setTimeout(() => flushPendingSaves(), 300);
       }
+      // ★ 마이그레이션
+      if (typeof maybeRunMigration === 'function') {
+        setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
+      }
     } else {
       showToast('권한이 거부되었습니다', 'err');
     }
@@ -149,6 +161,11 @@ async function selectPhotoFolder() {
     // 고객 캐시 무효화 - 새 폴더에서 다시 로드
     if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache();
     if (typeof initCustomersCache === 'function') initCustomersCache().catch(()=>{});
+
+    // ★ workId 마이그레이션 (필요시 자동 실행)
+    if (typeof maybeRunMigration === 'function') {
+      setTimeout(() => maybeRunMigration().catch(()=>{}), 1000);
+    }
   } catch(e) {
     if (e.name !== 'AbortError') showToast('폴더 선택 실패: ' + e.message, 'err');
   }

@@ -59,15 +59,14 @@ function getDefaultDateFrom() {
 // ════════════════════════════════════════
 async function loadCombinedRecords() {
   const items = [];
-  const customerAptDateKeys = new Set();
-  const customerVisitKeys = new Set();
+  const customerWorkIds = new Set();      // workId 기반 (메인 - 작업 카드 중복 방지)
+  const customerAptDateKeys = new Set();  // apt+date 기반 (legacy 호환)
 
-  // 1. 고객 데이터 로드 - apt별로 분리
+  // 1. 고객 데이터 로드 - workId별로 그룹화
   try {
     const customers = await customerListAll();
     customers.forEach(c => {
       if (!c.visits || c.visits.length === 0) {
-        // visits 없는 고객은 그냥 1개 카드
         items.push({
           type: 'customer',
           sortDate: c.lastVisit || '',
@@ -76,35 +75,38 @@ async function loadCombinedRecords() {
         return;
       }
 
-      // ★ apt별로 visits 그룹화
-      const visitsByApt = new Map();
+      // ★ workId별로 visits 그룹화 (workId 없는 visits는 apt별로 폴백)
+      const visitsByGroup = new Map();
       c.visits.forEach(v => {
-        const apt = v.apt || '(작업명 없음)';
-        if (!visitsByApt.has(apt)) visitsByApt.set(apt, []);
-        visitsByApt.get(apt).push(v);
+        // 그룹 키: workId 우선, 없으면 apt
+        const groupKey = v.workId || `apt:${v.apt || '(없음)'}`;
+        if (!visitsByGroup.has(groupKey)) visitsByGroup.set(groupKey, []);
+        visitsByGroup.get(groupKey).push(v);
 
-        // 키 등록 (작업 카드 중복 방지용)
+        // 키 등록
+        if (v.workId) customerWorkIds.add(v.workId);
         const aptDate = `${v.apt || ''}::${v.date || ''}`;
         customerAptDateKeys.add(aptDate);
-        const fullKey = `${v.apt || ''}::${v.unit || ''}::${v.date || ''}`;
-        customerVisitKeys.add(fullKey);
       });
 
-      // 각 apt마다 가상 customer 카드 생성
-      visitsByApt.forEach((aptVisits, apt) => {
-        const sortedVisits = [...aptVisits].sort((a, b) =>
+      // 각 그룹마다 카드 생성
+      visitsByGroup.forEach((groupVisits, groupKey) => {
+        const sortedVisits = [...groupVisits].sort((a, b) =>
           (b.date || '').localeCompare(a.date || ''));
-        const aptLastVisit = sortedVisits[0]?.date || '';
+        const lastVisit = sortedVisits[0]?.date || '';
+        const apt = sortedVisits[0]?.apt || '';
+        const workId = sortedVisits[0]?.workId || '';
 
         items.push({
           type: 'customer',
-          sortDate: aptLastVisit,
+          sortDate: lastVisit,
           data: {
             ...c,
-            visits: aptVisits,           // 이 apt만의 visits
-            visitCount: aptVisits.length,
-            lastVisit: aptLastVisit,
-            _aptFilter: apt              // 이 카드는 이 apt 한정 표시
+            visits: groupVisits,
+            visitCount: groupVisits.length,
+            lastVisit: lastVisit,
+            _aptFilter: apt,
+            _workIdFilter: workId  // ★ workId 필터 (있으면 우선 사용)
           }
         });
       });
@@ -130,10 +132,17 @@ async function loadCombinedRecords() {
 
           const apt = data.apt || '';
           const date = data.date || entry.name.slice(0, 10);
+          const workId = data.workId || '';
+
+          // ★ workId 매칭 (있으면)
+          if (workId && customerWorkIds.has(workId)) continue;
+          // ★ legacy: workId 없으면 apt+date 매칭
+          if (!workId) {
+            const aptDateKey = `${apt}::${date}`;
+            if (customerAptDateKeys.has(aptDateKey)) continue;
+          }
 
           const aptDateKey = `${apt}::${date}`;
-          if (customerAptDateKeys.has(aptDateKey)) continue;
-
           if (seenAptDate.has(aptDateKey)) continue;
           seenAptDate.add(aptDateKey);
 
@@ -143,6 +152,7 @@ async function loadCombinedRecords() {
             data: {
               folderName: entry.name,
               dirHandle: entry,
+              workId: workId,
               apt: apt,
               date: date,
               worker: data.worker || '',
@@ -315,7 +325,8 @@ async function renderCustomerList() {
         openWorkByFolder(card.dataset.folder);
       } else {
         const aptFilter = card.dataset.aptFilter || '';
-        openWorkForCustomer(card.dataset.phone, aptFilter);
+        const workId = card.dataset.workid || '';
+        openWorkForCustomer(card.dataset.phone, aptFilter, workId);
       }
     });
   });
@@ -544,12 +555,12 @@ function renderCustomerCard(c) {
   else titleLine = escHtmlSafe(unit);
 
   return `
-    <div class="cust-card" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" title="클릭하여 작업 열기">
+    <div class="cust-card" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="클릭하여 작업 열기">
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
           <button class="cust-card-btn cust-card-edit" data-phone="${escHtmlSafe(c.phone)}" title="정보 수정">✏️</button>
-          <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" title="삭제">🗑️</button>
+          <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="삭제">🗑️</button>
         </div>
       </div>
       <div class="cust-card-line">📞 ${escHtmlSafe(c.phone)}${c.address ? ` · 🏠 ${escHtmlSafe(c.address)}` : ''}</div>
@@ -690,7 +701,7 @@ function openCustomerDateFilter() {
 }
 
 // 작업 열기
-async function openWorkForCustomer(phone, aptFilter) {
+async function openWorkForCustomer(phone, aptFilter, workIdFilter) {
   const c = await customerLookup(phone);
   if (!c) {
     showToast('고객 정보를 찾을 수 없습니다', 'err');
@@ -699,8 +710,11 @@ async function openWorkForCustomer(phone, aptFilter) {
 
   let visits = c.visits || [];
 
-  // apt 필터 적용 (해당 작업장의 visits만)
-  if (aptFilter) {
+  // ★ workId 매칭 우선 (있으면)
+  if (workIdFilter) {
+    visits = visits.filter(v => v.workId === workIdFilter);
+  } else if (aptFilter) {
+    // workId 없으면 apt 매칭 (legacy)
     visits = visits.filter(v => (v.apt || '') === aptFilter);
   }
 
@@ -860,13 +874,18 @@ async function loadWorkByVisit(visit) {
     showToast('저장 폴더가 설정되어 있어야 작업을 열 수 있습니다', 'err');
     return;
   }
-  if (!visit.date || !visit.apt) {
+  if (!visit.date && !visit.workId) {
     showToast('작업 정보가 부족합니다', 'err');
     return;
   }
 
-  // 현재 작업과 같으면 그냥 닫기
-  if (isSameAsCurrent(visit.apt, visit.date)) {
+  // 현재 작업과 같으면 그냥 닫기 (workId 우선 비교)
+  if (visit.workId && currentWorkId === visit.workId) {
+    closeCustomerModal();
+    showToast('이미 현재 작업입니다', 'ok');
+    return;
+  }
+  if (!visit.workId && isSameAsCurrent(visit.apt, visit.date)) {
     closeCustomerModal();
     showToast('이미 현재 작업입니다', 'ok');
     return;
@@ -880,36 +899,56 @@ async function loadWorkByVisit(visit) {
   showOverlay('작업 불러오는 중...');
 
   try {
-    const targetDate = visit.date;
-    const targetApt = visit.apt;
     let matchedFolder = null;
     let matchedSession = null;
 
-    for await (const entry of photoFolderHandle.values()) {
-      if (entry.kind !== 'directory') continue;
-      if (!entry.name.startsWith(targetDate)) continue;
+    // ★ 1차: workId로 검색 (가장 정확)
+    if (visit.workId) {
+      for await (const entry of photoFolderHandle.values()) {
+        if (entry.kind !== 'directory') continue;
+        if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+        try {
+          const sessionFile = await entry.getFileHandle('_session.json');
+          const file = await sessionFile.getFile();
+          const data = JSON.parse(await file.text());
+          if (data.workId && data.workId === visit.workId) {
+            matchedFolder = entry;
+            matchedSession = data;
+            break;
+          }
+        } catch(e) {}
+      }
+    }
 
-      try {
-        const sessionFile = await entry.getFileHandle('_session.json');
-        const file = await sessionFile.getFile();
-        const text = await file.text();
-        const data = JSON.parse(text);
+    // 2차: apt + date로 검색 (legacy)
+    if (!matchedFolder && visit.apt && visit.date) {
+      const targetDate = visit.date;
+      const targetApt = visit.apt;
 
-        if (data.apt === targetApt) {
-          matchedFolder = entry;
-          matchedSession = data;
-          break;
-        }
-      } catch(e) {}
+      for await (const entry of photoFolderHandle.values()) {
+        if (entry.kind !== 'directory') continue;
+        if (!entry.name.startsWith(targetDate)) continue;
+
+        try {
+          const sessionFile = await entry.getFileHandle('_session.json');
+          const file = await sessionFile.getFile();
+          const data = JSON.parse(await file.text());
+
+          if (data.apt === targetApt) {
+            matchedFolder = entry;
+            matchedSession = data;
+            break;
+          }
+        } catch(e) {}
+      }
     }
 
     if (!matchedFolder || !matchedSession) {
       hideOverlay();
-      showToast(`작업을 찾을 수 없습니다: ${targetApt} (${targetDate})`, 'err');
+      showToast(`작업을 찾을 수 없습니다`, 'err');
       return;
     }
 
-    // loadFromDateFolder 사용 (dialogs.js의 폴더 불러오기 함수)
     if (typeof loadFromDateFolder === 'function') {
       await loadFromDateFolder(matchedFolder, matchedSession);
     } else {

@@ -3,10 +3,30 @@
 ═══════════════════════════════ */
 let units = [];
 let nid   = 1;
+let currentWorkId = '';  // ★ 현재 작업의 고유 ID (일련번호)
+
 const CO_KEY  = 'ac_co_v2';
 const CO_FIELDS = ['coName','coBrand','coTel','coBiz','coAddr','coEmail','coWeb','coDesc','coReportTitle','coUnitLabel','coStageLabel','coIndustryMajor','coIndustryMinor'];
-let coIconData = '';   // '' = 기본, 이모지 1글자, 또는 'data:image/...' (업로드 이미지)
+let coIconData = '';
 const CO_ICON_KEY = 'ac_co_icon_v1';
+
+// workId 생성 - W{YYYYMMDD}-{HHMM}-{rand4}
+function generateWorkId() {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  const hm = `${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+  const rand = Math.random().toString(36).slice(2, 6);  // 4자리
+  return `W${ymd}-${hm}-${rand}`;
+}
+
+// 새 workId 보장 - 없으면 생성
+function ensureWorkId() {
+  if (!currentWorkId) {
+    currentWorkId = generateWorkId();
+    console.log('[workId] 새 작업 ID 생성:', currentWorkId);
+  }
+  return currentWorkId;
+}
 
 /* ═══════════════════════════════
    시간 헬퍼 (브라우저 로컬 시간대)

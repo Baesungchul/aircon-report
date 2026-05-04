@@ -180,20 +180,29 @@ async function customerSave(info) {
       customer.lastVisit = visit.date || now.slice(0, 10);
       customer.visits = customer.visits || [];
 
-      // 1차: 정확 매칭 (date + unit + apt)
-      let dupIdx = customer.visits.findIndex(v =>
-        v.date === visit.date && v.unit === visit.unit && v.apt === visit.apt
-      );
+      // 0차 (★ 최우선): workId + unitName 매칭 (불변 식별자)
+      let dupIdx = -1;
+      if (visit.workId && visit.unitName) {
+        dupIdx = customer.visits.findIndex(v =>
+          v.workId === visit.workId && (v.unitName === visit.unitName || v.unit === visit.unitName)
+        );
+      }
 
-      // 2차: 작업명 수정 대응 - 같은 날짜+호수에 visit이 있으면 그것을 갱신
-      // (사용자가 같은 날 같은 호수의 작업명만 변경한 경우)
+      // 1차: 정확 매칭 (date + unit + apt)
+      if (dupIdx < 0) {
+        dupIdx = customer.visits.findIndex(v =>
+          v.date === visit.date && v.unit === visit.unit && v.apt === visit.apt
+        );
+      }
+
+      // 2차: 작업명 수정 대응 - 같은 날짜+호수
       if (dupIdx < 0) {
         dupIdx = customer.visits.findIndex(v =>
           v.date === visit.date && v.unit === visit.unit
         );
       }
 
-      // 3차: 작업명 + 날짜 변경 대응 - sourceFolderName 매칭
+      // 3차: sourceFolderName 매칭 (예비)
       if (dupIdx < 0 && visit.sourceFolderName) {
         dupIdx = customer.visits.findIndex(v =>
           v.sourceFolderName === visit.sourceFolderName && v.unit === visit.unit
@@ -201,7 +210,7 @@ async function customerSave(info) {
       }
 
       if (dupIdx >= 0) {
-        // 기존 visit 갱신 (작업명 변경 등 반영)
+        // 기존 visit 갱신 (작업명/날짜 변경 등 반영)
         customer.visits[dupIdx] = visit;
       } else {
         customer.visits.push(visit);

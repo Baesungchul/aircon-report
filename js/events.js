@@ -349,6 +349,7 @@ async function newWork() {
     document.getElementById('workDate').value = kstDateStr();
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
+    currentWorkId = '';  // ★ 새 작업 ID 리셋 (저장 시 새로 생성됨)
     showToast('🆕 새 작업', 'ok');
     return;
   }
@@ -387,6 +388,7 @@ async function newWork() {
   // 초기화
   units = [];
   nid = 1;
+  currentWorkId = '';  // ★ 새 작업 ID 리셋
   document.getElementById('rpWrap').innerHTML = '';
   document.getElementById('btnPDF').disabled = true;
   document.getElementById('btnJPG').disabled = true;
@@ -692,12 +694,16 @@ async function saveCustomerForUnit(u) {
     // 기존 고객 확인 (재방문 토스트용)
     const existing = await customerLookup(norm);
 
+    // ★ workId 보장
+    if (typeof ensureWorkId === 'function') ensureWorkId();
+
     const result = await customerSave({
       phone: norm,
-      // name은 보내지 않음 - 기존 이름 보존, 신규 시에만 visit.unit 사용
       address: address,
       memo: memo,
       visit: {
+        workId: currentWorkId || '',  // ★ 작업 일련번호
+        unitName: u.name,              // ★ 호수명 (작업 내 식별)
         date: date,
         apt: apt,
         unit: u.name,

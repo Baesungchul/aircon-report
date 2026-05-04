@@ -265,9 +265,13 @@ async function saveToFolder(opts) {
   }
 
   // 2) 불러오기용 JSON 파일 저장 (사진 저장 실패와 무관하게 무조건 시도)
+  // ★ workId 보장 (없으면 생성)
+  if (typeof ensureWorkId === 'function') ensureWorkId();
+
   const sessionData = {
     version: 1,
     type: 'aircon-report',
+    workId: currentWorkId || '',  // ★ 일련번호 (불변 식별자)
     savedAt: kstIsoString(),
     apt: currentApt,  // 정규화된 작업명 저장
     date,
@@ -1061,6 +1065,10 @@ async function restoreFromData(data, dateDir) {
   // 사진 없거나 폴더 권한 없으면 그냥 진행 (확인 없음)
 
   showOverlay('불러오는 중...');
+
+  // ★ workId 복원 (없으면 기존 작업 - 새로 발급 후 다음 저장 때 영구화)
+  currentWorkId = data.workId || generateWorkId();
+  console.log('[workId] 작업 불러옴:', currentWorkId, data.workId ? '(기존)' : '(신규 발급)');
 
   // 메타 복원
   document.getElementById('aptName').value    = data.apt || '';

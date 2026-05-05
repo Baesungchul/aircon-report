@@ -18,6 +18,11 @@ function quickSnapshot() {
     const apt = document.getElementById('aptName').value || '';
     const date = document.getElementById('workDate').value || '';
     const worker = document.getElementById('workerName').value || '';
+    // ★ workType + facilityCustomer 변경 추적
+    const wt = currentWorkType || 'household';
+    const fc = (wt === 'facility')
+      ? `${facilityCustomer.phone}|${facilityCustomer.contact}|${facilityCustomer.address}|${facilityCustomer.memo}`
+      : '';
     const unitsKey = units.map(u => {
       const bIds = u.before.map(p => p.id || p.name || '').join('|');
       const aIds = u.after.map(p => p.id || p.name || '').join('|');
@@ -25,7 +30,7 @@ function quickSnapshot() {
       const cust = u.customer ? `${u.customer.phone}|${u.customer.address}|${u.customer.memo}` : '';
       return `${u.name}::${bIds}::${aIds}::${sp}::${cust}`;
     }).join('@@');
-    return `${apt}|${date}|${worker}|${unitsKey}`;
+    return `${apt}|${date}|${worker}|${wt}|${fc}|${unitsKey}`;
   } catch(e) { return Math.random().toString(); }  // 에러 시 항상 dirty로 처리
 }
 
@@ -1112,45 +1117,52 @@ async function restoreFromData(data, dateDir) {
   units = [];
   nid = 1;
 
-  // ★ customers DB에서 이 작업의 고객 정보 미리 로드 (호수별 역조회용)
-  let customersByUnit = new Map();  // "apt::unit" → customer
-  try {
-    if (typeof customerListAll === 'function') {
-      const allCustomers = await customerListAll();
-      const apt = data.apt || '';
-      allCustomers.forEach(c => {
-        (c.visits || []).forEach(v => {
-          if (v.apt === apt && v.unit) {
-            const key = `${apt}::${v.unit}`;
-            // 같은 호수에 여러 고객이 있어도 가장 최근 것 사용
-            const existing = customersByUnit.get(key);
-            if (!existing || (c.lastVisit || '') > (existing.lastVisit || '')) {
-              customersByUnit.set(key, c);
+  // ★ customers DB에서 이 작업의 고객 정보 미리 로드 (호수별 역조회용 - 가정용 모드만)
+  let customersByUnit = new Map();
+  if (currentWorkType !== 'facility') {
+    try {
+      if (typeof customerListAll === 'function') {
+        const allCustomers = await customerListAll();
+        const apt = data.apt || '';
+        allCustomers.forEach(c => {
+          (c.visits || []).forEach(v => {
+            if (v.apt === apt && v.unit) {
+              const key = `${apt}::${v.unit}`;
+              const existing = customersByUnit.get(key);
+              if (!existing || (c.lastVisit || '') > (existing.lastVisit || '')) {
+                customersByUnit.set(key, c);
+              }
             }
-          }
+          });
         });
-      });
-      if (customersByUnit.size > 0) {
-        console.log(`[Load] customers DB에서 ${customersByUnit.size}개 호수 매칭`);
+        if (customersByUnit.size > 0) {
+          console.log(`[Load] customers DB에서 ${customersByUnit.size}개 호수 매칭`);
+        }
       }
-    }
-  } catch(e) { console.warn('customers 역조회 실패:', e); }
+    } catch(e) { console.warn('customers 역조회 실패:', e); }
+  }
 
   for (let ui = 0; ui < data.units.length; ui++) {
     const u = data.units[ui];
 
-    // customer 정보: 1차로 저장된 데이터 사용, 없으면 customers DB에서 역조회
-    let customerData = u.customer || { phone: '', address: '', memo: '' };
-    if (!customerData.phone) {
-      const apt = data.apt || '';
-      const matchedCust = customersByUnit.get(`${apt}::${u.name}`);
-      if (matchedCust) {
-        customerData = {
-          phone: matchedCust.phone || '',
-          address: matchedCust.address || '',
-          memo: matchedCust.memo || ''
-        };
-        console.log(`  ✓ ${u.name}: customers DB에서 ${matchedCust.phone} 매칭`);
+    // ★ 시설 모드면 호수 customer는 무조건 빈 값 (시설 customer는 별도)
+    let customerData;
+    if (currentWorkType === 'facility') {
+      customerData = { phone: '', address: '', memo: '' };
+    } else {
+      // 가정용: 1차로 저장된 데이터 사용, 없으면 customers DB에서 역조회
+      customerData = u.customer || { phone: '', address: '', memo: '' };
+      if (!customerData.phone) {
+        const apt = data.apt || '';
+        const matchedCust = customersByUnit.get(`${apt}::${u.name}`);
+        if (matchedCust) {
+          customerData = {
+            phone: matchedCust.phone || '',
+            address: matchedCust.address || '',
+            memo: matchedCust.memo || ''
+          };
+          console.log(`  ✓ ${u.name}: customers DB에서 ${matchedCust.phone} 매칭`);
+        }
       }
     }
 

@@ -705,6 +705,7 @@ async function openWorkByFolder(folderName) {
   }
 
   // 먼저 _session.json 읽어서 현재 작업과 같은지 확인
+  showOverlay('작업 정보 읽는 중...');
   let dirHandle, data;
   try {
     dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
@@ -712,17 +713,20 @@ async function openWorkByFolder(folderName) {
     const file = await sessionFile.getFile();
     data = JSON.parse(await file.text());
   } catch(e) {
+    hideOverlay();
     showToast('작업 정보를 읽을 수 없습니다: ' + e.message, 'err');
     return;
   }
 
   // 현재 작업과 같은 작업이면 그냥 닫기 (이미 열려있음)
   if (isSameAsCurrent(data.apt, data.date)) {
+    hideOverlay();
     closeCustomerModal();
     showToast('이미 현재 작업입니다', 'ok');
     return;
   }
 
+  hideOverlay();
   // 저장되지 않은 변경사항 확인
   const proceed = await confirmBeforeLoad();
   if (!proceed) return;
@@ -968,18 +972,30 @@ function showVisitSelector(customer, visits) {
   const sorted = [...visits].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   function renderItems() {
-    return sorted.map((v, i) => `
-      <div class="visit-sel-row" style="display:flex;gap:6px;align-items:stretch;">
-        <button class="btn b-ghost visit-sel-btn" data-visit-idx="${i}" style="flex:1;justify-content:flex-start;text-align:left;padding:12px;">
-          <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-            <div style="font-weight:700;color:var(--ac);">📁 ${escHtmlSafe(v.apt || '작업')}</div>
-            <div style="font-size:12px;">🏠 ${escHtmlSafe(v.unit || '')} <span style="color:var(--mu);">· ${escHtmlSafe(v.date || '')}</span></div>
-            ${v.work ? `<div style="font-size:11px;color:var(--mu);">${escHtmlSafe(v.work)}</div>` : ''}
-          </div>
-        </button>
-        <button class="btn b-ghost visit-sel-del" data-visit-idx="${i}" title="이 작업 삭제" style="flex-shrink:0;width:48px;padding:0;font-size:18px;">🗑️</button>
-      </div>
-    `).join('');
+    return sorted.map((v, i) => {
+      const isFacility = v.isFacility;
+      const titleIc = isFacility ? '🏢' : '📁';
+      const subIc = isFacility ? '📐' : '🏠';
+      const subText = isFacility
+        ? (v.unitNames?.length ? `${v.unitNames.length}개 영역 (${v.unitNames.slice(0, 3).join(', ')}${v.unitNames.length > 3 ? '...' : ''})` : v.unit || '')
+        : (v.unit || '');
+      const photoText = (typeof v.photos === 'number' && v.photos > 0)
+        ? `사진 ${v.photos}장`
+        : (v.work || '');
+
+      return `
+        <div class="visit-sel-row" style="display:flex;gap:6px;align-items:stretch;">
+          <button class="btn b-ghost visit-sel-btn" data-visit-idx="${i}" style="flex:1;justify-content:flex-start;text-align:left;padding:12px;">
+            <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+              <div style="font-weight:700;color:var(--ac);">${titleIc} ${escHtmlSafe(v.apt || '작업')}</div>
+              <div style="font-size:12px;">${subIc} ${escHtmlSafe(subText)} <span style="color:var(--mu);">· ${escHtmlSafe(v.date || '')}</span></div>
+              ${photoText ? `<div style="font-size:11px;color:var(--mu);">${escHtmlSafe(photoText)}</div>` : ''}
+            </div>
+          </button>
+          <button class="btn b-ghost visit-sel-del" data-visit-idx="${i}" title="이 작업 삭제" style="flex-shrink:0;width:48px;padding:0;font-size:18px;">🗑️</button>
+        </div>
+      `;
+    }).join('');
   }
 
   const html = `
@@ -1025,6 +1041,7 @@ function showVisitSelector(customer, visits) {
           `(다른 작업 기록은 유지됩니다)`
         )) return;
 
+        showOverlay('작업 기록 삭제 중...');
         try {
           // 1) 고객의 visits 배열에서 이 항목만 제거
           const updatedVisits = (customer.visits || []).filter(v =>
@@ -1067,6 +1084,7 @@ function showVisitSelector(customer, visits) {
           //   사용자가 작업 기록의 작업 카드에서 별도로 삭제하도록 안내
           //   (대신 visits에서만 제거)
 
+          hideOverlay();
           showToast('✓ 작업 기록 삭제됨', 'ok');
 
           // 5) 모든 visits 삭제됐으면 다이얼로그 닫고 목록 갱신
@@ -1090,6 +1108,7 @@ function showVisitSelector(customer, visits) {
             await renderCustomerList();
           }
         } catch(err) {
+          hideOverlay();
           console.error(err);
           showToast('삭제 실패: ' + (err.message || err), 'err');
         }
@@ -1242,6 +1261,7 @@ async function openCustomerEdit(phone) {
     const newAddr = document.getElementById('custEditAddr').value.trim();
     const newMemo = document.getElementById('custEditMemo').value.trim();
 
+    showOverlay('저장 중...');
     try {
       await customerSave({
         phone: c.phone,
@@ -1252,8 +1272,10 @@ async function openCustomerEdit(phone) {
       if (typeof flushCustomersXlsx === 'function') await flushCustomersXlsx();
       closeEdit();
       await renderCustomerList();
+      hideOverlay();
       showToast('✓ 고객 정보 수정됨', 'ok');
     } catch(e) {
+      hideOverlay();
       showToast('수정 실패: ' + e.message, 'err');
     }
   });
@@ -1268,6 +1290,7 @@ async function openCustomersXlsxFile() {
     return;
   }
 
+  showOverlay('엑셀 준비 중...');
   try {
     // 최신 데이터로 즉시 갱신 (디바운스 무시)
     if (typeof flushCustomersXlsx === 'function') {
@@ -1276,10 +1299,12 @@ async function openCustomersXlsxFile() {
 
     const fileHandle = await photoFolderHandle.getFileHandle('customers.xlsx');
     const file = await fileHandle.getFile();
-    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
-    // ★ 모바일: Web Share API → "Excel로 열기" 옵션 즉시 표시
-    if (isMobile && navigator.canShare) {
+    hideOverlay();
+
+    // ★ Web Share API - 사용자가 어디로 열지 선택
+    // (Files, Excel, Drive 등 시스템에 설치된 앱 중 선택)
+    if (navigator.canShare) {
       try {
         const shareFile = new File([file], 'customers.xlsx', {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1292,39 +1317,19 @@ async function openCustomersXlsxFile() {
           return;
         }
       } catch(e) {
-        if (e.name === 'AbortError') return;
+        if (e.name === 'AbortError') return;  // 사용자 취소
         console.warn('share 실패:', e);
       }
     }
 
-    // ★ 데스크톱: Blob URL을 새 탭으로 → 브라우저가 엑셀 자동 실행
-    const blob = new Blob([await file.arrayBuffer()], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    });
-    const url = URL.createObjectURL(blob);
-
-    // 새 탭에서 열기 (브라우저가 .xlsx를 엑셀로 연결)
-    const opened = window.open(url, '_blank');
-
-    if (!opened) {
-      // 팝업 차단 시 다운로드 폴백
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'customers.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => document.body.removeChild(a), 100);
-      showToast('📊 다운로드 후 엑셀로 열기', 'ok');
-    } else {
-      showToast('📊 엑셀에서 여는 중...', 'ok');
-    }
-
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    // Web Share API 미지원 시 안내
+    showToast(`📂 customers.xlsx 파일은 "${photoFolderHandle.name}" 폴더에 저장되어 있습니다`, 'ok');
   } catch(e) {
+    hideOverlay();
     if (e.name === 'NotFoundError') {
       showToast('아직 customers.xlsx 파일이 없습니다.', 'err');
     } else {
-      showToast('파일 열기 실패: ' + e.message, 'err');
+      showToast('파일 준비 실패: ' + e.message, 'err');
     }
   }
 }

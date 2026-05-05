@@ -26,6 +26,12 @@ async function sessionAutoSaveNow() {
     companyDesc: document.getElementById('coDesc').value,
     units:       JSON.parse(JSON.stringify(units)),
     nid,
+    // ★ workType + facilityCustomer 자동저장
+    workId:      currentWorkId || '',
+    workType:    currentWorkType || 'household',
+    facilityCustomer: (currentWorkType === 'facility')
+      ? { ...facilityCustomer }
+      : null,
     // 명시적 플래그: 빈 작업인지 표시
     isEmpty: (units.length === 0)
   };

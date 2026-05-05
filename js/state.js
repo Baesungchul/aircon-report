@@ -179,6 +179,20 @@ async function init() {
     }
 
     if (s) {
+      // ★ workType 먼저 복원 (UI 적용 순서 중요)
+      currentWorkId = s.workId || '';
+      currentWorkType = s.workType || 'household';
+      if (currentWorkType === 'facility' && s.facilityCustomer) {
+        facilityCustomer = {
+          phone: s.facilityCustomer.phone || '',
+          contact: s.facilityCustomer.contact || '',
+          address: s.facilityCustomer.address || '',
+          memo: s.facilityCustomer.memo || ''
+        };
+      } else {
+        facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
+      }
+
       // isEmpty가 true면 빈 새 작업 상태 (작업명/날짜는 저장된 값 유지)
       if (s.isEmpty) {
         units = [];
@@ -197,6 +211,11 @@ async function init() {
       if (s.companyName) document.getElementById('coName').value = s.companyName;
       if (s.companyTel)  document.getElementById('coTel').value  = s.companyTel;
       if (s.companyDesc) document.getElementById('coDesc').value = s.companyDesc;
+
+      // ★ workType UI 적용 (DOM 준비된 후)
+      setTimeout(() => {
+        if (typeof applyWorkTypeUI === 'function') applyWorkTypeUI();
+      }, 50);
     }
   } catch(e) {}
 

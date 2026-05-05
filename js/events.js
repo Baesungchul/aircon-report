@@ -26,7 +26,41 @@ function bindAll() {
   // ★ 작업 유형 토글
   document.querySelectorAll('input[name="workType"]').forEach(r => {
     r.addEventListener('change', e => {
-      currentWorkType = e.target.value;
+      const newType = e.target.value;
+      const oldType = currentWorkType;
+
+      // 가정 → 시설 변경 시: 호수에 customer 데이터 있으면 경고
+      if (oldType === 'household' && newType === 'facility') {
+        const hasUnitCustomer = units.some(u =>
+          u.customer && (u.customer.phone || u.customer.address || u.customer.memo));
+        if (hasUnitCustomer) {
+          if (!confirm('🏢 공용시설 모드로 변경하시겠습니까?\n\n' +
+            '⚠️ 호수에 입력한 고객 정보(전화번호/주소/메모)는 저장 시 빈 값이 됩니다.\n' +
+            '(다시 가정용으로 돌리면 복구됩니다)\n\n' +
+            '계속할까요?')) {
+            // 취소: 라디오 원복
+            const r0 = document.getElementById('workTypeHousehold');
+            if (r0) r0.checked = true;
+            return;
+          }
+        }
+      }
+      // 시설 → 가정: 시설 customer 정보 있으면 경고
+      else if (oldType === 'facility' && newType === 'household') {
+        const hasFacility = facilityCustomer.phone || facilityCustomer.address || facilityCustomer.memo;
+        if (hasFacility) {
+          if (!confirm('🏠 가정용 모드로 변경하시겠습니까?\n\n' +
+            '⚠️ 시설 고객 정보는 저장 시 무시됩니다.\n' +
+            '(다시 공용시설로 돌리면 복구됩니다)\n\n' +
+            '계속할까요?')) {
+            const r0 = document.getElementById('workTypeFacility');
+            if (r0) r0.checked = true;
+            return;
+          }
+        }
+      }
+
+      currentWorkType = newType;
       applyWorkTypeUI();
       renderAll();
       sessionAutoSave();
@@ -702,6 +736,12 @@ function escapeHtml(s) {
 // 호수의 고객 정보를 customers DB에 저장 (재방문이면 매칭)
 async function saveCustomerForUnit(u) {
   if (!u) { console.log('🔴 [고객] u 없음'); return; }
+
+  // ★ 시설 모드면 호수별 customer 저장 안 함 (시설 customer 별도)
+  if (currentWorkType === 'facility') {
+    console.log(`🟡 [고객] ${u.name} - 시설 모드, 호수별 저장 스킵`);
+    return;
+  }
 
   if (!u.customer) u.customer = { phone: '', address: '', memo: '' };
 

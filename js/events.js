@@ -320,6 +320,10 @@ function deleteUnit(id) {
   if(!confirm('이 호수를 삭제할까요?')) return;
   units=units.filter(u=>u.id!==id);
   renderAll(); updateStats(); sessionAutoSave();
+  // ★ customers 캐시 무효화 (호수 삭제 시 visits에서 사라지도록)
+  if (typeof invalidateCustomersCache === 'function') {
+    invalidateCustomersCache();
+  }
 }
 
 function startEdit(id) {

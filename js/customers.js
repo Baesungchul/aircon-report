@@ -37,32 +37,33 @@ async function openCustomerModal() {
   document.getElementById('customerModal').classList.add('open');
   _customerSearch = '';
 
-  // ★ 폴더 권한 강제 보장 - V2는 _session.json 스캔이 필수
-  // readwrite 모드로 요청해야 사용자 제스처 컨텍스트에서 안정적으로 동작
-  let permGranted = false;
+  // ★ 1단계: 캐시가 있으면 즉시 표시 (속도 우선)
+  // V2 캐시 (5초 TTL) 안 비웠으면 즉시 빠르게 표시
+  await renderCustomerList();
+
+  // ★ 2단계: 권한 확보 후 최신 데이터로 백그라운드 갱신
   if (photoFolderHandle) {
     try {
       let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
       if (perm !== 'granted') {
-        // 사용자 제스처 (모달 열기 클릭) 직후라 권한 요청 가능
         perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
       }
+
       if (perm === 'granted') {
-        permGranted = true;
-        // 캐시 무효화 → 최신 _session.json 스캔
+        // 캐시 무효화 후 다시 렌더 (백그라운드)
         if (typeof invalidateCustomersCache === 'function') {
           invalidateCustomersCache();
         }
+        // 최신 데이터로 다시 렌더 (이미 캐시 표시 후)
+        await renderCustomerList();
       } else {
         console.warn('[작업기록] 폴더 권한 거부');
-        showToast('폴더 권한이 필요합니다. "모든 작업"을 눌러주세요', 'err');
+        showToast('폴더 권한이 필요합니다', 'err');
       }
     } catch(e) {
       console.warn('[작업기록] 권한 확인 실패:', e);
     }
   }
-
-  await renderCustomerList();
 }
 
 function closeCustomerModal() {
@@ -155,53 +156,63 @@ async function loadCombinedRecords() {
   // 2. 폴더의 모든 작업 로드 (전화번호 없는 작업만)
   if (photoFolderHandle) {
     try {
-      const seenAptDate = new Set();
-
+      // 1단계: 디렉토리 엔트리 수집
+      const dirs = [];
       for await (const entry of photoFolderHandle.values()) {
         if (entry.kind !== 'directory') continue;
         if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+        dirs.push(entry);
+      }
 
+      // 2단계: _session.json 병렬 읽기
+      const results = await Promise.all(dirs.map(async (entry) => {
         try {
           const sessionFile = await entry.getFileHandle('_session.json');
           const file = await sessionFile.getFile();
           const text = await file.text();
           const data = JSON.parse(text);
+          return { entry, data };
+        } catch(e) { return null; }
+      }));
 
-          if (!data.units || data.units.length === 0) continue;
+      // 3단계: 메모리에서 처리
+      const seenAptDate = new Set();
+      for (const result of results) {
+        if (!result) continue;
+        const { entry, data } = result;
 
-          const apt = data.apt || '';
-          const date = data.date || entry.name.slice(0, 10);
-          const workId = data.workId || '';
+        if (!data.units || data.units.length === 0) continue;
 
-          // ★ workId 매칭 (있으면)
-          if (workId && customerWorkIds.has(workId)) continue;
-          // ★ legacy: workId 없으면 apt+date 매칭
-          if (!workId) {
-            const aptDateKey = `${apt}::${date}`;
-            if (customerAptDateKeys.has(aptDateKey)) continue;
-          }
+        const apt = data.apt || '';
+        const date = data.date || entry.name.slice(0, 10);
+        const workId = data.workId || '';
 
+        if (workId && customerWorkIds.has(workId)) continue;
+        if (!workId) {
           const aptDateKey = `${apt}::${date}`;
-          if (seenAptDate.has(aptDateKey)) continue;
-          seenAptDate.add(aptDateKey);
+          if (customerAptDateKeys.has(aptDateKey)) continue;
+        }
 
-          items.push({
-            type: 'work',
-            sortDate: date,
-            data: {
-              folderName: entry.name,
-              dirHandle: entry,
-              workId: workId,
-              apt: apt,
-              date: date,
-              worker: data.worker || '',
-              units: data.units,
-              totalUnits: data.units.length,
-              totalPhotos: data.units.reduce((s, u) => s + (u.beforeCount || 0) + (u.afterCount || 0), 0),
-              session: data
-            }
-          });
-        } catch(e) {}
+        const aptDateKey = `${apt}::${date}`;
+        if (seenAptDate.has(aptDateKey)) continue;
+        seenAptDate.add(aptDateKey);
+
+        items.push({
+          type: 'work',
+          sortDate: date,
+          data: {
+            folderName: entry.name,
+            dirHandle: entry,
+            workId: workId,
+            apt: apt,
+            date: date,
+            worker: data.worker || '',
+            units: data.units,
+            totalUnits: data.units.length,
+            totalPhotos: data.units.reduce((s, u) => s + (u.beforeCount || 0) + (u.afterCount || 0), 0),
+            session: data
+          }
+        });
       }
     } catch(e) { console.warn('폴더 작업 로드 실패:', e); }
   }
@@ -215,7 +226,15 @@ async function renderCustomerList() {
   const body = document.getElementById('customerBody');
   if (!body) return;
 
-  // ★ 통합 데이터 로딩: 고객(전화번호 있음) + 폴더의 작업(전화번호 없는 것 포함)
+  // ★ 첫 로딩 시 (캐시 없음)에만 로딩 표시
+  if (!body.querySelector('.cust-card') && !body.querySelector('.cust-card-work')) {
+    body.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--mu);">
+      <div style="font-size:24px;margin-bottom:12px;">⏳</div>
+      <div>작업 기록 불러오는 중...</div>
+    </div>`;
+  }
+
+  // ★ 통합 데이터 로딩
   let items = [];
   try {
     items = await loadCombinedRecords();
@@ -756,8 +775,8 @@ function renderCustomerCard(c) {
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
-          <button class="cust-card-btn cust-card-edit" data-phone="${escHtmlSafe(c.phone)}" title="정보 수정">✏️</button>
-          <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="삭제">🗑️</button>
+          <button class="cust-card-btn cust-card-edit" data-phone="${escHtmlSafe(c.phone)}" title="정보 수정"><span class="btn-ic">✏️</span><span class="btn-tx">수정</span></button>
+          <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="삭제"><span class="btn-ic">🗑️</span><span class="btn-tx">삭제</span></button>
         </div>
       </div>
       <div class="cust-card-line">📞 ${escHtmlSafe(c.phone)}${c.address ? ` · 🏠 ${escHtmlSafe(c.address)}` : ''}</div>
@@ -789,7 +808,7 @@ function renderWorkCard(w) {
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
-          <button class="cust-card-btn cust-card-work-del" data-folder="${escHtmlSafe(w.folderName)}" title="삭제">🗑️</button>
+          <button class="cust-card-btn cust-card-work-del" data-folder="${escHtmlSafe(w.folderName)}" title="삭제"><span class="btn-ic">🗑️</span><span class="btn-tx">삭제</span></button>
         </div>
       </div>
       <div class="cust-card-line"><span style="color:var(--mu);font-style:italic;">📞 미입력</span></div>
@@ -1233,9 +1252,9 @@ async function openCustomersXlsxFile() {
   }
 
   try {
-    // 최신 데이터로 갱신
+    // 최신 데이터로 즉시 갱신 (디바운스 무시)
     if (typeof flushCustomersXlsx === 'function') {
-      await flushCustomersXlsx();
+      await flushCustomersXlsx({ immediate: true });
     }
 
     const fileHandle = await photoFolderHandle.getFileHandle('customers.xlsx');

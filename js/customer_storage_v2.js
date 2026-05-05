@@ -15,7 +15,7 @@ let _metaCacheLoaded = false;
 // 통합 customers 캐시 (재생성용)
 let _customersV2Cache = null;
 let _customersV2CacheTime = 0;
-const CACHE_TTL = 5000;  // 5초
+const CACHE_TTL = 30000;  // 30초 (모달 재열기 시 즉시 표시용)
 
 // ════════════════════════════════════════
 // 메타 로드/저장
@@ -133,58 +133,68 @@ async function rebuildCustomersFromSessions(opts = {}) {
   const customersByPhone = new Map();
 
   try {
+    // 1단계: 모든 디렉토리 엔트리 수집 (빠름)
+    const dirs = [];
     for await (const entry of photoFolderHandle.values()) {
       if (entry.kind !== 'directory') continue;
       if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+      dirs.push(entry);
+    }
 
+    // 2단계: _session.json 병렬 읽기 (한꺼번에)
+    const results = await Promise.all(dirs.map(async (entry) => {
       try {
         const sessionFile = await entry.getFileHandle('_session.json');
         const file = await sessionFile.getFile();
         const data = JSON.parse(await file.text());
-
-        if (!data.units || data.units.length === 0) continue;
-
-        const apt = data.apt || '';
-        const date = data.date || entry.name.slice(0, 10);
-        const workId = data.workId || '';
-        const folderName = entry.name;
-
-        // 각 호수의 customer 정보 추출
-        for (const u of data.units) {
-          const phone = (u.customer?.phone || '').trim();
-          if (!phone) continue;
-
-          const phoneDigits = phone.replace(/[^\d]/g, '');
-          if (phoneDigits.length < 9) continue;
-
-          const norm = normalizePhone(phone);
-          const photoCount = (u.beforeCount || 0) + (u.afterCount || 0);
-
-          // 이 visit 객체
-          const visit = {
-            workId,
-            folderName,
-            date,
-            apt,
-            unit: u.name || '',
-            unitName: u.name || '',
-            photos: photoCount,
-            specials: (u.specials || []).length,
-            // 호수 단위 customer 정보 (백업용)
-            unitAddress: u.customer?.address || '',
-            unitMemo: u.customer?.memo || ''
-          };
-
-          if (!customersByPhone.has(norm)) {
-            customersByPhone.set(norm, {
-              phone: norm,
-              visits: []
-            });
-          }
-          customersByPhone.get(norm).visits.push(visit);
-        }
+        return { entry, data };
       } catch(e) {
-        // _session.json 없는 폴더는 스킵
+        return null;
+      }
+    }));
+
+    // 3단계: 결과 처리 (메모리에서, 빠름)
+    for (const result of results) {
+      if (!result) continue;
+      const { entry, data } = result;
+
+      if (!data.units || data.units.length === 0) continue;
+
+      const apt = data.apt || '';
+      const date = data.date || entry.name.slice(0, 10);
+      const workId = data.workId || '';
+      const folderName = entry.name;
+
+      for (const u of data.units) {
+        const phone = (u.customer?.phone || '').trim();
+        if (!phone) continue;
+
+        const phoneDigits = phone.replace(/[^\d]/g, '');
+        if (phoneDigits.length < 9) continue;
+
+        const norm = normalizePhone(phone);
+        const photoCount = (u.beforeCount || 0) + (u.afterCount || 0);
+
+        const visit = {
+          workId,
+          folderName,
+          date,
+          apt,
+          unit: u.name || '',
+          unitName: u.name || '',
+          photos: photoCount,
+          specials: (u.specials || []).length,
+          unitAddress: u.customer?.address || '',
+          unitMemo: u.customer?.memo || ''
+        };
+
+        if (!customersByPhone.has(norm)) {
+          customersByPhone.set(norm, {
+            phone: norm,
+            visits: []
+          });
+        }
+        customersByPhone.get(norm).visits.push(visit);
       }
     }
   } catch(e) {
@@ -273,8 +283,34 @@ async function customerRemoveV2(phone) {
   await deleteCustomerMeta(norm);
 }
 
-// flushCustomersXlsx → V2: 항상 _session.json 기반으로 재생성
-async function flushCustomersXlsxV2() {
+// 디바운스 타이머
+let _xlsxFlushTimer = null;
+let _xlsxFlushPending = false;
+
+// flushCustomersXlsx → V2: 디바운스 적용 (즉시 호출 시 빠른 응답, 백그라운드 누적)
+async function flushCustomersXlsxV2(opts = {}) {
+  // 즉시 모드 (force) - 작업 종료 시
+  if (opts.immediate) {
+    if (_xlsxFlushTimer) {
+      clearTimeout(_xlsxFlushTimer);
+      _xlsxFlushTimer = null;
+    }
+    return _writeXlsxNow();
+  }
+
+  // 디바운스 모드 (default) - 3초 후 1번만 실행
+  _xlsxFlushPending = true;
+  if (_xlsxFlushTimer) clearTimeout(_xlsxFlushTimer);
+  _xlsxFlushTimer = setTimeout(async () => {
+    _xlsxFlushTimer = null;
+    if (_xlsxFlushPending) {
+      _xlsxFlushPending = false;
+      await _writeXlsxNow();
+    }
+  }, 3000);
+}
+
+async function _writeXlsxNow() {
   if (!photoFolderHandle) return;
 
   try {

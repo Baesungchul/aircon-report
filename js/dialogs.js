@@ -66,6 +66,14 @@ async function saveToFolder(opts) {
     }
   }
 
+  // ★ 불러온 호수의 _workNum을 _unitWorkNumber에 미리 등록
+  // (그래야 getWorkNumber가 동일한 번호 반환)
+  units.forEach(u => {
+    if (u._workNum && !_unitWorkNumber.has(u.name)) {
+      _unitWorkNumber.set(u.name, u._workNum);
+    }
+  });
+
   // 권한 확인 (자동 요청)
   let permOk = false;
   try {
@@ -165,18 +173,38 @@ async function saveToFolder(opts) {
 
         // 메모리상 각 호수의 사진 수 계산 (workNN/A_imageNN.jpg 형식)
         const expectedFiles = new Set();  // 보존할 파일들
+        // ★ 사진 없이 불러온 호수 - 폴더의 사진은 건드리지 않도록 보호
+        const protectedWorkDirs = new Set();
         units.forEach(u => {
-          const workNum = String(getWorkNumber(u.name)).padStart(2,'0');
+          // ★ _workNum 우선 사용 (불러올 때 보존된 값)
+          const workNum = String(u._workNum || getWorkNumber(u.name)).padStart(2,'0');
           const workKey = `work${workNum}`;
-          // before (A_image01~)
+
+          // 사진 없이 불러온 호수면 폴더 자체를 보호 대상에 추가
+          if (u._photosOnDisk?.skipPhotoSync) {
+            protectedWorkDirs.add(workKey);
+            // 디스크의 사진 개수만큼 expectedFiles에 등록 (삭제 방지)
+            for (let i = 1; i <= u._photosOnDisk.before; i++) {
+              expectedFiles.add(`${workKey}/A_image${String(i).padStart(2,'0')}.jpg`);
+            }
+            for (let i = 1; i <= u._photosOnDisk.after; i++) {
+              expectedFiles.add(`${workKey}/B_image${String(i).padStart(2,'0')}.jpg`);
+            }
+            (u._photosOnDisk.specials || []).forEach((cnt, si) => {
+              for (let i = 1; i <= cnt; i++) {
+                expectedFiles.add(`${workKey}/S${si+1}_image${String(i).padStart(2,'0')}.jpg`);
+              }
+            });
+            return;
+          }
+
+          // 일반 호수: 메모리 기준으로 expectedFiles
           for (let i = 1; i <= u.before.length; i++) {
             expectedFiles.add(`${workKey}/A_image${String(i).padStart(2,'0')}.jpg`);
           }
-          // after (B_image01~)
           for (let i = 1; i <= u.after.length; i++) {
             expectedFiles.add(`${workKey}/B_image${String(i).padStart(2,'0')}.jpg`);
           }
-          // specials
           u.specials.forEach((sp, si) => {
             for (let i = 1; i <= sp.photos.length; i++) {
               expectedFiles.add(`${workKey}/S${si+1}_image${String(i).padStart(2,'0')}.jpg`);
@@ -188,6 +216,12 @@ async function saveToFolder(opts) {
         let deletedCount = 0;
         for await (const [workName, workHandle] of oldDir.entries()) {
           if (workHandle.kind !== 'directory' || !/^work\d+/.test(workName)) continue;
+
+          // ★ 보호된 work 폴더는 건드리지 않음
+          if (protectedWorkDirs.has(workName)) {
+            console.log(`🔒 ${workName} - 사진 미로드 호수, 보호`);
+            continue;
+          }
 
           // 이 work 폴더 안의 파일들
           const filesToCheck = [];
@@ -295,9 +329,13 @@ async function saveToFolder(opts) {
     coDesc:  document.getElementById('coDesc')?.value || '',
     units: units.map(u => ({
       name: u.name,
-      beforeCount: u.before.length,
-      afterCount: u.after.length,
-      specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length })),
+      workNum: u._workNum || getWorkNumber(u.name),  // ★ 보존된 _workNum 우선
+      beforeCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.before || 0) : u.before.length,
+      afterCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.after || 0) : u.after.length,
+      specials: u.specials.map((s, si) => ({
+        desc: s.desc,
+        photoCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.specials?.[si] || 0) : s.photos.length
+      })),
       // 가정용 모드일 때만 호수별 customer 저장
       customer: currentWorkType === 'facility'
         ? { phone: '', address: '', memo: '' }
@@ -1071,20 +1109,8 @@ async function loadFromDateFolder(dateDir, data) {
 
 // 공통 복원 로직
 async function restoreFromData(data, dateDir) {
-  const totalPhotos = (data.units||[]).reduce((s,u)=>s+(u.beforeCount||0)+(u.afterCount||0),0);
-
-  // 확인창 1번 - 사진까지 복원할지 여부만 묻기
-  // (현재 작업은 IndexedDB에 자동저장되어 있으므로 사라져도 복구 가능)
-  let restorePhotos = false;
-
-  if (dateDir && totalPhotos > 0) {
-    const msg = `📋 ${data.apt||'작업'} · ${data.date||''}\n` +
-                `${(data.units||[]).length}개 호수, 사진 ${totalPhotos}장\n\n` +
-                `▶ 확인: 사진까지 복원 (느림)\n` +
-                `▶ 취소: 호수 정보만 복원 (빠름)`;
-    restorePhotos = confirm(msg);
-  }
-  // 사진 없거나 폴더 권한 없으면 그냥 진행 (확인 없음)
+  // ★ 사진은 무조건 복원 (질문 제거 - 항상 사진까지 불러옴)
+  const restorePhotos = !!dateDir;
 
   showOverlay('불러오는 중...');
 
@@ -1179,54 +1205,147 @@ async function restoreFromData(data, dateDir) {
 
     if (restorePhotos && dateDir) {
       try {
-        const workNum = String(ui+1).padStart(2,'0');
-        const workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
+        // ★ 저장된 workNum 우선 사용, 없으면 인덱스+1 (구버전 호환)
+        const workNum = String(u.workNum || (ui+1)).padStart(2,'0');
+        let workDir;
+        try {
+          workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
+        } catch(e) {
+          // ★ workNum 폴더 못 찾으면 폴더명 패턴 폴백 시도
+          // (호수명 직접 매칭, 같은 인덱스 재시도 등)
+          console.warn(`work${workNum} 폴더 없음 - 폴백 시도`);
+          // 인덱스 기반으로 다시 시도
+          if (u.workNum && u.workNum !== ui+1) {
+            try {
+              workDir = await dateDir.getDirectoryHandle(`work${String(ui+1).padStart(2,'0')}`);
+            } catch(e2) { throw e; }
+          } else { throw e; }
+        }
 
-        // 작업 전: A_imageNN.jpg (신규) 또는 B_imageNN.jpg (구버전 호환)
-        for (let i = 1; i <= (u.beforeCount||0); i++) {
-          let pf = null;
+        // ★ 폴더의 실제 파일들을 모두 스캔 (A/B/S 패턴별로 분류)
+        const filesByType = { A: [], B: [], S: {} };  // S는 si별로 그룹
+        for await (const [fname, fh] of workDir.entries()) {
+          if (fh.kind !== 'file') continue;
+          // A_imageNN.jpg / B_imageNN.jpg / SN_imageNN.jpg 패턴 매칭
+          const mA = fname.match(/^A_image(\d+)\.jpg$/i);
+          const mB = fname.match(/^B_image(\d+)\.jpg$/i);
+          const mS = fname.match(/^S(\d+)_image(\d+)\.jpg$/i);
+          if (mA) {
+            filesByType.A.push({ idx: parseInt(mA[1]), name: fname, handle: fh });
+          } else if (mB) {
+            filesByType.B.push({ idx: parseInt(mB[1]), name: fname, handle: fh });
+          } else if (mS) {
+            const sIdx = parseInt(mS[1]);
+            if (!filesByType.S[sIdx]) filesByType.S[sIdx] = [];
+            filesByType.S[sIdx].push({ idx: parseInt(mS[2]), name: fname, handle: fh });
+          }
+        }
+
+        // 인덱스 순으로 정렬
+        filesByType.A.sort((a, b) => a.idx - b.idx);
+        filesByType.B.sort((a, b) => a.idx - b.idx);
+        Object.values(filesByType.S).forEach(arr => arr.sort((a, b) => a.idx - b.idx));
+
+        // ★ 메타에 명시된 카운트와 실제 파일 수 비교 (큰 쪽 우선)
+        const beforeCount = Math.max(u.beforeCount || 0, filesByType.A.length);
+        const afterCount = Math.max(u.afterCount || 0, filesByType.B.length);
+
+        // 작업 전 사진 (A 우선, 없으면 B - 구버전)
+        for (const f of filesByType.A) {
           try {
-            const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
-            pf = await pfh.getFile();
-          } catch(e) {
+            const pf = await f.handle.getFile();
+            newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+          } catch(e) {}
+        }
+
+        // 작업 후 사진 (B)
+        for (const f of filesByType.B) {
+          try {
+            const pf = await f.handle.getFile();
+            newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+          } catch(e) {}
+        }
+
+        // ★ 구버전 호환: filesByType.A/B가 비어있고 카운트만 있으면 인덱스로 시도
+        if (filesByType.A.length === 0 && filesByType.B.length === 0) {
+          // 옛날 방식: A/B 의미가 다를 수 있음 - 카운트 기반 폴백
+          for (let i = 1; i <= (u.beforeCount||0); i++) {
+            let pf = null;
             try {
               const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
               pf = await pfh.getFile();
-            } catch(e2) {}
+            } catch(e) {}
+            if (pf) {
+              newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+            }
           }
-          if (pf) {
-            newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-          }
-        }
-
-        // 작업 후: B_imageNN.jpg (신규) 또는 A_imageNN.jpg (구버전 호환)
-        for (let i = 1; i <= (u.afterCount||0); i++) {
-          let pf = null;
-          try {
-            const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
-            pf = await pfh.getFile();
-          } catch(e) {
+          for (let i = 1; i <= (u.afterCount||0); i++) {
+            let pf = null;
             try {
               const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
               pf = await pfh.getFile();
-            } catch(e2) {}
-          }
-          if (pf) {
-            newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+            } catch(e) {}
+            if (pf) {
+              newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
+            }
           }
         }
 
+        // 특이사항 사진 - specials 슬롯이 부족하면 자동 생성
+        const maxSi = Math.max(
+          newUnit.specials.length,
+          ...Object.keys(filesByType.S).map(k => parseInt(k))
+        );
+        while (newUnit.specials.length < maxSi) {
+          newUnit.specials.push({ desc: '', photos: [] });
+        }
+
+        // 각 special별로 사진 로드
         for (let si = 0; si < newUnit.specials.length; si++) {
-          const sp = u.specials[si];
-          for (let pi = 1; pi <= (sp.photoCount||0); pi++) {
+          const sFiles = filesByType.S[si+1] || [];
+          for (const f of sFiles) {
             try {
-              const pfh = await workDir.getFileHandle(`S${si+1}_image${String(pi).padStart(2,'0')}.jpg`);
-              const pf = await pfh.getFile();
+              const pf = await f.handle.getFile();
               newUnit.specials[si].photos.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
             } catch(e) {}
           }
         }
-      } catch(e) {}
+
+        // 로그
+        const totalRestored = newUnit.before.length + newUnit.after.length +
+          newUnit.specials.reduce((s, sp) => s + sp.photos.length, 0);
+        const totalExpected = (u.beforeCount||0) + (u.afterCount||0) +
+          (u.specials||[]).reduce((s, sp) => s + (sp.photoCount||0), 0);
+        if (totalRestored > totalExpected) {
+          console.log(`📷 ${u.name}: 메타에 ${totalExpected}장이지만 폴더에 ${totalRestored}장 발견 → 모두 복원`);
+        } else if (totalRestored < totalExpected) {
+          console.warn(`⚠️ ${u.name}: 메타에 ${totalExpected}장인데 ${totalRestored}장만 복원됨`);
+        }
+
+        // ★ workNum 정보 newUnit에 보존 (저장 시 같은 폴더에 쓰도록)
+        newUnit._workNum = u.workNum || (ui+1);
+      } catch(e) {
+        console.warn(`work${u.workNum || (ui+1)} 폴더 사진 로드 실패:`, e.message);
+        // 사진 폴더 자체가 없는 케이스 - 가드 처리
+        newUnit._workNum = u.workNum || (ui+1);
+        newUnit._photosOnDisk = {
+          before: u.beforeCount || 0,
+          after: u.afterCount || 0,
+          specials: (u.specials || []).map(s => s.photoCount || 0),
+          skipPhotoSync: true
+        };
+      }
+    } else {
+      // ★ 사진 없이 불러오기 - 사진 정보 메타데이터로 보존
+      // 저장 시 폴더의 사진은 건드리지 않음 (안전 가드)
+      newUnit._workNum = u.workNum || (ui+1);
+      newUnit._photosOnDisk = {
+        before: u.beforeCount || 0,
+        after: u.afterCount || 0,
+        specials: (u.specials || []).map(s => s.photoCount || 0),
+        // 디스크에 사진이 있다는 표시
+        skipPhotoSync: true
+      };
     }
 
     units.push(newUnit);

@@ -159,6 +159,9 @@ function renderAll() {
       </div>
     </div>`;
   }).join('');
+
+  // ★ 호수 변경 후 UI 동기화 (가정용 1호수 제한 등)
+  if (typeof applyWorkTypeUI === 'function') applyWorkTypeUI();
 }
 
 function updateStats() {

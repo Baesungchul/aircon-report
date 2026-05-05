@@ -351,6 +351,11 @@ function normalizeUnits(arr) {
 }
 
 function addUnit(name) {
+  // ★ 가정용 모드 + 이미 1호수 있으면 안내
+  if (currentWorkType === 'household' && units.length >= 1) {
+    showHouseholdLimitDialog();
+    return;
+  }
   const inp=document.getElementById('newName');
   const n=(name!==undefined?name:inp.value).trim();
   if(!n){ showToast('호수명을 입력해주세요','err'); return; }
@@ -361,6 +366,11 @@ function addUnit(name) {
 }
 
 function bulkAdd() {
+  // ★ 가정용 모드면 일괄 추가 불가
+  if (currentWorkType === 'household') {
+    showHouseholdLimitDialog();
+    return;
+  }
   const raw=prompt('여러 호수를 한꺼번에 입력하세요\n\n📌 구분자: 쉼표(,) 또는 슬래시(/)\n\n예시 1) 101동 201호, 101동 202호, 101동 203호\n예시 2) 201호 / 202호 / 203호');
   if(!raw) return;
   // 반각/전각 쉼표, 반각/전각 슬래시, 줄바꿈 모두 구분자로 인식
@@ -903,15 +913,31 @@ window.addEventListener('beforeunload', onPageEnd);
 // UI에 workType 적용
 function applyWorkTypeUI() {
   const facilitySec = document.getElementById('facilityCustSec');
+  const newName = document.getElementById('newName');
+  const btnAdd = document.getElementById('btnAdd');
+  const btnBulk = document.getElementById('btnBulk');
+
   if (currentWorkType === 'facility') {
     if (facilitySec) facilitySec.style.display = '';
-    // 시설 모드: 호수 라벨 변경
-    const newName = document.getElementById('newName');
-    if (newName) newName.placeholder = '영역 추가 (예: 1웨이 1호, 작은 도서관)';
+    // 시설 모드: 항상 추가 가능
+    if (newName) {
+      newName.disabled = false;
+      newName.placeholder = '영역 추가 (예: 1웨이 1호, 작은 도서관)';
+    }
+    if (btnAdd) btnAdd.disabled = false;
+    if (btnBulk) btnBulk.disabled = false;
   } else {
     if (facilitySec) facilitySec.style.display = 'none';
-    const newName = document.getElementById('newName');
-    if (newName) newName.placeholder = '호수 추가 (예: 101동 201호)';
+    // ★ 가정용 모드: 1호수 이상이면 추가 비활성화
+    const lock = (units && units.length >= 1);
+    if (newName) {
+      newName.disabled = lock;
+      newName.placeholder = lock
+        ? '가정용은 1호수만 (모드 변경 가능)'
+        : '호수 추가 (예: 101동 201호)';
+    }
+    if (btnAdd) btnAdd.disabled = lock;
+    if (btnBulk) btnBulk.disabled = lock;
   }
 
   // 라디오 동기화
@@ -934,6 +960,48 @@ function resetWorkType() {
   currentWorkType = 'household';
   facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
   applyWorkTypeUI();
+}
+
+// ★ 가정용 1호수 제한 안내 다이얼로그
+function showHouseholdLimitDialog() {
+  const html = `
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:700;display:flex;align-items:center;justify-content:center;padding:16px;" id="houseLimitOverlay">
+      <div style="background:var(--sf);border-radius:14px;padding:20px;max-width:420px;width:100%;">
+        <div style="font-size:16px;font-weight:800;margin-bottom:6px;">🏠 가정용은 1호수만 가능합니다</div>
+        <div style="font-size:12px;color:var(--mu);margin-bottom:14px;line-height:1.6;">
+          여러 호수가 필요한 경우:<br>
+          • 다른 가정 작업이면 → <b>새 작업</b>으로 분리<br>
+          • 한 고객의 여러 영역이면 → <b>공용시설 모드</b>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="btn b-orange" id="hlNewWork" style="width:100%;justify-content:center;">🆕 새 작업 만들기</button>
+          <button class="btn b-blue" id="hlChangeMode" style="width:100%;justify-content:center;">🏢 공용시설 모드로 변경</button>
+          <button class="btn b-ghost" id="hlCancel" style="width:100%;justify-content:center;">취소</button>
+        </div>
+      </div>
+    </div>
+  `;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap.firstElementChild);
+
+  const close = () => document.getElementById('houseLimitOverlay')?.remove();
+
+  document.getElementById('hlNewWork').addEventListener('click', () => {
+    close();
+    if (typeof newWork === 'function') newWork();
+  });
+
+  document.getElementById('hlChangeMode').addEventListener('click', () => {
+    close();
+    currentWorkType = 'facility';
+    if (typeof applyWorkTypeUI === 'function') applyWorkTypeUI();
+    renderAll();
+    sessionAutoSave();
+    showToast('🏢 공용시설 모드로 변경됨', 'ok');
+  });
+
+  document.getElementById('hlCancel').addEventListener('click', close);
 }
 
 // 페이지 로드 시 UI 적용

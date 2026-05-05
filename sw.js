@@ -1,5 +1,5 @@
-// 서비스워커 v53 - 1.006: xlsx 디바운스 + 호수 삭제 시 캐시 무효화
-const CACHE = 'ac1004-v53';
+// 서비스워커 v54 - 1.1: 작업 유형 (가정용/공용시설) 도입
+const CACHE = 'ac1004-v54';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

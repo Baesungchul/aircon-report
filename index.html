@@ -43,6 +43,34 @@
       <div class="hf"><label data-i18n="main.workDate">작업일자</label><input id="workDate" type="date"></div>
       <div class="hf"><label data-i18n="main.worker">담당자</label><input id="workerName" data-i18n-placeholder="main.placeholder.workerName" placeholder="성함"></div>
     </div>
+
+    <!-- 작업 유형 -->
+    <div class="work-type-row">
+      <label class="work-type-opt">
+        <input type="radio" name="workType" value="household" id="workTypeHousehold" checked>
+        <span class="work-type-label">🏠 가정용</span>
+        <span class="work-type-desc">호수별 다른 고객</span>
+      </label>
+      <label class="work-type-opt">
+        <input type="radio" name="workType" value="facility" id="workTypeFacility">
+        <span class="work-type-label">🏢 공용시설</span>
+        <span class="work-type-desc">전체가 한 고객 (어린이집 등)</span>
+      </label>
+    </div>
+
+    <!-- 시설 고객 정보 (공용시설 모드에서만) -->
+    <div class="facility-cust-sec" id="facilityCustSec" style="display:none;">
+      <div class="facility-cust-hdr">
+        🏢 시설 고객 정보 <span style="font-size:11px;color:var(--mu);font-weight:400;">(작업 전체에 적용)</span>
+      </div>
+      <div class="facility-cust-grid">
+        <input class="cust-inp" type="text" inputmode="tel" placeholder="📞 시설 연락처 (예: 010-1234-5678)" id="facilityPhone">
+        <input class="cust-inp" type="text" placeholder="👤 담당자 (예: 관리자 홍길동)" id="facilityContact">
+      </div>
+      <input class="cust-inp" type="text" placeholder="🏠 시설 주소 (선택)" id="facilityAddress" style="margin-top:6px;">
+      <textarea class="cust-memo" rows="2" placeholder="💬 시설 메모 (입금 정보, 요청사항 등)" id="facilityMemo" style="margin-top:6px;"></textarea>
+    </div>
+
     <div class="hdr-btns">
       <!-- 1행: 데이터 관리 (3열) -->
       <button class="co-hdr-btn" id="btnSettings" data-i18n="btn.settings">⚙️ 설정</button>

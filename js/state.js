@@ -4,6 +4,8 @@
 let units = [];
 let nid   = 1;
 let currentWorkId = '';  // ★ 현재 작업의 고유 ID (일련번호)
+let currentWorkType = 'household';  // ★ 'household' | 'facility'
+let facilityCustomer = { phone: '', contact: '', address: '', memo: '' };  // ★ 공용시설 모드용
 
 const CO_KEY  = 'ac_co_v2';
 const CO_FIELDS = ['coName','coBrand','coTel','coBiz','coAddr','coEmail','coWeb','coDesc','coReportTitle','coUnitLabel','coStageLabel','coIndustryMajor','coIndustryMinor'];

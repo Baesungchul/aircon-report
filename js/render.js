@@ -131,6 +131,7 @@ function renderAll() {
           ${spHtml}
           <button class="add-sp-btn" data-uid="${u.id}">＋ 특이사항 추가</button>
         </div>
+        ${currentWorkType === 'facility' ? '' : `
         <div class="cust-sec">
           <div class="cust-toggle" data-uid="${u.id}">
             <span class="cust-toggle-label">
@@ -154,7 +155,7 @@ function renderAll() {
             </div>
             <textarea class="cust-memo" rows="2" placeholder="💬 메모 (요청사항, 결제 방법, 추천인 등)" data-uid="${u.id}" data-field="memo">${escH(u.customer?.memo || '')}</textarea>
           </div>
-        </div>
+        </div>`}
       </div>
     </div>`;
   }).join('');

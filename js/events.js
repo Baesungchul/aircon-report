@@ -23,6 +23,30 @@ function bindAll() {
   document.getElementById('btnCol').addEventListener('click', ()=>{ units.forEach(u=>u.open=false); renderAll(); });
   document.getElementById('srch').addEventListener('input', renderAll);
 
+  // ★ 작업 유형 토글
+  document.querySelectorAll('input[name="workType"]').forEach(r => {
+    r.addEventListener('change', e => {
+      currentWorkType = e.target.value;
+      applyWorkTypeUI();
+      renderAll();
+      sessionAutoSave();
+    });
+  });
+
+  // ★ 시설 고객 정보 입력 이벤트
+  ['facilityPhone', 'facilityContact', 'facilityAddress', 'facilityMemo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        if (id === 'facilityPhone') facilityCustomer.phone = el.value.trim();
+        else if (id === 'facilityContact') facilityCustomer.contact = el.value.trim();
+        else if (id === 'facilityAddress') facilityCustomer.address = el.value.trim();
+        else if (id === 'facilityMemo') facilityCustomer.memo = el.value.trim();
+        sessionAutoSave();
+      });
+    }
+  });
+
   // 저장/불러오기
   document.getElementById('btnNew').addEventListener('click', newWork);
   document.getElementById('btnSave').addEventListener('click', handleSaveClick);
@@ -375,7 +399,8 @@ async function newWork() {
     document.getElementById('workDate').value = kstDateStr();
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
-    currentWorkId = '';  // ★ 새 작업 ID 리셋 (저장 시 새로 생성됨)
+    currentWorkId = '';
+    if (typeof resetWorkType === 'function') resetWorkType();  // ★ workType 초기화
     showToast('🆕 새 작업', 'ok');
     return;
   }
@@ -415,6 +440,7 @@ async function newWork() {
   units = [];
   nid = 1;
   currentWorkId = '';  // ★ 새 작업 ID 리셋
+  if (typeof resetWorkType === 'function') resetWorkType();  // ★ workType 초기화
   document.getElementById('rpWrap').innerHTML = '';
   document.getElementById('btnPDF').disabled = true;
   document.getElementById('btnJPG').disabled = true;
@@ -829,3 +855,48 @@ function onPageEnd() {
 
 window.addEventListener('pagehide', onPageEnd);
 window.addEventListener('beforeunload', onPageEnd);
+
+/* ═══════════════════════════════════════════════
+   작업 유형 (workType) 헬퍼 함수
+═══════════════════════════════════════════════ */
+
+// UI에 workType 적용
+function applyWorkTypeUI() {
+  const facilitySec = document.getElementById('facilityCustSec');
+  if (currentWorkType === 'facility') {
+    if (facilitySec) facilitySec.style.display = '';
+    // 시설 모드: 호수 라벨 변경
+    const newName = document.getElementById('newName');
+    if (newName) newName.placeholder = '영역 추가 (예: 1웨이 1호, 작은 도서관)';
+  } else {
+    if (facilitySec) facilitySec.style.display = 'none';
+    const newName = document.getElementById('newName');
+    if (newName) newName.placeholder = '호수 추가 (예: 101동 201호)';
+  }
+
+  // 라디오 동기화
+  const r = document.getElementById(currentWorkType === 'facility' ? 'workTypeFacility' : 'workTypeHousehold');
+  if (r) r.checked = true;
+
+  // 시설 고객 정보 input 동기화
+  const phoneEl = document.getElementById('facilityPhone');
+  const contactEl = document.getElementById('facilityContact');
+  const addrEl = document.getElementById('facilityAddress');
+  const memoEl = document.getElementById('facilityMemo');
+  if (phoneEl) phoneEl.value = facilityCustomer.phone || '';
+  if (contactEl) contactEl.value = facilityCustomer.contact || '';
+  if (addrEl) addrEl.value = facilityCustomer.address || '';
+  if (memoEl) memoEl.value = facilityCustomer.memo || '';
+}
+
+// workType 초기화
+function resetWorkType() {
+  currentWorkType = 'household';
+  facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
+  applyWorkTypeUI();
+}
+
+// 페이지 로드 시 UI 적용
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(applyWorkTypeUI, 100);
+});

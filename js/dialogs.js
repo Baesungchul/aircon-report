@@ -271,9 +271,16 @@ async function saveToFolder(opts) {
   const sessionData = {
     version: 1,
     type: 'aircon-report',
-    workId: currentWorkId || '',  // ★ 일련번호 (불변 식별자)
+    workId: currentWorkId || '',
+    workType: currentWorkType || 'household',  // ★ 작업 유형
+    facilityCustomer: currentWorkType === 'facility' ? {
+      phone: facilityCustomer.phone || '',
+      contact: facilityCustomer.contact || '',
+      address: facilityCustomer.address || '',
+      memo: facilityCustomer.memo || ''
+    } : null,
     savedAt: kstIsoString(),
-    apt: currentApt,  // 정규화된 작업명 저장
+    apt: currentApt,
     date,
     worker:  document.getElementById('workerName').value || '',
     coName:  document.getElementById('coName')?.value || '',
@@ -285,8 +292,10 @@ async function saveToFolder(opts) {
       beforeCount: u.before.length,
       afterCount: u.after.length,
       specials: u.specials.map(s => ({ desc: s.desc, photoCount: s.photos.length })),
-      // 고객 정보 포함 (마케팅 데이터)
-      customer: u.customer || { phone: '', address: '', memo: '' }
+      // 가정용 모드일 때만 호수별 customer 저장
+      customer: currentWorkType === 'facility'
+        ? { phone: '', address: '', memo: '' }
+        : (u.customer || { phone: '', address: '', memo: '' })
     }))
   };
 
@@ -1073,9 +1082,23 @@ async function restoreFromData(data, dateDir) {
 
   showOverlay('불러오는 중...');
 
-  // ★ workId 복원 (없으면 기존 작업 - 새로 발급 후 다음 저장 때 영구화)
+  // ★ workId 복원
   currentWorkId = data.workId || generateWorkId();
   console.log('[workId] 작업 불러옴:', currentWorkId, data.workId ? '(기존)' : '(신규 발급)');
+
+  // ★ workType 복원 (없으면 기본 가정용)
+  currentWorkType = data.workType || 'household';
+  if (currentWorkType === 'facility' && data.facilityCustomer) {
+    facilityCustomer = {
+      phone: data.facilityCustomer.phone || '',
+      contact: data.facilityCustomer.contact || '',
+      address: data.facilityCustomer.address || '',
+      memo: data.facilityCustomer.memo || ''
+    };
+  } else {
+    facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
+  }
+  if (typeof applyWorkTypeUI === 'function') applyWorkTypeUI();
 
   // 메타 복원
   document.getElementById('aptName').value    = data.apt || '';

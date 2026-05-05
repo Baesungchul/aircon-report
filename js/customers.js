@@ -751,27 +751,44 @@ function renderCustomerCard(c) {
     : `<span style="color:var(--mu);">1회</span>`;
 
   const lastWork = (c.visits && c.visits.length > 0)
-    ? c.visits[c.visits.length - 1]
+    ? c.visits[0]  // 최신 (정렬되어 있음)
     : null;
 
   const apt = lastWork?.apt || '';
-  const unit = lastWork?.unit || c.name || c.phone;
+  const isFacility = lastWork?.isFacility || false;
+  const contactName = lastWork?.contactName || '';
 
-  // 모든 visits의 사진 수 합계 (work 필드의 "Photos: N" 파싱)
+  // 모든 visits의 사진 수 합계 - V2는 v.photos 직접 사용
   let totalPhotos = 0;
   (c.visits || []).forEach(v => {
-    const m = (v.work || '').match(/Photos:\s*(\d+)/);
-    if (m) totalPhotos += parseInt(m[1]) || 0;
+    if (typeof v.photos === 'number') totalPhotos += v.photos;
+    else {
+      const m = (v.work || '').match(/Photos:\s*(\d+)/);
+      if (m) totalPhotos += parseInt(m[1]) || 0;
+    }
   });
 
-  // 작업명 + 호수 한 줄
+  // 제목 - 시설 vs 가정 구분
   let titleLine = '';
-  if (apt && unit) titleLine = `${escHtmlSafe(apt)} · ${escHtmlSafe(unit)}`;
-  else if (apt) titleLine = escHtmlSafe(apt);
-  else titleLine = escHtmlSafe(unit);
+  if (isFacility) {
+    // 🏢 시설명 · 영역 N개
+    const zones = lastWork?.unitNames?.length || 0;
+    titleLine = `🏢 ${escHtmlSafe(apt)}${zones ? ` · ${zones}개 영역` : ''}`;
+  } else {
+    // 가정용 - 작업명 · 호수
+    const unit = lastWork?.unit || c.name || c.phone;
+    if (apt && unit) titleLine = `${escHtmlSafe(apt)} · ${escHtmlSafe(unit)}`;
+    else if (apt) titleLine = escHtmlSafe(apt);
+    else titleLine = escHtmlSafe(unit);
+  }
+
+  // 연락처 표시 - 시설은 담당자 이름도
+  const phoneDisplay = isFacility && contactName
+    ? `📞 ${escHtmlSafe(c.phone)} · ${escHtmlSafe(contactName)}`
+    : `📞 ${escHtmlSafe(c.phone)}${c.address ? ` · 🏠 ${escHtmlSafe(c.address)}` : ''}`;
 
   return `
-    <div class="cust-card" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="클릭하여 작업 열기">
+    <div class="cust-card${isFacility ? ' cust-card-facility' : ''}" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="클릭하여 작업 열기">
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
@@ -779,7 +796,7 @@ function renderCustomerCard(c) {
           <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="삭제"><span class="btn-ic">🗑️</span><span class="btn-tx">삭제</span></button>
         </div>
       </div>
-      <div class="cust-card-line">📞 ${escHtmlSafe(c.phone)}${c.address ? ` · 🏠 ${escHtmlSafe(c.address)}` : ''}</div>
+      <div class="cust-card-line">${phoneDisplay}</div>
       <div class="cust-card-line cust-card-meta">
         <span>${visitText} 작업</span>
         <span>· ${lastVisit}</span>

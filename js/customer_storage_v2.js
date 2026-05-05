@@ -164,7 +164,45 @@ async function rebuildCustomersFromSessions(opts = {}) {
       const date = data.date || entry.name.slice(0, 10);
       const workId = data.workId || '';
       const folderName = entry.name;
+      const workType = data.workType || 'household';
 
+      // ★ 공용시설 모드: 작업 단위로 1개의 customer 만들기
+      if (workType === 'facility' && data.facilityCustomer?.phone) {
+        const phone = data.facilityCustomer.phone.trim();
+        const phoneDigits = phone.replace(/[^\d]/g, '');
+        if (phoneDigits.length < 9) continue;
+
+        const norm = normalizePhone(phone);
+        const totalPhotos = data.units.reduce((s, u) =>
+          s + (u.beforeCount || 0) + (u.afterCount || 0), 0);
+
+        const visit = {
+          workId,
+          folderName,
+          date,
+          apt,
+          unit: `${data.units.length}개 영역`,  // 표시용
+          unitName: '',
+          unitNames: data.units.map(u => u.name),  // 영역 목록
+          photos: totalPhotos,
+          specials: data.units.reduce((s, u) => s + (u.specials || []).length, 0),
+          isFacility: true,
+          unitAddress: data.facilityCustomer.address || '',
+          unitMemo: data.facilityCustomer.memo || '',
+          contactName: data.facilityCustomer.contact || ''
+        };
+
+        if (!customersByPhone.has(norm)) {
+          customersByPhone.set(norm, {
+            phone: norm,
+            visits: []
+          });
+        }
+        customersByPhone.get(norm).visits.push(visit);
+        continue;  // 시설 모드는 호수별 customer 무시
+      }
+
+      // 가정용 모드: 호수별 customer
       for (const u of data.units) {
         const phone = (u.customer?.phone || '').trim();
         if (!phone) continue;

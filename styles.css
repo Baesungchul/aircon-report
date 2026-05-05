@@ -329,8 +329,11 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .img-x{position:absolute;top:14px;right:14px;width:34px;height:34px;background:var(--sf);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;border:1px solid var(--bd);}
 
 /* OVERLAY */
-.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;align-items:center;justify-content:center;}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;align-items:center;justify-content:center;touch-action:none;overscroll-behavior:contain;}
 .overlay.show{display:flex;}
+/* 오버레이 활성화 시 뒤 화면 스크롤/터치 차단 */
+body.overlay-active{overflow:hidden!important;touch-action:none!important;}
+body.overlay-active *:not(.overlay):not(.overlay *){pointer-events:none!important;}
 .ov-box{background:var(--sf);border:1px solid var(--bd);border-radius:13px;padding:26px 34px;text-align:center;min-width:230px;}
 .ov-title{font-size:13px;font-weight:700;margin-bottom:11px;}
 .prog-tr{height:5px;background:var(--sf3);border-radius:3px;overflow:hidden;}

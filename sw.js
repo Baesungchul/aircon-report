@@ -1,5 +1,5 @@
-// 서비스워커 v57 - 1.103: 엑셀 share만 사용 (사용자가 앱 선택)
-const CACHE = 'ac1004-v57';
+// 서비스워커 v61 - 1.107: 폴더 스캔으로 누락 사진 자동 복원
+const CACHE = 'ac1004-v61';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

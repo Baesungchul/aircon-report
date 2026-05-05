@@ -1,5 +1,5 @@
-// 서비스워커 v54 - 1.1: 작업 유형 (가정용/공용시설) 도입
-const CACHE = 'ac1004-v54';
+// 서비스워커 v57 - 1.103: 엑셀 share만 사용 (사용자가 앱 선택)
+const CACHE = 'ac1004-v57';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

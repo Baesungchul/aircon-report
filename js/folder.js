@@ -1019,8 +1019,19 @@ async function savePhotosToFolder() {
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function escH(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function showImg(src){document.getElementById('modalImg').src=src;document.getElementById('imgModal').classList.add('open');}
-function showOverlay(t){document.getElementById('ovTitle').textContent=t;document.getElementById('progFl').style.width='0%';document.getElementById('progLb').textContent='';document.getElementById('overlay').classList.add('show');}
+function showOverlay(t){
+  document.getElementById('ovTitle').textContent=t;
+  document.getElementById('progFl').style.width='0%';
+  document.getElementById('progLb').textContent='';
+  document.getElementById('overlay').classList.add('show');
+  // ★ 뒤 화면 스크롤/터치 차단
+  document.body.classList.add('overlay-active');
+}
 function setProg(p,l){document.getElementById('progFl').style.width=p+'%';document.getElementById('progLb').textContent=l;}
-function hideOverlay(){document.getElementById('overlay').classList.remove('show');}
+function hideOverlay(){
+  document.getElementById('overlay').classList.remove('show');
+  // ★ 잠금 해제
+  document.body.classList.remove('overlay-active');
+}
 function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast show ${type}`;clearTimeout(t._t);t._t=setTimeout(()=>t.className='toast',3500);}
 

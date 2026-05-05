@@ -444,7 +444,7 @@ async function newWork() {
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
     currentWorkId = '';
-    if (typeof resetWorkType === 'function') resetWorkType();  // ★ workType 초기화
+    if (typeof resetWorkType === 'function') resetWorkType();
     showToast('🆕 새 작업', 'ok');
     return;
   }
@@ -454,25 +454,40 @@ async function newWork() {
     s + u.before.length + u.after.length +
     u.specials.reduce((a,sp) => a+sp.photos.length, 0), 0);
 
+  // ★ 변경 여부 명시적 체크
+  const isDirty = (typeof _dataDirty !== 'undefined' && _dataDirty);
+  const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
+  const hasChanges = isDirty || (currentSnap !== _lastSaveSnapshot);
+
   let msg = `📋 현재 작업: 호수 ${units.length}개, 사진 ${totalPhotos}장\n\n`;
   if (photoFolderHandle) {
-    msg += `저장 폴더에 자동 저장 후 새 작업을 시작합니다.\n계속할까요?`;
+    if (hasChanges) {
+      msg += `⚠️ 저장되지 않은 변경사항이 있습니다.\n저장 폴더에 자동 저장 후 새 작업을 시작합니다.\n\n계속할까요?`;
+    } else {
+      msg += `(이미 저장됨) 새 작업을 시작합니다.\n계속할까요?`;
+    }
   } else {
-    msg += `새 작업을 시작합니다.\n(저장 폴더가 없어 사진은 저장되지 않습니다)`;
+    msg += `⚠️ 저장 폴더가 없어 사진은 저장되지 않습니다.\n새 작업을 시작할까요?`;
   }
 
   if (!confirm(msg)) return;
 
-  // 폴더 있으면 자동으로 저장 (변경 없으면 빠르게 스킵됨)
-  if (photoFolderHandle) {
+  // ★ 폴더 있고 변경 있으면 명시적으로 저장 (force - 스킵 방지)
+  if (photoFolderHandle && hasChanges) {
+    showOverlay('저장 중...');
     try {
-      await saveToFolder({ auto: true });
+      await saveToFolder({ auto: true, force: true });
     } catch(e) {
+      hideOverlay();
       console.warn('자동 저장 실패:', e);
+      if (!confirm('⚠️ 저장에 실패했습니다.\n그래도 새 작업을 시작할까요?\n(현재 작업 데이터를 잃을 수 있습니다)')) {
+        return;
+      }
     }
+    hideOverlay();
   }
 
-  // 🆕 고객 정보 저장 (폴더 없어도 customers DB는 별도)
+  // 고객 정보 저장
   try {
     if (typeof flushAllCustomers === 'function') {
       const cnt = await flushAllCustomers();
@@ -483,8 +498,8 @@ async function newWork() {
   // 초기화
   units = [];
   nid = 1;
-  currentWorkId = '';  // ★ 새 작업 ID 리셋
-  if (typeof resetWorkType === 'function') resetWorkType();  // ★ workType 초기화
+  currentWorkId = '';
+  if (typeof resetWorkType === 'function') resetWorkType();
   document.getElementById('rpWrap').innerHTML = '';
   document.getElementById('btnPDF').disabled = true;
   document.getElementById('btnJPG').disabled = true;

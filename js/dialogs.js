@@ -54,14 +54,15 @@ async function handleSaveClick() {
 // 폴더 저장 - 사진 + 세션 정보를 한번에
 async function saveToFolder(opts) {
   opts = opts || {};
-  const isAutoSave = opts.auto === true;  // 자동 저장 (새작업/종료 시)
+  const isAutoSave = opts.auto === true;
+  const isForced = opts.force === true;
 
-  // ★ 변경 없으면 빠른 스킵 (자동 저장 시에만)
-  if (isAutoSave) {
+  // ★ 변경 없으면 빠른 스킵 (자동 저장 시에만, force가 아닐 때)
+  if (isAutoSave && !isForced) {
     const currentSnap = quickSnapshot();
     if (!_dataDirty && currentSnap === _lastSaveSnapshot) {
       console.log('✓ 변경 없음 - 저장 스킵');
-      return;
+      return { skipped: true, reason: 'no_changes' };
     }
   }
 
@@ -1234,6 +1235,14 @@ async function restoreFromData(data, dateDir) {
   document.getElementById('slModal').classList.remove('open');
   renderAll();
   updateStats();
+
+  // ★ 불러온 직후 - dirty 초기화 + 스냅샷 저장 (다음 변경 추적용)
+  // 이래야 변경 없이 또 불러올 때 저장 스킵됨
+  if (typeof _dataDirty !== 'undefined') _dataDirty = false;
+  if (typeof quickSnapshot === 'function') {
+    _lastSaveSnapshot = quickSnapshot();
+  }
+
   hideOverlay();
   showToast(`✓ ${units.length}호수 불러옴`, 'ok');
 }

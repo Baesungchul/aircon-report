@@ -675,19 +675,30 @@ async function confirmBeforeLoad() {
   // 작업 없으면 그냥 진행
   if (typeof units === 'undefined' || !units || units.length === 0) return true;
 
-  // 변경 없으면 그냥 진행
-  if (typeof _dataDirty !== 'undefined' && !_dataDirty) return true;
+  // ★ 변경 없으면 그냥 진행 (dirty 플래그 + 스냅샷 비교)
+  const isDirty = (typeof _dataDirty !== 'undefined' && _dataDirty);
+  let snapsEqual = true;
+  if (typeof quickSnapshot === 'function' && typeof _lastSaveSnapshot !== 'undefined') {
+    snapsEqual = (quickSnapshot() === _lastSaveSnapshot);
+  }
+  if (!isDirty && snapsEqual) {
+    console.log('✓ 변경 없음 - 저장 스킵 (불러오기 전)');
+    return true;
+  }
 
   // 저장 확인
-  const result = confirm('현재 작업이 저장되지 않았습니다.\n\n저장하시겠습니까?\n\n[확인] 저장 후 진행\n[취소] 저장하지 않고 진행');
+  const result = confirm('⚠️ 현재 작업이 저장되지 않았습니다.\n\n저장 후 다른 작업을 불러오시겠습니까?\n\n[확인] 저장 후 진행\n[취소] 저장하지 않고 진행');
   if (result) {
     // 저장
     if (photoFolderHandle && typeof saveToFolder === 'function') {
+      showOverlay('현재 작업 저장 중...');
       try {
-        await saveToFolder({ auto: true });
+        await saveToFolder({ auto: true, force: true });
       } catch(e) {
+        hideOverlay();
         if (!confirm('저장 실패. 그래도 진행할까요?')) return false;
       }
+      hideOverlay();
     } else if (typeof sessionAutoSaveNow === 'function') {
       try { await sessionAutoSaveNow(); } catch(e) {}
     }

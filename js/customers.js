@@ -689,16 +689,13 @@ async function confirmBeforeLoad() {
   // 저장 확인
   const result = confirm('⚠️ 현재 작업이 저장되지 않았습니다.\n\n저장 후 다른 작업을 불러오시겠습니까?\n\n[확인] 저장 후 진행\n[취소] 저장하지 않고 진행');
   if (result) {
-    // 저장
     if (photoFolderHandle && typeof saveToFolder === 'function') {
-      showOverlay('현재 작업 저장 중...');
       try {
         await saveToFolder({ auto: true, force: true });
       } catch(e) {
         hideOverlay();
         if (!confirm('저장 실패. 그래도 진행할까요?')) return false;
       }
-      hideOverlay();
     } else if (typeof sessionAutoSaveNow === 'function') {
       try { await sessionAutoSaveNow(); } catch(e) {}
     }

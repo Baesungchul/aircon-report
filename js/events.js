@@ -473,9 +473,8 @@ async function newWork() {
 
   if (!confirm(msg)) return;
 
-  // ★ 폴더 있고 변경 있으면 명시적으로 저장 (force - 스킵 방지)
+  // ★ 폴더 있고 변경 있으면 저장 (오버레이는 saveToFolder가 처리)
   if (photoFolderHandle && hasChanges) {
-    showOverlay('저장 중...');
     try {
       await saveToFolder({ auto: true, force: true });
     } catch(e) {
@@ -485,7 +484,6 @@ async function newWork() {
         return;
       }
     }
-    hideOverlay();
   }
 
   // 고객 정보 저장

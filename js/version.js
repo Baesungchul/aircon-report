@@ -6,8 +6,8 @@
    - 메이저 업데이트: 2.0
 ═══════════════════════════════════════════════ */
 
-const APP_VERSION = '1.108';
-const APP_VERSION_DATE = '2026-05-04';
+const APP_VERSION = '1.109';
+const APP_VERSION_DATE = '2026-05-10';
 
 // 버전 표시 갱신 함수
 function applyAppVersion() {

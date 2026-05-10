@@ -66,36 +66,48 @@ async function saveToFolder(opts) {
     }
   }
 
-  // ★ 불러온 호수의 _workNum을 _unitWorkNumber에 미리 등록
-  // (그래야 getWorkNumber가 동일한 번호 반환)
+  // ★ _workNum 등록 (sync - await 없음)
   units.forEach(u => {
     if (u._workNum && !_unitWorkNumber.has(u.name)) {
       _unitWorkNumber.set(u.name, u._workNum);
     }
   });
 
-  // 권한 확인 (자동 요청)
+  // ★★★ 권한 확인 - 오버레이 표시 전, await 최소화
+  // requestPermission 직접 호출 (이미 granted면 즉시 반환, 아니면 다이얼로그)
+  // 10초 타임아웃으로 hang 방지
   let permOk = false;
   try {
-    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
-    if (curPerm === 'granted') {
-      permOk = true;
-    } else {
-      // 권한이 없으면 조용히 자동 요청 (토스트 없음)
-      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
-      permOk = (newPerm === 'granted');
-    }
+    const permResult = await Promise.race([
+      photoFolderHandle.requestPermission({ mode: 'readwrite' }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('권한 요청 시간 초과 (10초)')), 10000)
+      )
+    ]);
+    permOk = (permResult === 'granted');
   } catch(e) {
-    showToast('폴더 권한 확인 실패: ' + e.message, 'err');
+    // 타임아웃 또는 오류
+    if (typeof hideOverlay === 'function') hideOverlay();
+    showToast('⚠️ 폴더 권한 오류: ' + e.message, 'err');
+    console.error('[저장] 권한 오류:', e);
     return;
   }
 
   if (!permOk) {
-    showToast('폴더 권한이 거부되었습니다', 'err');
+    showToast('폴더 쓰기 권한이 거부되었습니다', 'err');
     return;
   }
 
+  // ★ 권한 확인 완료 → 이제 오버레이 표시 (더 이상 사용자 인터랙션 불필요)
   showOverlay('저장 중...');
+
+  // ★ 전체 저장에 타임아웃 (2분) - hang 방지 안전망
+  let _saveTimeout = setTimeout(() => {
+    console.error('[저장] 2분 초과 - 강제 종료');
+    hideOverlay();
+    showToast('⚠️ 저장이 너무 오래 걸려 중단했습니다. 다시 시도해주세요.', 'err');
+  }, 120000);
+
   let saved = 0;
   let failed = 0;
   let sessionFileSaved = false;
@@ -373,6 +385,9 @@ async function saveToFolder(opts) {
   }
 
   // 결과 토스트 (자동 저장은 조용히)
+  // ★ 저장 완료 - 타임아웃 클리어
+  if (typeof _saveTimeout !== 'undefined') clearTimeout(_saveTimeout);
+
   if (sessionFileSaved) {
     if (isAutoSave) {
       console.log(`💾 자동 저장 완료 - 사진 ${saved}장`);

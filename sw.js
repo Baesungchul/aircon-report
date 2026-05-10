@@ -1,5 +1,5 @@
-// 서비스워커 v65 - 1.111: 저장 스킵(수동포함) + 사진 스킵 + 불러오기 병렬화
-const CACHE = 'ac1004-v65';
+// 서비스워커 v67 - 1.113: 새작업 즉시 열기 + 이전 작업 백그라운드 저장
+const CACHE = 'ac1004-v67';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

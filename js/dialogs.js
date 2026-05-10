@@ -57,25 +57,24 @@ async function saveToFolder(opts) {
   const isAutoSave = opts.auto === true;
   const isForced = opts.force === true;
 
-  // ★ 변경 없으면 빠른 스킵 (자동 저장 시에만, force가 아닐 때)
-  if (isAutoSave && !isForced) {
+  // ★ 변경 없으면 스킵 (수동/자동 모두, force 아닐 때)
+  if (!isForced) {
     const currentSnap = quickSnapshot();
     if (!_dataDirty && currentSnap === _lastSaveSnapshot) {
       console.log('✓ 변경 없음 - 저장 스킵');
+      if (!isAutoSave) showToast('✓ 이미 저장됨', 'ok');
       return { skipped: true, reason: 'no_changes' };
     }
   }
 
-  // ★ _workNum 등록 (sync - await 없음)
+  // ★ _workNum 등록
   units.forEach(u => {
     if (u._workNum && !_unitWorkNumber.has(u.name)) {
       _unitWorkNumber.set(u.name, u._workNum);
     }
   });
 
-  // ★★★ 권한 확인 - 오버레이 표시 전, await 최소화
-  // requestPermission 직접 호출 (이미 granted면 즉시 반환, 아니면 다이얼로그)
-  // 10초 타임아웃으로 hang 방지
+  // ★ 권한 확인 (오버레이 전에)
   let permOk = false;
   try {
     const permResult = await Promise.race([
@@ -86,53 +85,40 @@ async function saveToFolder(opts) {
     ]);
     permOk = (permResult === 'granted');
   } catch(e) {
-    // 타임아웃 또는 오류
-    if (typeof hideOverlay === 'function') hideOverlay();
     showToast('⚠️ 폴더 권한 오류: ' + e.message, 'err');
-    console.error('[저장] 권한 오류:', e);
     return;
   }
-
   if (!permOk) {
     showToast('폴더 쓰기 권한이 거부되었습니다', 'err');
     return;
   }
 
-  // ★ 권한 확인 완료 → 이제 오버레이 표시 (더 이상 사용자 인터랙션 불필요)
   showOverlay('저장 중...');
-
-  // ★ 전체 저장에 타임아웃 (2분) - hang 방지 안전망
-  let _saveTimeout = setTimeout(() => {
-    console.error('[저장] 2분 초과 - 강제 종료');
+  const _saveTimeout = setTimeout(() => {
     hideOverlay();
-    showToast('⚠️ 저장이 너무 오래 걸려 중단했습니다. 다시 시도해주세요.', 'err');
+    showToast('⚠️ 저장이 너무 오래 걸려 중단했습니다.', 'err');
   }, 120000);
 
   let saved = 0;
+  let skippedPhotos = 0;
   let failed = 0;
   let sessionFileSaved = false;
 
-  // 인덱스 카운터 초기화 (사진 번호가 1번부터 시작하도록)
   if (typeof _indexCounter !== 'undefined' && _indexCounter.clear) _indexCounter.clear();
   if (typeof _savedPhotoIds !== 'undefined' && _savedPhotoIds.clear) _savedPhotoIds.clear();
-  // 폴더 핸들 캐시도 클리어 (이전 저장 세션의 핸들 안 쓰도록)
   if (typeof clearDirHandleCache === 'function') clearDirHandleCache();
 
-  // 날짜와 작업명을 미리 확정 (사진 저장 실패해도 _session.json은 저장하도록)
   const date = document.getElementById('workDate').value || getLocalDateStr();
   const apt  = document.getElementById('aptName').value || 'site';
 
-  // 작업명 정규화 함수: 보이지 않는 문자 제거 + 유니코드 정규화 + 공백 통일
   function normalizeAptName(s) {
     if (!s) return '';
-    return String(s)
-      .normalize('NFC')
+    return String(s).normalize('NFC')
       .replace(/[\u200B-\u200F\uFEFF]/g, '')
       .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+      .replace(/\s+/g, ' ').trim();
   }
-  const currentApt = normalizeAptName(apt);  // ★ 여기서 선언
+  const currentApt = normalizeAptName(apt);
 
   // ★ 폴더명 결정 - 단순하고 명확
   // - 불러온 작업 (currentFolderName 있음): 그 폴더에만 덮어쓰기
@@ -205,41 +191,43 @@ async function saveToFolder(opts) {
   _currentSaveDateFolderName = dateFolderName;
 
   try {
-    // 1) 모든 사진을 폴더에 저장 - 호수별로 병렬 처리
-    // 한 호수 내의 사진들을 동시에 저장 (workNN 폴더 별도 핸들이라 충돌 없음)
+    // 1) 사진 저장 - ★ 이미 저장된 사진은 스킵
     for (const u of units) {
       const tasks = [];
 
-      // 작업 전
       for (let i = 0; i < u.before.length; i++) {
+        const p = u.before[i];
+        if (p.savedToFolder) { skippedPhotos++; continue; }  // ★ 이미 저장됨
         tasks.push(
-          doWriteOne(u.before[i], u.name, '전')
-            .then(() => { saved++; })
+          doWriteOne(p, u.name, '전')
+            .then(() => { saved++; p.savedToFolder = true; })
             .catch(e => { failed++; console.warn('사진 저장 실패:', e.message); })
         );
       }
-      // 작업 후
       for (let i = 0; i < u.after.length; i++) {
+        const p = u.after[i];
+        if (p.savedToFolder) { skippedPhotos++; continue; }  // ★ 이미 저장됨
         tasks.push(
-          doWriteOne(u.after[i], u.name, '후')
-            .then(() => { saved++; })
+          doWriteOne(p, u.name, '후')
+            .then(() => { saved++; p.savedToFolder = true; })
             .catch(e => { failed++; console.warn('사진 저장 실패:', e.message); })
         );
       }
-      // 특이사항
       for (let si = 0; si < u.specials.length; si++) {
         for (let pi = 0; pi < u.specials[si].photos.length; pi++) {
+          const p = u.specials[si].photos[pi];
+          if (p.savedToFolder) { skippedPhotos++; continue; }  // ★ 이미 저장됨
           tasks.push(
-            doWriteOne(u.specials[si].photos[pi], u.name, `특이${si+1}_`)
-              .then(() => { saved++; })
+            doWriteOne(p, u.name, `특이${si+1}_`)
+              .then(() => { saved++; p.savedToFolder = true; })
               .catch(e => { failed++; console.warn('사진 저장 실패:', e.message); })
           );
         }
       }
 
-      // 한 호수의 모든 사진을 동시에 저장
-      await Promise.all(tasks);
+      if (tasks.length > 0) await Promise.all(tasks);
     }
+    if (skippedPhotos > 0) console.log(`⚡ 사진 ${skippedPhotos}장 스킵 (이미 저장됨)`);
   } catch(eOuter) {
     console.warn('사진 저장 루프 에러:', eOuter);
   }
@@ -289,44 +277,20 @@ async function saveToFolder(opts) {
   let saveOk = false;
   let lastError = '';
 
-  // 안정적인 파일 쓰기 함수 (재시도 포함)
+  // JSON 파일 쓰기 (재시도 포함)
   async function writeJsonFile(dirHandle, fileName, content) {
-    let attempts = 0;
-    const maxAttempts = 3;
-    while (attempts < maxAttempts) {
-      attempts++;
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const fh = await dirHandle.getFileHandle(fileName, { create: true });
         const writable = await fh.createWritable();
-        // Blob으로 쓰기 (UTF-8 인코딩 자동 처리, 한글 안정성)
         const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
         await writable.write(blob);
-        // truncate 제거 - Blob.size로 자동 결정됨 (한글 바이트 수 문제 해결)
         await writable.close();
-
-        // 검증: 즉시 다시 읽어서 크기 확인
-        await new Promise(r => setTimeout(r, 100));
-        const verifyFh = await dirHandle.getFileHandle(fileName);
-        const verifyFile = await verifyFh.getFile();
-        if (verifyFile.size >= blob.size) {
-          // 내용도 검증 (arrayBuffer로 안정적으로)
-          const buffer = await verifyFile.arrayBuffer();
-          const decoder = new TextDecoder('utf-8');
-          const verifyText = decoder.decode(buffer);
-          if (verifyText.includes('"units"')) {
-            try {
-              JSON.parse(verifyText.charCodeAt(0) === 0xFEFF ? verifyText.slice(1) : verifyText);
-              return true;
-            } catch(parseE) {
-              console.warn(`쓰기 검증 - JSON 파싱 실패: ${parseE.message}`);
-            }
-          }
-        }
-        console.warn(`쓰기 검증 실패 (${attempts}/${maxAttempts}): ${fileName} - 크기 ${verifyFile.size}/${blob.size}`);
+        return true;  // ★ 검증 대기 제거 - 쓰기 성공이면 OK
       } catch(e) {
         lastError = e.message;
-        console.warn(`쓰기 시도 ${attempts}/${maxAttempts} 실패:`, e.message);
-        await new Promise(r => setTimeout(r, 200));
+        console.warn(`쓰기 시도 ${attempt}/3 실패:`, e.message);
+        if (attempt < 3) await new Promise(r => setTimeout(r, 200));
       }
     }
     return false;
@@ -390,13 +354,15 @@ async function saveToFolder(opts) {
   // 결과 토스트
   if (sessionFileSaved) {
     if (isAutoSave) {
-      console.log(`💾 자동 저장 완료 - 사진 ${saved}장`);
+      console.log(`💾 자동 저장 완료 - 신규 ${saved}장 저장, ${skippedPhotos}장 스킵`);
     } else if (failed > 0) {
-      showToast(`💾 사진 ${saved}장 저장 (${failed}장 실패) ✓ 작업 정보 저장됨`, 'ok');
+      showToast(`💾 ${saved}장 저장 완료 (${failed}장 실패)`, 'ok');
+    } else if (saved === 0 && skippedPhotos > 0) {
+      showToast(`💾 저장 완료 (사진 ${skippedPhotos}장은 이미 저장됨)`, 'ok');
     } else if (saved === 0) {
-      showToast(`💾 작업 정보 저장 완료 (사진은 이미 저장됨)`, 'ok');
+      showToast(`💾 작업 정보 저장 완료`, 'ok');
     } else {
-      showToast(`💾 사진 ${saved}장 + 작업 정보 저장 완료 ✓`, 'ok');
+      showToast(`💾 ${saved}장 저장 완료 ✓`, 'ok');
     }
 
     if (typeof flushCustomersXlsx === 'function') {
@@ -1191,52 +1157,43 @@ async function restoreFromData(data, dateDir) {
         filesByType.B.sort((a, b) => a.idx - b.idx);
         Object.values(filesByType.S).forEach(arr => arr.sort((a, b) => a.idx - b.idx));
 
-        // ★ 메타에 명시된 카운트와 실제 파일 수 비교 (큰 쪽 우선)
-        const beforeCount = Math.max(u.beforeCount || 0, filesByType.A.length);
-        const afterCount = Math.max(u.afterCount || 0, filesByType.B.length);
-
-        // 작업 전 사진 (A 우선, 없으면 B - 구버전)
-        for (const f of filesByType.A) {
+        // ★ 파일 읽기 병렬화 (순차 await → 한번에)
+        const readPhoto = async (fh) => {
           try {
-            const pf = await f.handle.getFile();
-            newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-          } catch(e) {}
-        }
+            const pf = await fh.getFile();
+            const dataUrl = await blobToDataURL(pf);
+            return { id: photoId(), dataUrl, savedToFolder: true };
+          } catch(e) { return null; }
+        };
 
-        // 작업 후 사진 (B)
-        for (const f of filesByType.B) {
-          try {
-            const pf = await f.handle.getFile();
-            newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-          } catch(e) {}
-        }
+        // 작업 전 사진 (A) - 병렬
+        const beforePhotos = await Promise.all(filesByType.A.map(f => readPhoto(f.handle)));
+        newUnit.before = beforePhotos.filter(Boolean);
 
-        // ★ 구버전 호환: filesByType.A/B가 비어있고 카운트만 있으면 인덱스로 시도
+        // 작업 후 사진 (B) - 병렬
+        const afterPhotos = await Promise.all(filesByType.B.map(f => readPhoto(f.handle)));
+        newUnit.after = afterPhotos.filter(Boolean);
+
+        // ★ 구버전 호환: A/B 없으면 카운트 기반 시도
         if (filesByType.A.length === 0 && filesByType.B.length === 0) {
-          // 옛날 방식: A/B 의미가 다를 수 있음 - 카운트 기반 폴백
-          for (let i = 1; i <= (u.beforeCount||0); i++) {
-            let pf = null;
-            try {
-              const pfh = await workDir.getFileHandle(`B_image${String(i).padStart(2,'0')}.jpg`);
-              pf = await pfh.getFile();
-            } catch(e) {}
-            if (pf) {
-              newUnit.before.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-            }
-          }
-          for (let i = 1; i <= (u.afterCount||0); i++) {
-            let pf = null;
-            try {
-              const pfh = await workDir.getFileHandle(`A_image${String(i).padStart(2,'0')}.jpg`);
-              pf = await pfh.getFile();
-            } catch(e) {}
-            if (pf) {
-              newUnit.after.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-            }
-          }
+          const legacyBefore = await Promise.all(
+            Array.from({length: u.beforeCount||0}, (_, i) =>
+              workDir.getFileHandle(`B_image${String(i+1).padStart(2,'0')}.jpg`)
+                .then(fh => readPhoto(fh)).catch(() => null)
+            )
+          );
+          newUnit.before = legacyBefore.filter(Boolean);
+
+          const legacyAfter = await Promise.all(
+            Array.from({length: u.afterCount||0}, (_, i) =>
+              workDir.getFileHandle(`A_image${String(i+1).padStart(2,'0')}.jpg`)
+                .then(fh => readPhoto(fh)).catch(() => null)
+            )
+          );
+          newUnit.after = legacyAfter.filter(Boolean);
         }
 
-        // 특이사항 사진 - specials 슬롯이 부족하면 자동 생성
+        // 특이사항 - specials 슬롯 자동 생성 + 병렬 읽기
         const maxSi = Math.max(
           newUnit.specials.length,
           ...Object.keys(filesByType.S).map(k => parseInt(k))
@@ -1244,27 +1201,18 @@ async function restoreFromData(data, dateDir) {
         while (newUnit.specials.length < maxSi) {
           newUnit.specials.push({ desc: '', photos: [] });
         }
-
-        // 각 special별로 사진 로드
         for (let si = 0; si < newUnit.specials.length; si++) {
           const sFiles = filesByType.S[si+1] || [];
-          for (const f of sFiles) {
-            try {
-              const pf = await f.handle.getFile();
-              newUnit.specials[si].photos.push({ id: photoId(), dataUrl: await blobToDataURL(pf), savedToFolder:true });
-            } catch(e) {}
-          }
+          const spPhotos = await Promise.all(sFiles.map(f => readPhoto(f.handle)));
+          newUnit.specials[si].photos = spPhotos.filter(Boolean);
         }
 
-        // 로그
         const totalRestored = newUnit.before.length + newUnit.after.length +
           newUnit.specials.reduce((s, sp) => s + sp.photos.length, 0);
         const totalExpected = (u.beforeCount||0) + (u.afterCount||0) +
           (u.specials||[]).reduce((s, sp) => s + (sp.photoCount||0), 0);
-        if (totalRestored > totalExpected) {
-          console.log(`📷 ${u.name}: 메타에 ${totalExpected}장이지만 폴더에 ${totalRestored}장 발견 → 모두 복원`);
-        } else if (totalRestored < totalExpected) {
-          console.warn(`⚠️ ${u.name}: 메타에 ${totalExpected}장인데 ${totalRestored}장만 복원됨`);
+        if (totalRestored !== totalExpected) {
+          console.log(`📷 ${u.name}: 기대 ${totalExpected}장, 복원 ${totalRestored}장`);
         }
 
         // ★ workNum 정보 newUnit에 보존 (저장 시 같은 폴더에 쓰도록)

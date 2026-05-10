@@ -1,5 +1,5 @@
-// 서비스워커 v67 - 1.113: 새작업 즉시 열기 + 이전 작업 백그라운드 저장
-const CACHE = 'ac1004-v67';
+// 서비스워커 v72 - 1.118: 불러오기 모달 즉시 표시 (3초 지연 수정)
+const CACHE = 'ac1004-v72';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

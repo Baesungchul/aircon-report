@@ -1,5 +1,5 @@
-// 서비스워커 v64 - 1.110: currentApt 누락 버그 수정 (저장 안 되는 진짜 원인)
-const CACHE = 'ac1004-v64';
+// 서비스워커 v65 - 1.111: 저장 스킵(수동포함) + 사진 스킵 + 불러오기 병렬화
+const CACHE = 'ac1004-v65';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -1,5 +1,5 @@
-// 서비스워커 v63 - 1.109: 권한 hang 수정 (타임아웃+순서 개선)
-const CACHE = 'ac1004-v63';
+// 서비스워커 v64 - 1.110: currentApt 누락 버그 수정 (저장 안 되는 진짜 원인)
+const CACHE = 'ac1004-v64';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

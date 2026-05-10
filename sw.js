@@ -1,5 +1,5 @@
-// 서비스워커 v61 - 1.107: 폴더 스캔으로 누락 사진 자동 복원
-const CACHE = 'ac1004-v61';
+// 서비스워커 v62 - 1.108: 새작업=새폴더(날짜+시간), 불러온작업=기존폴더 덮어쓰기
+const CACHE = 'ac1004-v62';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

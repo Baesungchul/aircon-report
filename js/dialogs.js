@@ -126,12 +126,13 @@ async function saveToFolder(opts) {
   function normalizeAptName(s) {
     if (!s) return '';
     return String(s)
-      .normalize('NFC')                          // 한글 자모 결합 (NFD → NFC)
-      .replace(/[\u200B-\u200F\uFEFF]/g, '')     // ZWSP, ZWJ, ZWNJ, BOM 등 제거
-      .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ')  // 각종 유니코드 공백 → 일반 공백
-      .replace(/\s+/g, ' ')                      // 연속 공백 → 단일 공백
+      .normalize('NFC')
+      .replace(/[\u200B-\u200F\uFEFF]/g, '')
+      .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
   }
+  const currentApt = normalizeAptName(apt);  // ★ 여기서 선언
 
   // ★ 폴더명 결정 - 단순하고 명확
   // - 불러온 작업 (currentFolderName 있음): 그 폴더에만 덮어쓰기
@@ -376,6 +377,8 @@ async function saveToFolder(opts) {
   // 3) 자동저장도 함께
   try { await sessionAutoSaveNow(); } catch(e) {}
 
+  // ★ 타임아웃 클리어 + 오버레이 닫기
+  clearTimeout(_saveTimeout);
   hideOverlay();
 
   // ★ 저장 성공 시 dirty 해제 + 스냅샷 갱신
@@ -384,10 +387,7 @@ async function saveToFolder(opts) {
     _lastSaveSnapshot = quickSnapshot();
   }
 
-  // 결과 토스트 (자동 저장은 조용히)
-  // ★ 저장 완료 - 타임아웃 클리어
-  if (typeof _saveTimeout !== 'undefined') clearTimeout(_saveTimeout);
-
+  // 결과 토스트
   if (sessionFileSaved) {
     if (isAutoSave) {
       console.log(`💾 자동 저장 완료 - 사진 ${saved}장`);
@@ -399,7 +399,6 @@ async function saveToFolder(opts) {
       showToast(`💾 사진 ${saved}장 + 작업 정보 저장 완료 ✓`, 'ok');
     }
 
-    // ★ v2: customers.xlsx 자동 재생성 (단일 진실 공급원)
     if (typeof flushCustomersXlsx === 'function') {
       flushCustomersXlsx().catch(e => console.warn('xlsx 재생성 실패:', e));
     }

@@ -1,5 +1,5 @@
-// 서비스워커 v62 - 1.108: 새작업=새폴더(날짜+시간), 불러온작업=기존폴더 덮어쓰기
-const CACHE = 'ac1004-v62';
+// 서비스워커 v63 - 1.109: 권한 hang 수정 (타임아웃+순서 개선)
+const CACHE = 'ac1004-v63';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -216,20 +216,6 @@ function bindAll() {
     }
     // 사진 크게 보기
     if (t.tagName==='IMG' && t.closest('.th-wrap')) { showImg(t.src); return; }
-    // 특이사항 삭제
-    const sdl = t.closest('.sp-del');
-    if (sdl) {
-      e.stopPropagation();
-      const uid=+sdl.dataset.uid, sid=+sdl.dataset.sid;
-      const u=findU(uid); if(u){ u.specials=u.specials.filter(s=>s.id!==sid); renderAll(); sessionAutoSave(); } return;
-    }
-    // 특이사항 추가
-    const asp = t.closest('.add-sp-btn');
-    if (asp) {
-      e.stopPropagation();
-      const u=findU(+asp.dataset.uid);
-      if(u){ u.specials.push({id:Date.now(),desc:'',photos:[]}); renderAll(); sessionAutoSave(); } return;
-    }
     // 특이사항 사진 삭제
     const spdl = t.closest('.sp-th-del');
     if (spdl) {
@@ -625,6 +611,34 @@ function updateCustSaveBtnState(unitId) {
 
 // 호수 카드의 저장 버튼 클릭 (이벤트 위임)
 document.addEventListener('click', async e => {
+  // ★ 특이사항 삭제 (document 레벨 - stopPropagation 영향 없음)
+  const spDelBtn = e.target.closest('.sp-del');
+  if (spDelBtn) {
+    e.stopPropagation();
+    const uid = +spDelBtn.dataset.uid;
+    const sid = +spDelBtn.dataset.sid;
+    const u = findU(uid);
+    if (u) {
+      u.specials = u.specials.filter(s => s.id !== sid);
+      renderAll();
+      sessionAutoSave();
+    }
+    return;
+  }
+
+  // ★ 특이사항 추가 (document 레벨)
+  const addSpBtn = e.target.closest('.add-sp-btn');
+  if (addSpBtn) {
+    e.stopPropagation();
+    const u = findU(+addSpBtn.dataset.uid);
+    if (u) {
+      u.specials.push({ id: Date.now(), desc: '', photos: [] });
+      renderAll();
+      sessionAutoSave();
+    }
+    return;
+  }
+
   // ★ 1) 고객 정보 토글 (접기/펼치기)
   const toggleEl = e.target.closest('.cust-toggle');
   if (toggleEl) {

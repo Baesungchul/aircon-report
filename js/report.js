@@ -209,50 +209,58 @@ function buildReportHTML(){
         <div class="rp-list-txt">${t('report.list.title')}</div>
         <div class="rp-list-cnt">${t('report.list.total', {n: total})}</div>
       </div>
-      ${total <= 7 ? `
-      <!-- 1단: 기본 테이블 -->
-      <table class="rp-wtbl">
-        <thead>
-          <tr>
-            <th style="width:44px" class="tc">${t('report.list.no')}</th>
-            <th>${t('report.list.unit')}</th>
-            <th class="tc">${t('report.list.before')}</th>
-            <th class="tc">${t('report.list.after')}</th>
-            <th class="tc">${t('report.list.status')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${units.map((u,i)=>{
-            const ok=u.before.length>0&&u.after.length>0;
-            const bOk=u.before.length>0, aOk=u.after.length>0;
-            return`<tr>
-              <td class="tc"><span class="rp-wnum">${i+1}</span></td>
-              <td><span class="rp-ho">${escH(u.name)}</span></td>
-              <td class="tc"><span class="rp-pst ${bOk?'d':'e'}">${bOk?'✓':'✕'}</span></td>
-              <td class="tc"><span class="rp-pst ${aOk?'d':'e'}">${aOk?'✓':'✕'}</span></td>
-              <td class="tc"><span class="rp-pill ${ok?'don':'pnd'}">${ok?t('report.list.statusDone'):t('report.list.statusPending')}</span></td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      ` : `
-      <!-- 다단 그리드 레이아웃 (8개 이상) -->
-      <div class="rp-grid rp-grid-${total<=14?2:3}">
-        ${units.map((u,i)=>{
-          const ok=u.before.length>0&&u.after.length>0;
-          const bOk=u.before.length>0, aOk=u.after.length>0;
-          return`<div class="rp-gitem">
-            <span class="rp-wnum">${i+1}</span>
-            <span class="rp-ho">${escH(u.name)}</span>
-            <div class="rp-gstatus">
-              <span class="rp-gpst ${bOk?'d':'e'}" title="작업 전">${bOk?'✓':'✕'}</span>
-              <span class="rp-gpst ${aOk?'d':'e'}" title="작업 후">${aOk?'✓':'✕'}</span>
-              <span class="rp-pill ${ok?'don':'pnd'}">${ok?t('report.list.statusDoneShort'):t('report.list.statusPendingShort')}</span>
-            </div>
+      ${(()=>{
+        // ★ 특이사항 있으면 더 일찍 그리드 전환 (공간 확보)
+        const hasSpecials = specialCount > 0;
+        const gridThreshold = hasSpecials ? 4 : 5;  // 특이사항 있으면 5건부터 그리드
+
+        if (total <= gridThreshold) {
+          // 1단 테이블
+          return `<table class="rp-wtbl${hasSpecials?' rp-wtbl-compact':''}">
+            <thead>
+              <tr>
+                <th style="width:44px" class="tc">${t('report.list.no')}</th>
+                <th>${t('report.list.unit')}</th>
+                <th class="tc">${t('report.list.before')}</th>
+                <th class="tc">${t('report.list.after')}</th>
+                <th class="tc">${t('report.list.status')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${units.map((u,i)=>{
+                const ok=u.before.length>0&&u.after.length>0;
+                const bOk=u.before.length>0, aOk=u.after.length>0;
+                return`<tr>
+                  <td class="tc"><span class="rp-wnum">${i+1}</span></td>
+                  <td><span class="rp-ho">${escH(u.name)}</span>${u.specials.length?`<span style="font-size:10px;color:#b07000;margin-left:6px;">⚠️${u.specials.length}</span>`:''}
+                  </td>
+                  <td class="tc"><span class="rp-pst ${bOk?'d':'e'}">${bOk?'✓':'✕'}</span></td>
+                  <td class="tc"><span class="rp-pst ${aOk?'d':'e'}">${aOk?'✓':'✕'}</span></td>
+                  <td class="tc"><span class="rp-pill ${ok?'don':'pnd'}">${ok?t('report.list.statusDone'):t('report.list.statusPending')}</span></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>`;
+        } else {
+          // 다단 그리드
+          const cols = total <= 12 ? 2 : 3;
+          return `<div class="rp-grid rp-grid-${cols}">
+            ${units.map((u,i)=>{
+              const ok=u.before.length>0&&u.after.length>0;
+              const bOk=u.before.length>0, aOk=u.after.length>0;
+              return`<div class="rp-gitem">
+                <span class="rp-wnum">${i+1}</span>
+                <span class="rp-ho">${escH(u.name)}${u.specials.length?`<span style="font-size:9px;color:#b07000;margin-left:4px;">⚠️</span>`:''}</span>
+                <div class="rp-gstatus">
+                  <span class="rp-gpst ${bOk?'d':'e'}" title="작업 전">${bOk?'✓':'✕'}</span>
+                  <span class="rp-gpst ${aOk?'d':'e'}" title="작업 후">${aOk?'✓':'✕'}</span>
+                  <span class="rp-pill ${ok?'don':'pnd'}">${ok?t('report.list.statusDoneShort'):t('report.list.statusPendingShort')}</span>
+                </div>
+              </div>`;
+            }).join('')}
           </div>`;
-        }).join('')}
-      </div>
-      `}
+        }
+      })()}
     </div>
 
     <!-- 특이사항 -->
@@ -294,58 +302,56 @@ function buildReportHTML(){
   /* ── 호수별 상세 페이지 ──
      규칙:
      - 일반 페이지: 사진 3장 × 2열
-     - 특이사항 1~2건: 마지막 본페이지 하단에 인라인 (사진 + 텍스트), 본 사진은 2장으로 줄임
-     - 특이사항 3건 이상: 별도 페이지 (페이지당 사진 4장 + 텍스트)
+     - 특이사항: 건수에 관계없이 무조건 별도 페이지
+     - 레이아웃: 좌측 사진(최대 4장) / 우측 메모 텍스트
   */
   units.forEach((u, unitIdx) => {
-    const specCount    = u.specials.length;
-    const inlineSpec   = specCount >= 1 && specCount <= 2;   // 1~2건 인라인
-    const separateSpec = specCount >= 3;                      // 3건 이상 별도 페이지
+    const specCount = u.specials.length;
 
     // 1) 일반 사진 페이지네이션 (3장씩)
     let bChunks = chunk(u.before, 3);
     let aChunks = chunk(u.after,  3);
     let normalPages = Math.max(bChunks.length, aChunks.length, 1);
 
-    // 2) 인라인 특이사항: 마지막 사진 페이지가 가득 차있으면(3장) 새 페이지를 추가하여 거기에 인라인 표시
-    //    그렇지 않으면 마지막 페이지를 2슬롯으로 만들어 인라인 표시
-    let inlineExtraPage = false;  // 인라인 전용 별도 페이지 사용 여부
-    if (inlineSpec) {
-      const lastB = bChunks[normalPages-1] || [];
-      const lastA = aChunks[normalPages-1] || [];
-      const maxLast = Math.max(lastB.length, lastA.length);
+    // ★ 특이사항 페이지 배치 결정
+    // 사진 0~2장 → "small" (2건을 한 페이지에 상/하 배치)
+    // 사진 3~4장 → "large" (1건 1페이지)
+    const specPages = [];  // { items: [spInfo, spInfo?], paired: bool }
 
-      if (maxLast >= 3) {
-        // 마지막 페이지 3장 가득 → 새 페이지 추가하여 거기에 인라인 표시 (사진 없음)
-        bChunks.push([]);
-        aChunks.push([]);
-        normalPages++;
-        inlineExtraPage = true;
-      }
-      // 마지막 페이지 1~2장이면 그대로 두고 인라인 특이사항을 거기에 표시 (슬롯 2개)
-    }
-
-    // 3) 특이사항 별도 페이지 (3건 이상) — 각 특이사항을 페이지로
-    //    특이사항 1건당 사진 최대 4장, 초과 시 다음 페이지로
-    const specPages = [];
-    if (separateSpec) {
+    if (specCount > 0) {
+      // 먼저 각 special을 개별 슬롯으로 만들기
+      const slots = [];
       u.specials.forEach((sp, spIdx) => {
         const phChunks = chunk(sp.photos, 4);
-        if (phChunks.length === 0 || (phChunks.length === 1 && phChunks[0].length === 0)) {
-          // 사진 없는 특이사항도 1페이지 차지
-          specPages.push({ specIdx: spIdx, special: sp, photos: [], page: 1, totalPages: 1 });
+        if (phChunks.length === 0) {
+          slots.push({ specIdx: spIdx, special: sp, photos: [], isSmall: true });
         } else {
           phChunks.forEach((photoSlice, pi) => {
-            specPages.push({
-              specIdx: spIdx,
-              special: sp,
+            const isSmall = photoSlice.length <= 2;  // ★ 2장 이하면 small
+            slots.push({
+              specIdx: spIdx, special: sp,
               photos: photoSlice,
-              page: pi + 1,
-              totalPages: phChunks.length
+              page: pi + 1, totalPages: phChunks.length,
+              isSmall
             });
           });
         }
       });
+
+      // small 2개 붙이기, large는 단독
+      let i = 0;
+      while (i < slots.length) {
+        const cur = slots[i];
+        const next = slots[i + 1];
+        // 둘 다 small이고, 다른 건의 첫 번째 페이지인 경우만 합치기
+        if (cur.isSmall && next && next.isSmall && cur.specIdx !== next.specIdx && (!next.page || next.page === 1)) {
+          specPages.push({ items: [cur, next], paired: true });
+          i += 2;
+        } else {
+          specPages.push({ items: [cur], paired: false });
+          i += 1;
+        }
+      }
     }
 
     const totalPagesForUnit = normalPages + specPages.length;
@@ -354,17 +360,7 @@ function buildReportHTML(){
     for(let p=0; p<normalPages; p++){
       const bSlice = bChunks[p] || [];
       const aSlice = aChunks[p] || [];
-      const isFirst    = p===0;
-      const isLastNorm = p===normalPages-1;
-      const showInlineSpec = isLastNorm && inlineSpec;
-      // 인라인 특이사항이고 별도 페이지 사용 시 슬롯 0(사진 없음), 그 외 슬롯 3
-      // 인라인 특이사항이고 같은 페이지 사용 시(사진 1~2장): 슬롯 2장으로 표시
-      let slotsPerCol;
-      if (showInlineSpec) {
-        slotsPerCol = inlineExtraPage ? 0 : 2;
-      } else {
-        slotsPerCol = 3;
-      }
+      const isFirst = p===0;
 
       const pageNo = p + 1;
       const pageLabel = totalPagesForUnit>1 ? ` (${pageNo}/${totalPagesForUnit}쪽)` : '';
@@ -378,17 +374,16 @@ function buildReportHTML(){
           <div class="rp-uname">${unitTitle}</div>
           <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel} | ${labelBefore} ${u.before.length}${unitOfPhoto} · ${labelAfter} ${u.after.length}${unitOfPhoto}${specCount?` · ${labelSpecial} ${specCount}${unitOfCount}`:''}</div>
         </div>
-        <div class="rp-photos${showInlineSpec?' has-sp':''}">
+        <div class="rp-photos">
           <div class="rp-col">
             <div class="rp-clbl rp-lbl-b">🔴 ${labelBefore.toUpperCase()}${bSlice.length?` — ${p*3+1}~${p*3+bSlice.length}${unitOfPhoto}`:''}</div>
-            ${colPhotosFn(bSlice, slotsPerCol)}
+            ${colPhotosFn(bSlice, 3)}
           </div>
           <div class="rp-col">
             <div class="rp-clbl rp-lbl-a">🟢 ${labelAfter.toUpperCase()}${aSlice.length?` — ${p*3+1}~${p*3+aSlice.length}${unitOfPhoto}`:''}</div>
-            ${colPhotosFn(aSlice, slotsPerCol)}
+            ${colPhotosFn(aSlice, 3)}
           </div>
         </div>
-        ${showInlineSpec ? inlineSpecialSection(u.specials) : ''}
         <div class="rp-foot">
           <span>${escH(coName)} | ${escH(apt)} | ${escH(u.name)}${pageLabel}</span>
           <div>${getCurrentLang()==='en'?'Approved':'확인'}:<span class="sign-ln"></span></div>
@@ -396,24 +391,50 @@ function buildReportHTML(){
       </div>`;
     }
 
-    // ── 특이사항 별도 페이지 렌더 (3건 이상일 때) ──
-    specPages.forEach((spInfo, idx) => {
+    // ── 특이사항 별도 페이지 렌더 ──
+    specPages.forEach((spPage, idx) => {
       const pageNo = normalPages + idx + 1;
       const pageLabel = ` (${pageNo}/${totalPagesForUnit}쪽)`;
-      const subPageInfo = spInfo.totalPages > 1 ? ` (${spInfo.page}/${spInfo.totalPages})` : '';
 
-      html += `<div class="rpage rp-det ${themeClass}">
-        ${headBar(`${escH(apt)} | ${dateStr} | ${t('main.worker')}: ${escH(worker)}`)}
-        <div class="rp-ubar" style="background:#fffbf0;border-bottom:2px solid #f0b429;">
-          <div class="rp-uname" style="color:#c07010;">⚠️ ${escH(u.name)} ${t("report.detail.special")} ${spInfo.specIdx+1}/${specCount}${subPageInfo}</div>
-          <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel}</div>
-        </div>
-        ${specialPageBody(spInfo.special, spInfo.photos, spInfo.page === spInfo.totalPages)}
-        <div class="rp-foot">
-          <span>${escH(coName)} | ${escH(apt)} | ${escH(u.name)} ${t("report.detail.special")}</span>
-          <div>${getCurrentLang()==='en'?'Approved':'확인'}:<span class="sign-ln"></span></div>
-        </div>
-      </div>`;
+      if (spPage.paired) {
+        // ★ 2건 한 페이지 (small)
+        const [sp1, sp2] = spPage.items;
+        const label1 = `${labelSpecial} ${sp1.specIdx+1}/${specCount}`;
+        const label2 = `${labelSpecial} ${sp2.specIdx+1}/${specCount}`;
+        html += `<div class="rpage rp-det rp-sp-page ${themeClass}">
+          ${headBar(`${escH(apt)} | ${dateStr} | ${t('main.worker')}: ${escH(worker)}`)}
+          <div class="rp-ubar" style="background:#fffbf0;border-bottom:2px solid #f0b429;">
+            <div class="rp-uname" style="color:#b07000;">⚠️ ${escH(u.name)} &nbsp;${labelSpecial} ${sp1.specIdx+1}, ${sp2.specIdx+1} / ${specCount}</div>
+            <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel}</div>
+          </div>
+          <div class="rp-sp-paired">
+            ${specialPageBodySmall(sp1.special, sp1.photos, label1, true)}
+            <div class="rp-sp-divider"></div>
+            ${specialPageBodySmall(sp2.special, sp2.photos, label2, true)}
+          </div>
+          <div class="rp-foot">
+            <span>${escH(coName)} | ${escH(apt)} | ${escH(u.name)} ${labelSpecial}</span>
+            <div>${getCurrentLang()==='en'?'Approved':'확인'}:<span class="sign-ln"></span></div>
+          </div>
+        </div>`;
+      } else {
+        // ★ 1건 1페이지 (large 또는 연속 페이지)
+        const spInfo = spPage.items[0];
+        const subPageInfo = (spInfo.totalPages > 1) ? ` ${spInfo.page}/${spInfo.totalPages}` : '';
+        const spNo = `${spInfo.specIdx+1}/${specCount}`;
+        html += `<div class="rpage rp-det rp-sp-page ${themeClass}">
+          ${headBar(`${escH(apt)} | ${dateStr} | ${t('main.worker')}: ${escH(worker)}`)}
+          <div class="rp-ubar" style="background:#fffbf0;border-bottom:2px solid #f0b429;">
+            <div class="rp-uname" style="color:#b07000;">⚠️ ${escH(u.name)} &nbsp;${labelSpecial} ${spNo}${subPageInfo}</div>
+            <div class="rp-umeta">${unitIdx+1} / ${units.length}${pageLabel}</div>
+          </div>
+          ${specialPageBody(spInfo.special, spInfo.photos, spInfo.page === spInfo.totalPages)}
+          <div class="rp-foot">
+            <span>${escH(coName)} | ${escH(apt)} | ${escH(u.name)} ${labelSpecial}</span>
+            <div>${getCurrentLang()==='en'?'Approved':'확인'}:<span class="sign-ln"></span></div>
+          </div>
+        </div>`;
+      }
     });
   });
 
@@ -430,67 +451,53 @@ function buildReportHTML(){
     return `<div class="rp-plist">${items.join('')}</div>`;
   }
 
-  // ── 헬퍼: 특이사항 1~2건 - 본 페이지 하단에 들어가는 인라인 섹션 ──
-  function inlineSpecialSection(specials) {
-    // specials: 배열 (1건 또는 2건)
-    const count = specials.length;
 
-    // 사진 모으기 (모든 특이사항의 사진 합쳐서 최대 2장)
-    const allPhotos = specials.flatMap(s => s.photos);
-    const photos    = allPhotos.slice(0, 2);
-    const extra     = allPhotos.length - photos.length;
-
-    // 사진 슬롯
+  // ── 헬퍼: 특이사항 별도 페이지 본문 - 좌측 사진 / 우측 메모 ──
+  function specialPageBody(sp, photoSlice, showText) {
     const photoSlots = [];
-    for (let i = 0; i < 2; i++) {
-      if (i < photos.length) {
-        photoSlots.push(`<div class="rp-pitem"><img src="${photoUrl(photos[i])}"></div>`);
+    for (let i = 0; i < 4; i++) {
+      if (i < photoSlice.length) {
+        photoSlots.push(`<div class="rp-sp-photo-item"><img src="${photoUrl(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
       } else {
-        photoSlots.push(`<div class="rp-pitem empty"></div>`);
+        photoSlots.push(`<div class="rp-sp-photo-item rp-empty"></div>`);
       }
     }
-
-    // 텍스트 (각 특이사항 번호별로)
-    const textBody = specials.map((s, i) => {
-      const t = (s.desc || '').trim();
-      const prefix = count > 1 ? `<strong>${i+1}.</strong> ` : '';
-      return prefix + (t ? escH(t).replace(/\n/g,'<br>') : '<span style="color:#aaa">(설명 없음)</span>');
-    }).join('<br>');
-
-    return `<div class="rp-sp-sec">
-      <div class="rp-sp-titlebar">
-        <span class="ic">⚠️ ${t('report.detail.special')} (${count}${getCurrentLang()==='en'?'':'건'}${allPhotos.length?` · ${t('report.detail.photo')} ${allPhotos.length}${getCurrentLang()==='en'?'':'장'}`:''})</span>
+    const text = (sp.desc || '').trim();
+    const memoHtml = showText
+      ? `<div class="rp-sp-memo-label">📝 메모</div>
+         <div class="rp-sp-memo-text">${text ? escH(text).replace(/\n/g,'<br>') : '<span style="color:#bbb;font-style:italic;">(메모 없음)</span>'}</div>`
+      : `<div class="rp-sp-memo-label">📝 메모</div>
+         <div class="rp-sp-memo-text" style="color:#aaa;font-style:italic;">⏬ 다음 페이지에 계속...</div>`;
+    return `<div class="rp-sp-layout">
+      <div class="rp-sp-photos-col">
+        <div class="rp-sp-photo-label">📷 사진 (${photoSlice.length}장)</div>
+        <div class="rp-sp-photo-grid">${photoSlots.join('')}</div>
       </div>
-      <div class="rp-sp-grid">${photoSlots.join('')}</div>
-      <div class="rp-sp-text">
-        ${extra > 0 ? `<span class="extra-cnt">+ ${extra}장 더</span>` : ''}
-        ${textBody}
+      <div class="rp-sp-memo-col">
+        ${memoHtml}
       </div>
     </div>`;
   }
 
-  // ── 헬퍼: 특이사항 별도 페이지 본문 (2건 이상일 때) ──
-  function specialPageBody(sp, photoSlice, showText) {
-    // 사진 4장 = 2x2 그리드
+  // ── 헬퍼: 특이사항 small (2건 합치기용) - 사진 2장 가로 + 메모 ──
+  function specialPageBodySmall(sp, photoSlice, label, showText) {
+    // 사진 최대 2장 (가로 배치)
     const photoSlots = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
       if (i < photoSlice.length) {
-        photoSlots.push(`<div class="rp-pitem"><img src="${photoUrl(photoSlice[i])}"></div>`);
+        photoSlots.push(`<div class="rp-sp-sm-photo"><img src="${photoUrl(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
       } else {
-        photoSlots.push(`<div class="rp-pitem empty"></div>`);
+        photoSlots.push(`<div class="rp-sp-sm-photo rp-empty"></div>`);
       }
     }
-
     const text = (sp.desc || '').trim();
-    const textHtml = showText
-      ? `<div class="rp-sp-text" style="max-height:120px;">
-           ${text ? escH(text).replace(/\n/g,'<br>') : '<span style="color:#aaa">(설명 없음)</span>'}
-         </div>`
-      : `<div class="rp-sp-text" style="max-height:40px;text-align:center;color:var(--mu);font-style:italic;">
-           ⏬ 다음 페이지에 이어집니다
-         </div>`;
-
-    return `<div class="rp-sp-page-photos">${photoSlots.join('')}</div>${textHtml}`;
+    return `<div class="rp-sp-small-row">
+      <div class="rp-sp-sm-label">⚠️ ${label}</div>
+      <div class="rp-sp-sm-body">
+        <div class="rp-sp-sm-photos">${photoSlots.join('')}</div>
+        <div class="rp-sp-sm-memo">${text ? escH(text).replace(/\n/g,'<br>') : '<span style="color:#bbb;font-style:italic;">(메모 없음)</span>'}</div>
+      </div>
+    </div>`;
   }
 
   return html;

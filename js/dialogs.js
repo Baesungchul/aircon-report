@@ -470,13 +470,21 @@ function getLocalDateStr(d) {
 }
 
 async function openLoadList() {
-  // 기본: 오늘 (로컬 기준)
   const today = new Date();
   const todayStr = getLocalDateStr(today);
   _loadDateFrom = todayStr;
   _loadDateTo   = todayStr;
 
+  // ★ 1단계: 모달+로딩 즉시 표시
   document.getElementById('slModal').classList.add('open');
+  const body = freshSlBody();
+  body.innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
+
+  // ★ 2단계: 브라우저가 실제로 화면을 그릴 때까지 대기 (requestAnimationFrame 2번)
+  // 1번으로는 레이아웃 계산만 되고 실제 페인트가 안 될 수 있음
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // ★ 3단계: 화면이 표시된 후 권한 확인 + 스캔 시작
   await renderLoadList();
 }
 
@@ -489,9 +497,9 @@ function freshSlBody() {
 }
 
 async function renderLoadList() {
-  // 매번 깨끗한 body로 초기화 (중복 리스너 방지)
-  let body = freshSlBody();
-  body.innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
+  // ★ openLoadList에서 이미 freshSlBody + "⏳ 불러오는 중..." 표시함
+  // 여기서는 현재 body 참조만 가져옴
+  let body = document.getElementById('slBody');
 
   // 폴더 없으면 파일 탐색기로 대체
   if (!photoFolderHandle) {
@@ -900,7 +908,7 @@ function showDateRangeDialog() {
     </div>
   `;
 
-  body.addEventListener('click', e => {
+  body.addEventListener('click', async e => {
     const preset = e.target.closest('[data-preset]');
     if (preset) {
       const type = preset.dataset.preset;
@@ -921,6 +929,8 @@ function showDateRangeDialog() {
     }
 
     if (e.target.closest('#rangeCancel')) {
+      freshSlBody().innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       renderLoadList();
       return;
     }
@@ -928,6 +938,8 @@ function showDateRangeDialog() {
     if (e.target.closest('#rangeApply')) {
       _loadDateFrom = document.getElementById('rangeFrom').value;
       _loadDateTo   = document.getElementById('rangeTo').value;
+      freshSlBody().innerHTML = `<div class="sl-empty">⏳ 불러오는 중...</div>`;
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       renderLoadList();
       return;
     }

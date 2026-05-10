@@ -84,14 +84,23 @@ function renderAll() {
       </div>`;
 
     const spHtml=u.specials.map(s=>`
-      <div class="sp-item">
-        <button class="sp-del" data-uid="${u.id}" data-sid="${s.id}">✕ 삭제</button>
-        <textarea class="sp-txt" placeholder="특이사항 내용..." data-uid="${u.id}" data-sid="${s.id}">${escH(s.desc)}</textarea>
+      <div class="sp-item" data-uid="${u.id}" data-sid="${s.id}">
+        <div class="sp-header">
+          <textarea class="sp-txt" placeholder="특이사항 내용..." data-uid="${u.id}" data-sid="${s.id}">${escH(s.desc)}</textarea>
+          <button class="sp-del" data-uid="${u.id}" data-sid="${s.id}" title="특이사항 삭제">✕</button>
+        </div>
         <div class="sp-photos">
           ${makeSpThumbs(s)}
-          <label class="up-btn" style="width:50px;height:50px;flex:none;border-radius:6px;font-size:9px;flex-direction:column;gap:1px;">
-            📷<input type="file" accept="image/*" multiple data-uid="${u.id}" data-type="special" data-sid="${s.id}">
-          </label>
+          <div class="sp-add-btns">
+            <label class="up-btn sp-up-cam" title="카메라로 촬영" style="width:52px;height:52px;flex:none;border-radius:6px;font-size:10px;flex-direction:column;gap:2px;">
+              📷<span style="font-size:8px;">카메라</span>
+              <input type="file" accept="image/*" capture="environment" data-uid="${u.id}" data-type="special" data-sid="${s.id}">
+            </label>
+            <label class="up-btn sp-up-gal" title="갤러리에서 선택" style="width:52px;height:52px;flex:none;border-radius:6px;font-size:10px;flex-direction:column;gap:2px;">
+              🖼️<span style="font-size:8px;">갤러리</span>
+              <input type="file" accept="image/*" multiple data-uid="${u.id}" data-type="special" data-sid="${s.id}">
+            </label>
+          </div>
         </div>
       </div>`).join('');
 

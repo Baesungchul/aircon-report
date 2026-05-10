@@ -444,6 +444,7 @@ async function newWork() {
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
     currentWorkId = '';
+    currentFolderName = null;  // ★ 새 폴더
     if (typeof resetWorkType === 'function') resetWorkType();
     showToast('🆕 새 작업', 'ok');
     return;
@@ -499,6 +500,7 @@ async function newWork() {
   units = [];
   nid = 1;
   currentWorkId = '';
+  currentFolderName = null;  // ★ 새 작업 = 새 폴더 (덮어쓰기 안 함)
   if (typeof resetWorkType === 'function') resetWorkType();
   document.getElementById('rpWrap').innerHTML = '';
   document.getElementById('btnPDF').disabled = true;

@@ -3,9 +3,10 @@
 ═══════════════════════════════ */
 let units = [];
 let nid   = 1;
-let currentWorkId = '';  // ★ 현재 작업의 고유 ID (일련번호)
-let currentWorkType = 'household';  // ★ 'household' | 'facility'
-let facilityCustomer = { phone: '', contact: '', address: '', memo: '' };  // ★ 공용시설 모드용
+let currentWorkId = '';          // ★ 현재 작업의 고유 ID
+let currentWorkType = 'household'; // ★ 'household' | 'facility'
+let currentFolderName = null;    // ★ 불러온 작업의 폴더명 (새 작업이면 null)
+let facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
 
 const CO_KEY  = 'ac_co_v2';
 const CO_FIELDS = ['coName','coBrand','coTel','coBiz','coAddr','coEmail','coWeb','coDesc','coReportTitle','coUnitLabel','coStageLabel','coIndustryMajor','coIndustryMinor'];
@@ -182,6 +183,7 @@ async function init() {
       // ★ workType 먼저 복원 (UI 적용 순서 중요)
       currentWorkId = s.workId || '';
       currentWorkType = s.workType || 'household';
+      currentFolderName = s.currentFolderName || null;  // ★ 폴더명 복원
       if (currentWorkType === 'facility' && s.facilityCustomer) {
         facilityCustomer = {
           phone: s.facilityCustomer.phone || '',

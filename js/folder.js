@@ -29,6 +29,7 @@ async function sessionAutoSaveNow() {
     // ★ workType + facilityCustomer 자동저장
     workId:      currentWorkId || '',
     workType:    currentWorkType || 'household',
+    currentFolderName: currentFolderName || null,  // ★ 불러온 폴더명 보존
     facilityCustomer: (currentWorkType === 'facility')
       ? { ...facilityCustomer }
       : null,

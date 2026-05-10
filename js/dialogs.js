@@ -121,147 +121,74 @@ async function saveToFolder(opts) {
       .trim();
   }
 
-  // 폴더명 결정: 같은 날짜에 같은 작업명이 있으면 그 폴더 사용 (덮어쓰기)
-  // 같은 날짜에 다른 작업명이 있으면 시간 추가
-  let dateFolderName = date;
-  const currentApt = normalizeAptName(apt);
+  // ★ 폴더명 결정 - 단순하고 명확
+  // - 불러온 작업 (currentFolderName 있음): 그 폴더에만 덮어쓰기
+  // - 새 작업 (currentFolderName = null): 날짜+시간 새 폴더 생성 (충돌 없음)
+  let dateFolderName;
 
-  try {
-    // 같은 날짜의 모든 폴더 스캔 (YYYY-MM-DD, YYYY-MM-DD_HHMM 형식)
-    const candidates = [];  // 같은 날짜 폴더 목록
-    for await (const [name, handle] of photoFolderHandle.entries()) {
-      if (handle.kind !== 'directory') continue;
-      // 시작이 같은 날짜인지 확인
-      if (name === date || name.startsWith(date + '_')) {
-        candidates.push({ name, handle });
-      }
-    }
+  if (currentFolderName) {
+    // ★ 불러온 작업 → 기존 폴더 덮어쓰기
+    dateFolderName = currentFolderName;
+    console.log(`📁 기존 폴더 덮어쓰기: ${dateFolderName}`);
 
-    // 각 폴더의 작업명 확인
-    let existingFolder = null;  // 같은 작업명이 있는 폴더
-    for (const { name, handle } of candidates) {
-      let existingApt = null;
-      try {
-        const fh = await handle.getFileHandle('_session.json');
-        const file = await fh.getFile();
-        const buffer = await file.arrayBuffer();
-        let text = new TextDecoder('utf-8').decode(buffer);
-        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-        const parsed = JSON.parse(text.trim());
-        existingApt = normalizeAptName(parsed.apt || '');
-      } catch(e) {}
-
-      console.log(`📋 비교: "${currentApt}" (${currentApt.length}자) vs "${existingApt}" (${(existingApt||'').length}자) [${name}]`);
-
-      if (existingApt === currentApt) {
-        // 같은 작업 발견 → 그 폴더에 덮어쓰기
-        existingFolder = name;
-        console.log(`✅ 매칭 성공: ${name}`);
-        break;
-      }
-    }
-
-    if (existingFolder) {
-      // 같은 작업명 발견 → 기존 폴더에 덮어쓰기
-      dateFolderName = existingFolder;
-      console.log(`📁 같은 작업 발견 → ${existingFolder} 폴더에 덮어쓰기`);
-
-      // ✨ 빠른 덮어쓰기: 메모리의 사진 개수보다 많이 저장된 파일들만 삭제
-      // (모두 삭제 후 재저장 = 느림 / 초과분만 삭제 + 같은 크기 스킵 = 빠름)
-      try {
-        const oldDir = await photoFolderHandle.getDirectoryHandle(existingFolder);
-
-        // 메모리상 각 호수의 사진 수 계산 (workNN/A_imageNN.jpg 형식)
-        const expectedFiles = new Set();  // 보존할 파일들
-        // ★ 사진 없이 불러온 호수 - 폴더의 사진은 건드리지 않도록 보호
-        const protectedWorkDirs = new Set();
-        units.forEach(u => {
-          // ★ _workNum 우선 사용 (불러올 때 보존된 값)
-          const workNum = String(u._workNum || getWorkNumber(u.name)).padStart(2,'0');
-          const workKey = `work${workNum}`;
-
-          // 사진 없이 불러온 호수면 폴더 자체를 보호 대상에 추가
-          if (u._photosOnDisk?.skipPhotoSync) {
-            protectedWorkDirs.add(workKey);
-            // 디스크의 사진 개수만큼 expectedFiles에 등록 (삭제 방지)
-            for (let i = 1; i <= u._photosOnDisk.before; i++) {
-              expectedFiles.add(`${workKey}/A_image${String(i).padStart(2,'0')}.jpg`);
-            }
-            for (let i = 1; i <= u._photosOnDisk.after; i++) {
-              expectedFiles.add(`${workKey}/B_image${String(i).padStart(2,'0')}.jpg`);
-            }
-            (u._photosOnDisk.specials || []).forEach((cnt, si) => {
-              for (let i = 1; i <= cnt; i++) {
-                expectedFiles.add(`${workKey}/S${si+1}_image${String(i).padStart(2,'0')}.jpg`);
-              }
-            });
-            return;
-          }
-
-          // 일반 호수: 메모리 기준으로 expectedFiles
-          for (let i = 1; i <= u.before.length; i++) {
+    // 불필요한 파일 정리
+    try {
+      const oldDir = await photoFolderHandle.getDirectoryHandle(dateFolderName);
+      const expectedFiles = new Set();
+      const protectedWorkDirs = new Set();
+      units.forEach(u => {
+        const workNum = String(u._workNum || getWorkNumber(u.name)).padStart(2,'0');
+        const workKey = `work${workNum}`;
+        if (u._photosOnDisk?.skipPhotoSync) {
+          protectedWorkDirs.add(workKey);
+          for (let i = 1; i <= u._photosOnDisk.before; i++)
             expectedFiles.add(`${workKey}/A_image${String(i).padStart(2,'0')}.jpg`);
-          }
-          for (let i = 1; i <= u.after.length; i++) {
+          for (let i = 1; i <= u._photosOnDisk.after; i++)
             expectedFiles.add(`${workKey}/B_image${String(i).padStart(2,'0')}.jpg`);
-          }
-          u.specials.forEach((sp, si) => {
-            for (let i = 1; i <= sp.photos.length; i++) {
+          (u._photosOnDisk.specials || []).forEach((cnt, si) => {
+            for (let i = 1; i <= cnt; i++)
               expectedFiles.add(`${workKey}/S${si+1}_image${String(i).padStart(2,'0')}.jpg`);
-            }
           });
+          return;
+        }
+        for (let i = 1; i <= u.before.length; i++)
+          expectedFiles.add(`${workKey}/A_image${String(i).padStart(2,'0')}.jpg`);
+        for (let i = 1; i <= u.after.length; i++)
+          expectedFiles.add(`${workKey}/B_image${String(i).padStart(2,'0')}.jpg`);
+        u.specials.forEach((sp, si) => {
+          for (let i = 1; i <= sp.photos.length; i++)
+            expectedFiles.add(`${workKey}/S${si+1}_image${String(i).padStart(2,'0')}.jpg`);
         });
-
-        // 폴더의 work 폴더들 순회하며 메모리에 없는 파일만 삭제
-        let deletedCount = 0;
-        for await (const [workName, workHandle] of oldDir.entries()) {
-          if (workHandle.kind !== 'directory' || !/^work\d+/.test(workName)) continue;
-
-          // ★ 보호된 work 폴더는 건드리지 않음
-          if (protectedWorkDirs.has(workName)) {
-            console.log(`🔒 ${workName} - 사진 미로드 호수, 보호`);
-            continue;
-          }
-
-          // 이 work 폴더 안의 파일들
-          const filesToCheck = [];
-          for await (const [fn, fh] of workHandle.entries()) {
-            if (fh.kind === 'file') filesToCheck.push(fn);
-          }
-
-          for (const fn of filesToCheck) {
-            const fullKey = `${workName}/${fn}`;
-            if (!expectedFiles.has(fullKey)) {
-              // 메모리에 없는 파일 → 삭제
-              try {
-                await workHandle.removeEntry(fn);
-                deletedCount++;
-              } catch(e) {}
-            }
-          }
-
-          // 빈 work 폴더는 삭제
-          let isEmpty = true;
-          for await (const _ of workHandle.entries()) { isEmpty = false; break; }
-          if (isEmpty) {
-            try { await oldDir.removeEntry(workName); } catch(e) {}
+      });
+      let deletedCount = 0;
+      for await (const [workName, workHandle] of oldDir.entries()) {
+        if (workHandle.kind !== 'directory' || !/^work\d+/.test(workName)) continue;
+        if (protectedWorkDirs.has(workName)) continue;
+        const filesToCheck = [];
+        for await (const [fn, fh] of workHandle.entries()) {
+          if (fh.kind === 'file') filesToCheck.push(fn);
+        }
+        for (const fn of filesToCheck) {
+          if (!expectedFiles.has(`${workName}/${fn}`)) {
+            try { await workHandle.removeEntry(fn); deletedCount++; } catch(e) {}
           }
         }
-        if (deletedCount > 0) console.log(`🗑️ 불필요한 파일 ${deletedCount}개 정리`);
-      } catch(e) {
-        console.warn('기존 폴더 정리 실패:', e.message);
+        let isEmpty = true;
+        for await (const _ of workHandle.entries()) { isEmpty = false; break; }
+        if (isEmpty) { try { await oldDir.removeEntry(workName); } catch(e) {} }
       }
-    } else if (candidates.length > 0) {
-      // 같은 작업명은 없지만 다른 작업이 있음 → 시간 추가 (KST)
-      dateFolderName = `${date}_${kstTimeStr()}`;
-      console.log(`📁 같은 날짜 다른 작업 감지 → ${dateFolderName} 폴더 사용`);
+      if (deletedCount > 0) console.log(`🗑️ 불필요한 파일 ${deletedCount}개 정리`);
+    } catch(e) {
+      console.warn('기존 폴더 정리 실패:', e.message);
     }
-    // candidates 비어있으면 dateFolderName = date 그대로 사용
-  } catch(e) {
-    console.warn('폴더명 결정 중 오류:', e.message);
+  } else {
+    // ★ 새 작업 → 날짜+시간 새 폴더 (기존 폴더 절대 건드리지 않음)
+    const timeStr = localTimeStr();
+    dateFolderName = `${date}_${timeStr}`;
+    currentFolderName = dateFolderName;  // 저장 후 현재 폴더로 등록
+    console.log(`📁 새 폴더 생성: ${dateFolderName}`);
   }
 
-  // 글로벌 변수에 설정 (doWriteOne이 이걸 보고 저장)
   _currentSaveDateFolderName = dateFolderName;
 
   try {
@@ -1117,6 +1044,10 @@ async function restoreFromData(data, dateDir) {
   // ★ workId 복원
   currentWorkId = data.workId || generateWorkId();
   console.log('[workId] 작업 불러옴:', currentWorkId, data.workId ? '(기존)' : '(신규 발급)');
+
+  // ★ 불러온 폴더명 저장 - 저장 시 이 폴더에만 덮어씀 (새 폴더 만들지 않음)
+  currentFolderName = dateDir ? dateDir.name : null;
+  console.log('[folderName] 현재 작업 폴더:', currentFolderName || '(없음 - 새 폴더 생성됨)');
 
   // ★ workType 복원 (없으면 기본 가정용)
   currentWorkType = data.workType || 'household';

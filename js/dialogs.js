@@ -56,6 +56,7 @@ async function saveToFolder(opts) {
   opts = opts || {};
   const isAutoSave = opts.auto === true;
   const isForced = opts.force === true;
+  const isSilent = opts.silent === true;  // ★ 오버레이/토스트 없이 조용히 저장
 
   // ★ 변경 없으면 스킵 (수동/자동 모두, force 아닐 때)
   if (!isForced) {
@@ -93,8 +94,8 @@ async function saveToFolder(opts) {
     return;
   }
 
-  showOverlay('저장 중...');
-  const _saveTimeout = setTimeout(() => {
+  if (!isSilent) showOverlay('저장 중...');
+  const _saveTimeout = isSilent ? null : setTimeout(() => {
     hideOverlay();
     showToast('⚠️ 저장이 너무 오래 걸려 중단했습니다.', 'err');
   }, 120000);
@@ -343,7 +344,7 @@ async function saveToFolder(opts) {
 
   // ★ 타임아웃 클리어 + 오버레이 닫기
   clearTimeout(_saveTimeout);
-  hideOverlay();
+  if (!isSilent) hideOverlay();
 
   // ★ 저장 성공 시 dirty 해제 + 스냅샷 갱신
   if (sessionFileSaved) {

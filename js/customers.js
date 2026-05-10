@@ -37,33 +37,26 @@ async function openCustomerModal() {
   document.getElementById('customerModal').classList.add('open');
   _customerSearch = '';
 
-  // ★ 1단계: 캐시가 있으면 즉시 표시 (속도 우선)
-  // V2 캐시 (5초 TTL) 안 비웠으면 즉시 빠르게 표시
-  await renderCustomerList();
-
-  // ★ 2단계: 권한 확보 후 최신 데이터로 백그라운드 갱신
+  // ★ 권한 먼저 확보 (사용자 제스처 컨텍스트에서)
   if (photoFolderHandle) {
     try {
       let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
       if (perm !== 'granted') {
         perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
       }
-
       if (perm === 'granted') {
-        // 캐시 무효화 후 다시 렌더 (백그라운드)
-        if (typeof invalidateCustomersCache === 'function') {
-          invalidateCustomersCache();
-        }
-        // 최신 데이터로 다시 렌더 (이미 캐시 표시 후)
-        await renderCustomerList();
+        // ★ 캐시가 30초 이내면 그대로 사용 (스캔 생략)
+        // invalidate는 저장/삭제 시에만 (openCustomerModal에선 하지 않음)
       } else {
-        console.warn('[작업기록] 폴더 권한 거부');
         showToast('폴더 권한이 필요합니다', 'err');
       }
     } catch(e) {
       console.warn('[작업기록] 권한 확인 실패:', e);
     }
   }
+
+  // 한 번만 렌더 (캐시 있으면 즉시, 없으면 스캔 후)
+  await renderCustomerList();
 }
 
 function closeCustomerModal() {
@@ -156,15 +149,32 @@ async function loadCombinedRecords() {
   // 2. 폴더의 모든 작업 로드 (전화번호 없는 작업만)
   if (photoFolderHandle) {
     try {
-      // 1단계: 디렉토리 엔트리 수집
+      // ★ 기간 필터 미리 계산 (폴더명으로 필터링해서 읽을 파일 최소화)
+      let filterFrom = null;
+      let filterTo = null;
+      if (_customerUseDefault) {
+        filterFrom = getDefaultDateFrom();
+        filterTo = localDateStr();
+      } else {
+        filterFrom = _customerDateFrom;
+        filterTo = _customerDateTo;
+      }
+
+      // 1단계: 디렉토리 엔트리 수집 - ★ 폴더명으로 기간 필터링
       const dirs = [];
       for await (const entry of photoFolderHandle.values()) {
         if (entry.kind !== 'directory') continue;
         if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+
+        // ★ 폴더명의 날짜 부분만 추출해서 기간 체크 (파일 안 읽고!)
+        const folderDate = entry.name.slice(0, 10);  // "YYYY-MM-DD"
+        if (filterFrom && folderDate < filterFrom) continue;
+        if (filterTo && folderDate > filterTo) continue;
+
         dirs.push(entry);
       }
 
-      // 2단계: _session.json 병렬 읽기
+      // 2단계: 필터된 폴더만 _session.json 병렬 읽기
       const results = await Promise.all(dirs.map(async (entry) => {
         try {
           const sessionFile = await entry.getFileHandle('_session.json');

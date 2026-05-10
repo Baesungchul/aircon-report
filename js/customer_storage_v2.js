@@ -15,7 +15,7 @@ let _metaCacheLoaded = false;
 // 통합 customers 캐시 (재생성용)
 let _customersV2Cache = null;
 let _customersV2CacheTime = 0;
-const CACHE_TTL = 30000;  // 30초 (모달 재열기 시 즉시 표시용)
+const CACHE_TTL = 60000;  // 60초 (빈번한 모달 열기 시 재스캔 방지)
 
 // ════════════════════════════════════════
 // 메타 로드/저장

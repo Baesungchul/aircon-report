@@ -438,67 +438,52 @@ function clearAll() {
 
 // 새 작업 시작
 async function newWork() {
-  // 작업 내용이 없으면 확인 없이 바로 초기화
+  // 작업 내용이 없으면 바로 초기화
   if (units.length === 0) {
     document.getElementById('workDate').value = kstDateStr();
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
     currentWorkId = '';
-    currentFolderName = null;  // ★ 새 폴더
+    currentFolderName = null;
     if (typeof resetWorkType === 'function') resetWorkType();
     showToast('🆕 새 작업', 'ok');
     return;
   }
 
-  // 작업 내용이 있으면 확인 1번만
-  const totalPhotos = units.reduce((s,u) =>
-    s + u.before.length + u.after.length +
-    u.specials.reduce((a,sp) => a+sp.photos.length, 0), 0);
-
-  // ★ 변경 여부 명시적 체크
+  // 변경 여부 체크
   const isDirty = (typeof _dataDirty !== 'undefined' && _dataDirty);
   const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
   const hasChanges = isDirty || (currentSnap !== _lastSaveSnapshot);
 
+  const totalPhotos = units.reduce((s,u) =>
+    s + u.before.length + u.after.length +
+    u.specials.reduce((a,sp) => a+sp.photos.length, 0), 0);
+
+  // 확인 메시지
   let msg = `📋 현재 작업: 호수 ${units.length}개, 사진 ${totalPhotos}장\n\n`;
   if (photoFolderHandle) {
-    if (hasChanges) {
-      msg += `⚠️ 저장되지 않은 변경사항이 있습니다.\n저장 폴더에 자동 저장 후 새 작업을 시작합니다.\n\n계속할까요?`;
-    } else {
-      msg += `(이미 저장됨) 새 작업을 시작합니다.\n계속할까요?`;
-    }
+    msg += hasChanges
+      ? `저장 후 새 작업을 시작합니다. (백그라운드에서 저장됩니다)\n\n계속할까요?`
+      : `(이미 저장됨) 새 작업을 시작합니다.\n계속할까요?`;
   } else {
     msg += `⚠️ 저장 폴더가 없어 사진은 저장되지 않습니다.\n새 작업을 시작할까요?`;
   }
 
   if (!confirm(msg)) return;
 
-  // ★ 폴더 있고 변경 있으면 저장 (오버레이는 saveToFolder가 처리)
-  if (photoFolderHandle && hasChanges) {
-    try {
-      await saveToFolder({ auto: true, force: true });
-    } catch(e) {
-      hideOverlay();
-      console.warn('자동 저장 실패:', e);
-      if (!confirm('⚠️ 저장에 실패했습니다.\n그래도 새 작업을 시작할까요?\n(현재 작업 데이터를 잃을 수 있습니다)')) {
-        return;
-      }
-    }
-  }
+  // ★★★ 핵심: 이전 상태 캡처 후 즉시 UI 초기화
+  const prevUnits = units;
+  const prevWorkId = currentWorkId;
+  const prevFolderName = currentFolderName;
+  const prevWorkType = currentWorkType;
+  const prevFacilityCustomer = { ...facilityCustomer };
+  const prevDirty = hasChanges;
 
-  // 고객 정보 저장
-  try {
-    if (typeof flushAllCustomers === 'function') {
-      const cnt = await flushAllCustomers();
-      if (cnt > 0) console.log(`✓ ${cnt}명 고객 정보 저장`);
-    }
-  } catch(e) { console.warn('고객 저장 실패:', e); }
-
-  // 초기화
+  // ★ UI 즉시 초기화 (사용자는 이미 새 작업 상태로 인식)
   units = [];
   nid = 1;
   currentWorkId = '';
-  currentFolderName = null;  // ★ 새 작업 = 새 폴더 (덮어쓰기 안 함)
+  currentFolderName = null;
   if (typeof resetWorkType === 'function') resetWorkType();
   document.getElementById('rpWrap').innerHTML = '';
   document.getElementById('btnPDF').disabled = true;
@@ -506,17 +491,64 @@ async function newWork() {
   document.getElementById('aptName').value = '';
   document.getElementById('aptName').placeholder = '작업명을 입력하세요';
   document.getElementById('workDate').value = kstDateStr();
-
   if (typeof _indexCounter !== 'undefined') _indexCounter.clear();
   if (typeof _unitWorkNumber !== 'undefined') _unitWorkNumber.clear();
   if (typeof _savedPhotoIds !== 'undefined') _savedPhotoIds.clear();
   if (typeof pendingSaves !== 'undefined') pendingSaves.length = 0;
+  if (typeof _dataDirty !== 'undefined') _dataDirty = false;
+  if (typeof _lastSaveSnapshot === 'string') _lastSaveSnapshot = quickSnapshot();
 
   renderAll();
   updateStats();
-  try { await sessionAutoSaveNow(); } catch(e) {}
-
   showToast('🆕 새 작업', 'ok');
+
+  // ★ 백그라운드 저장 (UI 차단 없음)
+  if (photoFolderHandle && prevDirty) {
+    _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWorkType, prevFacilityCustomer);
+  }
+
+  // IndexedDB 자동저장 (새 빈 상태로)
+  try { await sessionAutoSaveNow(); } catch(e) {}
+}
+
+// 백그라운드 저장 - UI 차단 없이 이전 작업 데이터를 저장
+async function _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWorkType, prevFacilityCustomer) {
+  // 현재 전역 상태를 백업
+  const savedUnits = units;
+  const savedWorkId = currentWorkId;
+  const savedFolderName = currentFolderName;
+  const savedWorkType = currentWorkType;
+  const savedFacilityCustomer = { ...facilityCustomer };
+
+  try {
+    // 전역 상태를 이전 작업 상태로 일시적으로 교체
+    units = prevUnits;
+    currentWorkId = prevWorkId;
+    currentFolderName = prevFolderName;
+    currentWorkType = prevWorkType;
+    facilityCustomer = prevFacilityCustomer;
+
+    // 저장 (오버레이 없이 조용히)
+    await saveToFolder({ auto: true, force: true, silent: true });
+
+    // 고객 정보 저장
+    if (typeof flushAllCustomers === 'function') {
+      await flushAllCustomers();
+    }
+
+    console.log('✅ 백그라운드 저장 완료');
+    showToast('✅ 이전 작업 저장 완료', 'ok');
+  } catch(e) {
+    console.error('백그라운드 저장 실패:', e);
+    showToast('⚠️ 이전 작업 백그라운드 저장 실패: ' + e.message, 'err');
+  } finally {
+    // 현재 작업 상태 복원 (새 작업이 이미 진행 중)
+    units = savedUnits;
+    currentWorkId = savedWorkId;
+    currentFolderName = savedFolderName;
+    currentWorkType = savedWorkType;
+    facilityCustomer = savedFacilityCustomer;
+  }
 }
 
 // (이전 savePhotosForNewWork 함수는 saveToFolder로 통합되어 제거)

@@ -21,6 +21,11 @@ function showOnboarding() {
 function hideOnboarding() {
   document.getElementById('onboardingModal').classList.remove('open');
 }
+// closeOnboarding 호환성 유지
+function closeOnboarding(completed) {
+  if (completed) localStorage.setItem(ONBOARDING_DONE_KEY, '1');
+  hideOnboarding();
+}
 
 function renderOnboardingStep() {
   const content     = document.getElementById('obContent');
@@ -111,18 +116,19 @@ function renderStep1Intro(c) {
 function renderStep2HowTo(c) {
   c.innerHTML = `
     <div class="ob-step">
-      <h2 class="ob-title">이렇게 사용하세요</h2>
-      <p class="ob-subtitle">4단계로 보고서 완성</p>
+      <h2 class="ob-title">📖 사용 방법</h2>
+      <p class="ob-subtitle">처음이어도 괜찮아요, 천천히 따라해보세요</p>
 
       <div class="ob-howto-list">
+
         <div class="ob-howto-item">
           <div class="ob-howto-num">1</div>
           <div class="ob-howto-body">
-            <div class="ob-howto-title">호수 추가</div>
+            <div class="ob-howto-title">작업명과 날짜 입력</div>
             <div class="ob-howto-desc">
-              작업명(아파트명)과 날짜 입력 후<br>
-              <b>➕ 추가</b>로 호수를 입력해요.<br>
-              <span class="ob-tip">💡 일괄 추가로 여러 호수를 한번에!</span>
+              화면 상단에 <b>작업명</b> (예: 지제더샵 3단지)과<br>
+              <b>작업일자</b>를 입력해요.<br>
+              담당자 이름도 넣으면 보고서에 표시돼요.
             </div>
           </div>
         </div>
@@ -132,12 +138,14 @@ function renderStep2HowTo(c) {
         <div class="ob-howto-item">
           <div class="ob-howto-num">2</div>
           <div class="ob-howto-body">
-            <div class="ob-howto-title">사진 추가</div>
+            <div class="ob-howto-title">호수 추가하기</div>
             <div class="ob-howto-desc">
-              호수 카드를 펼쳐<br>
-              <b>📷 카메라</b> 또는 <b>🖼 갤러리</b>로<br>
-              작업 전·후 사진을 넣어요.<br>
-              <span class="ob-tip">💡 특이사항도 사진+메모로 기록!</span>
+              하단 입력칸에 호수명을 입력하고 <b>➕ 추가</b>를 눌러요.<br>
+              예) <b>101동 201호</b> 입력 후 추가<br><br>
+              여러 호수를 한번에 추가하려면 <b>📋 일괄</b> 버튼을 눌러<br>
+              쉼표로 구분해서 입력하세요.<br>
+              예) <b>201호, 202호, 203호</b>
+              <span class="ob-tip">💡 가정용은 1호수씩, 공용시설은 여러 호수 가능</span>
             </div>
           </div>
         </div>
@@ -147,11 +155,14 @@ function renderStep2HowTo(c) {
         <div class="ob-howto-item">
           <div class="ob-howto-num">3</div>
           <div class="ob-howto-body">
-            <div class="ob-howto-title">저장</div>
+            <div class="ob-howto-title">사진 찍기</div>
             <div class="ob-howto-desc">
-              <b>💾 저장</b> 버튼으로 폴더에 저장.<br>
-              고객 전화번호 입력 시<br>재의뢰 이력이 자동 관리돼요.<br>
-              <span class="ob-tip">💡 새작업 누르면 이전 작업 자동 저장!</span>
+              호수 카드를 눌러 펼치면 <b>작업 전</b>과 <b>작업 후</b> 구역이 나와요.<br><br>
+              📷 <b>카메라</b> — 지금 바로 사진 촬영<br>
+              🖼️ <b>갤러리</b> — 저장된 사진 선택<br><br>
+              같은 번호끼리 보고서에서 짝이 돼요.<br>
+              예) 작업전 1번 ↔ 작업후 1번이 한 쌍
+              <span class="ob-tip">💡 순서 편집 버튼으로 사진 순서를 드래그로 바꿀 수 있어요</span>
             </div>
           </div>
         </div>
@@ -161,14 +172,46 @@ function renderStep2HowTo(c) {
         <div class="ob-howto-item">
           <div class="ob-howto-num">4</div>
           <div class="ob-howto-body">
-            <div class="ob-howto-title">보고서 출력</div>
+            <div class="ob-howto-title">고객 정보 입력 (선택)</div>
             <div class="ob-howto-desc">
-              <b>📄 미리보기</b> 확인 후<br>
-              <b>⬇️ PDF</b> 또는 <b>🖼️ JPG</b>로 저장·공유.<br>
-              <span class="ob-tip">💡 작업 기록(📋)에서 과거 작업 불러오기!</span>
+              호수 카드 하단에 <b>고객 전화번호</b>를 입력하면<br>
+              다음 방문 때 이전 작업 이력을 바로 확인할 수 있어요.<br><br>
+              📋 <b>작업 기록</b> 버튼 → 전화번호로 고객 검색 가능
+              <span class="ob-tip">💡 재의뢰 관리에 유용해요</span>
             </div>
           </div>
         </div>
+
+        <div class="ob-howto-arrow">↓</div>
+
+        <div class="ob-howto-item">
+          <div class="ob-howto-num">5</div>
+          <div class="ob-howto-body">
+            <div class="ob-howto-title">저장하기</div>
+            <div class="ob-howto-desc">
+              <b>💾 저장</b> 버튼을 누르면 설정한 폴더에 자동 저장돼요.<br><br>
+              <b>🆕 새작업</b>을 누르면 현재 작업을 저장 후<br>
+              새 작업을 시작할 수 있어요.
+              <span class="ob-tip">💡 저장 폴더가 없어도 기기 내부에 임시 저장돼요</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ob-howto-arrow">↓</div>
+
+        <div class="ob-howto-item">
+          <div class="ob-howto-num">6</div>
+          <div class="ob-howto-body">
+            <div class="ob-howto-title">보고서 출력 · 공유</div>
+            <div class="ob-howto-desc">
+              <b>📄 미리보기</b>로 먼저 확인해요.<br><br>
+              <b>⬇️ PDF</b> — 문서로 저장 (카카오톡 전송 등)<br>
+              <b>🖼️ JPG</b> — 사진으로 저장 (갤러리에 저장)
+              <span class="ob-tip">💡 보고서에 업체명·연락처가 자동으로 표시돼요</span>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>`;
 }
@@ -340,9 +383,7 @@ function bindOnboardingEvents() {
   document.getElementById('obNext')?.addEventListener('click', onboardingNext);
   document.getElementById('obPrev')?.addEventListener('click', onboardingPrev);
   document.getElementById('obSkip')?.addEventListener('click', () => {
-    if (confirm('설정을 건너뛰시겠습니까?\n\n나중에 설정 메뉴에서 다시 할 수 있습니다.')) {
-      closeOnboarding(true);
-    }
+    closeOnboarding(true);
   });
 }
 

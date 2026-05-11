@@ -130,6 +130,7 @@ function bindAll() {
     }
   });
   document.getElementById('btnSave').addEventListener('click', handleSaveClick);
+  document.getElementById('btnNew')?.addEventListener('click', newWork);
   document.getElementById('btnLoad')?.addEventListener('click', openLoadList);
 
   // 헤더 접기/펼치기

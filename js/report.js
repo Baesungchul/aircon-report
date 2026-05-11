@@ -479,23 +479,27 @@ function buildReportHTML(){
     </div>`;
   }
 
-  // ── 헬퍼: 특이사항 small (2건 합치기용) - 사진 2장 가로 + 메모 ──
+  // ── 헬퍼: 특이사항 small (2건 한 페이지, 상/하 각각 1건씩) ──
   function specialPageBodySmall(sp, photoSlice, label, showText) {
-    // 사진 최대 2장 (가로 배치)
+    // ★ 1건(large)과 동일한 좌/우 구조 사용 (사진 1열 세로, 우측 메모)
+    const maxPhotos = 2;  // 2건이 들어가므로 사진은 최대 2장씩
     const photoSlots = [];
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < maxPhotos; i++) {
       if (i < photoSlice.length) {
-        photoSlots.push(`<div class="rp-sp-sm-photo"><img src="${photoUrl(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
+        photoSlots.push(`<div class="rp-sp-photo-item"><img src="${photoUrl(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
       } else {
-        photoSlots.push(`<div class="rp-sp-sm-photo rp-empty"></div>`);
+        photoSlots.push(`<div class="rp-sp-photo-item rp-empty"></div>`);
       }
     }
     const text = (sp.desc || '').trim();
-    return `<div class="rp-sp-small-row">
-      <div class="rp-sp-sm-label">⚠️ ${label}</div>
-      <div class="rp-sp-sm-body">
-        <div class="rp-sp-sm-photos">${photoSlots.join('')}</div>
-        <div class="rp-sp-sm-memo">${text ? escH(text).replace(/\n/g,'<br>') : '<span style="color:#bbb;font-style:italic;">(메모 없음)</span>'}</div>
+    return `<div class="rp-sp-layout rp-sp-half">
+      <div class="rp-sp-photos-col">
+        <div class="rp-sp-photo-label">⚠️ ${label} &nbsp;·&nbsp; 📷 ${photoSlice.length}장</div>
+        <div class="rp-sp-photo-grid">${photoSlots.join('')}</div>
+      </div>
+      <div class="rp-sp-memo-col">
+        <div class="rp-sp-memo-label">📝 메모</div>
+        <div class="rp-sp-memo-text">${text ? escH(text).replace(/\n/g,'<br>') : '<span style="color:#bbb;font-style:italic;">(메모 없음)</span>'}</div>
       </div>
     </div>`;
   }

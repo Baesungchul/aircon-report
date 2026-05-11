@@ -1,5 +1,5 @@
-// 서비스워커 v86 - 1.132: 온보딩 3단계 (소개/사용법/세팅)
-const CACHE = 'ac1004-v86';
+// 서비스워커 v87 - 1.133: 온보딩 obProgress → obProgressBar ID 수정
+const CACHE = 'ac1004-v87';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

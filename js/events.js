@@ -172,7 +172,7 @@ function bindAll() {
 
     // 카드 토글
     const top = t.closest('.u-top');
-    if (top && !t.closest('.u-name-row') && !t.closest('.del-btn') && !t.closest('.bdg')) {
+    if (top && !t.closest('.u-name-row') && !t.closest('.del-btn') && !t.closest('.bdg') && !t.closest('.sp-del') && !t.closest('.add-sp-btn')) {
       const id = +top.dataset.id;
       const u = findU(id); if(u){ u.open=!u.open; renderAll(); } return;
     }
@@ -464,6 +464,10 @@ async function newWork() {
   const prevWorkType = currentWorkType;
   const prevFacilityCustomer = { ...facilityCustomer };
   const prevDirty = hasChanges;
+  // ★ DOM 값도 캡처 (백그라운드 저장 시 사용)
+  const prevApt    = document.getElementById('aptName').value || '';
+  const prevDate   = document.getElementById('workDate').value || '';
+  const prevWorker = document.getElementById('workerName').value || '';
 
   // ★ UI 즉시 초기화 (사용자는 이미 새 작업 상태로 인식)
   units = [];
@@ -490,29 +494,46 @@ async function newWork() {
 
   // ★ 백그라운드 저장 (UI 차단 없음)
   if (photoFolderHandle && prevDirty) {
-    _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWorkType, prevFacilityCustomer);
+    _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWorkType, prevFacilityCustomer, prevApt, prevDate, prevWorker);
   }
 
   // IndexedDB 자동저장 (새 빈 상태로)
   try { await sessionAutoSaveNow(); } catch(e) {}
 }
 
+// 백그라운드 저장 중 플래그 (전역 노출 - customers.js에서 접근)
+let _isSavingInBackground = false;
+Object.defineProperty(window, '_isSavingInBackground', {
+  get: () => _isSavingInBackground,
+  set: (v) => { _isSavingInBackground = v; }
+});
+
 // 백그라운드 저장 - UI 차단 없이 이전 작업 데이터를 저장
-async function _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWorkType, prevFacilityCustomer) {
-  // 현재 전역 상태를 백업
+async function _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWorkType, prevFacilityCustomer, prevApt, prevDate, prevWorker) {
+  _isSavingInBackground = true;
+  // 현재 전역 상태 + DOM 값 백업
   const savedUnits = units;
   const savedWorkId = currentWorkId;
   const savedFolderName = currentFolderName;
   const savedWorkType = currentWorkType;
   const savedFacilityCustomer = { ...facilityCustomer };
+  const aptEl    = document.getElementById('aptName');
+  const dateEl   = document.getElementById('workDate');
+  const workerEl = document.getElementById('workerName');
+  const savedApt    = aptEl?.value || '';
+  const savedDate   = dateEl?.value || '';
+  const savedWorker = workerEl?.value || '';
 
   try {
-    // 전역 상태를 이전 작업 상태로 일시적으로 교체
+    // ★ 전역 상태 + DOM을 이전 작업 값으로 일시 교체
     units = prevUnits;
     currentWorkId = prevWorkId;
     currentFolderName = prevFolderName;
     currentWorkType = prevWorkType;
     facilityCustomer = prevFacilityCustomer;
+    if (aptEl)    aptEl.value    = prevApt    || '';
+    if (dateEl)   dateEl.value   = prevDate   || '';
+    if (workerEl) workerEl.value = prevWorker || '';
 
     // 저장 (오버레이 없이 조용히)
     await saveToFolder({ auto: true, force: true, silent: true });
@@ -522,18 +543,22 @@ async function _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWork
       await flushAllCustomers();
     }
 
-    console.log('✅ 백그라운드 저장 완료');
+    console.log('✅ 백그라운드 저장 완료:', prevApt);
     showToast('✅ 이전 작업 저장 완료', 'ok');
   } catch(e) {
     console.error('백그라운드 저장 실패:', e);
     showToast('⚠️ 이전 작업 백그라운드 저장 실패: ' + e.message, 'err');
   } finally {
-    // 현재 작업 상태 복원 (새 작업이 이미 진행 중)
+    // ★ 현재 작업 상태 + DOM 복원
     units = savedUnits;
     currentWorkId = savedWorkId;
     currentFolderName = savedFolderName;
     currentWorkType = savedWorkType;
     facilityCustomer = savedFacilityCustomer;
+    if (aptEl)    aptEl.value    = savedApt;
+    if (dateEl)   dateEl.value   = savedDate;
+    if (workerEl) workerEl.value = savedWorker;
+    _isSavingInBackground = false;
   }
 }
 

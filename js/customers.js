@@ -34,20 +34,55 @@ function saveCustomerFilter() {
 }
 
 async function openCustomerModal() {
+  // ★ 백그라운드 저장 중이면 완료될 때까지 안내 모달 표시
+  if (window._isSavingInBackground) {
+    // 안내 오버레이 표시
+    const overlay = document.createElement('div');
+    overlay.id = 'bgSaveOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:var(--sf);border-radius:14px;padding:24px 28px;max-width:320px;width:90%;text-align:center;">
+        <div style="font-size:22px;margin-bottom:10px;">💾</div>
+        <div style="font-weight:700;font-size:15px;margin-bottom:6px;">변경사항 반영 중...</div>
+        <div style="font-size:12px;color:var(--mu);line-height:1.6;">이전 작업을 저장하고 있습니다.<br>완료되면 자동으로 작업 기록이 열립니다.</div>
+        <div style="margin-top:14px;height:4px;background:var(--bd);border-radius:2px;overflow:hidden;">
+          <div id="bgSaveBar" style="height:100%;background:var(--ac);border-radius:2px;width:0%;transition:width 0.3s;"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    // 진행바 애니메이션
+    let prog = 0;
+    const barEl = overlay.querySelector('#bgSaveBar');
+    const progTimer = setInterval(() => {
+      prog = Math.min(prog + 3, 90);  // 최대 90%까지만 (완료 시 100%로)
+      if (barEl) barEl.style.width = prog + '%';
+    }, 200);
+
+    // 완료될 때까지 폴링 (최대 30초)
+    let waited = 0;
+    while (window._isSavingInBackground && waited < 30000) {
+      await new Promise(r => setTimeout(r, 100));
+      waited += 100;
+    }
+
+    clearInterval(progTimer);
+    if (barEl) barEl.style.width = '100%';
+    await new Promise(r => setTimeout(r, 200));  // 100% 잠깐 보여주기
+    overlay.remove();
+  }
+
   document.getElementById('customerModal').classList.add('open');
   _customerSearch = '';
 
-  // ★ 권한 먼저 확보 (사용자 제스처 컨텍스트에서)
+  // 권한 먼저 확보
   if (photoFolderHandle) {
     try {
       let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
       if (perm !== 'granted') {
         perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
       }
-      if (perm === 'granted') {
-        // ★ 캐시가 30초 이내면 그대로 사용 (스캔 생략)
-        // invalidate는 저장/삭제 시에만 (openCustomerModal에선 하지 않음)
-      } else {
+      if (perm !== 'granted') {
         showToast('폴더 권한이 필요합니다', 'err');
       }
     } catch(e) {
@@ -55,7 +90,6 @@ async function openCustomerModal() {
     }
   }
 
-  // 한 번만 렌더 (캐시 있으면 즉시, 없으면 스캔 후)
   await renderCustomerList();
 }
 

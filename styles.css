@@ -536,10 +536,16 @@ body.overlay-active{overflow:hidden!important;}
   overflow:hidden;
   min-height:0;
 }
+/* 2건 한 페이지: 각 건이 상/하 절반씩 - 1건 레이아웃 재사용 */
+.rp-sp-half{
+  flex:1;
+  min-height:0;
+  border-bottom:none;
+}
 .rp-sp-divider{
   height:2px;
-  background:linear-gradient(to right, #f0b429, #ffe08a, #f0b429);
   flex-shrink:0;
+  background:linear-gradient(to right, #f0b429, #ffe08a, #f0b429);
 }
 .rp-sp-small-row{
   flex:1;
@@ -593,12 +599,15 @@ body.overlay-active{overflow:hidden!important;}
 }
 .rp-sp-page{} /* 마커 */
 .rp-sp-layout{
-  flex:1;
   display:grid;
   grid-template-columns:55% 45%;
   gap:0;
   overflow:hidden;
   min-height:0;
+}
+/* 단독 1건: 전체 높이 */
+.rp-sp-layout:not(.rp-sp-half){
+  flex:1;
 }
 /* 좌측: 사진 1열 세로 배치 */
 .rp-sp-photos-col{

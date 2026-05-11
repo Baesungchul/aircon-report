@@ -1,5 +1,5 @@
-// 서비스워커 v74 - 1.120: 특이사항 삭제 수정 + 보고서 사진 1열 + 메모 표시
-const CACHE = 'ac1004-v74';
+// 서비스워커 v75 - 1.121: 특이사항 삭제/사진삭제 수정 + 보고서 메모 동기화
+const CACHE = 'ac1004-v75';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

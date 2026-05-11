@@ -1097,16 +1097,20 @@ body.overlay-active{overflow:hidden!important;}
   user-select:none;
   -webkit-user-select:none;
 }
-/* ☰ 드래그 핸들 */
+/* ≡ 드래그 핸들 (오른쪽) */
 .reorder-drag-handle{
-  font-size:20px;color:var(--mu);
+  font-size:22px;
+  font-weight:700;
+  color:var(--mu);
   cursor:grab;
   flex-shrink:0;
-  padding:4px 2px;
+  padding:4px 6px;
   line-height:1;
   touch-action:none;
+  margin-left:auto;
+  letter-spacing:-1px;
 }
-.reorder-drag-handle:active{cursor:grabbing;}
+.reorder-drag-handle:active{cursor:grabbing;color:var(--ac);}
 
 /* 드래그 중 원본 */
 .reorder-item.reorder-dragging{

@@ -1,5 +1,5 @@
-// 서비스워커 v82 - 1.128: 순서편집 드래그 지원
-const CACHE = 'ac1004-v82';
+// 서비스워커 v84 - 1.130: 드래그 안정성 재작성 (RAF + 리스너 정리)
+const CACHE = 'ac1004-v84';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

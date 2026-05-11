@@ -94,11 +94,11 @@ async function saveToFolder(opts) {
     return;
   }
 
-  if (!isSilent) showOverlay('저장 중...');
-  const _saveTimeout = isSilent ? null : setTimeout(() => {
-    hideOverlay();
-    showToast('⚠️ 저장이 너무 오래 걸려 중단했습니다.', 'err');
-  }, 120000);
+  if (!isSilent) {
+    // 수동 저장도 오버레이 없이 진행 (사용자 차단 없음)
+    // 완료/실패 시 토스트로만 알림
+  }
+  const _saveTimeout = null;  // 타임아웃 불필요 (오버레이 없음)
 
   let saved = 0;
   let skippedPhotos = 0;
@@ -344,7 +344,7 @@ async function saveToFolder(opts) {
 
   // ★ 타임아웃 클리어 + 오버레이 닫기
   clearTimeout(_saveTimeout);
-  if (!isSilent) hideOverlay();
+  // hideOverlay 불필요 (오버레이 없음)
 
   // ★ 저장 성공 시 dirty 해제 + 스냅샷 갱신
   if (sessionFileSaved) {

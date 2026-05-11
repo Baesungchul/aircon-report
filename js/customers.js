@@ -1342,48 +1342,44 @@ async function openCustomersXlsxFile() {
     return;
   }
 
-  showOverlay('엑셀 준비 중...');
+  // customers.xlsx 존재 여부 확인
+  let fileSize = '';
   try {
-    // 최신 데이터로 즉시 갱신 (디바운스 무시)
-    if (typeof flushCustomersXlsx === 'function') {
-      await flushCustomersXlsx({ immediate: true });
-    }
-
-    const fileHandle = await photoFolderHandle.getFileHandle('customers.xlsx');
-    const file = await fileHandle.getFile();
-
-    hideOverlay();
-
-    // ★ Web Share API - 사용자가 어디로 열지 선택
-    // (Files, Excel, Drive 등 시스템에 설치된 앱 중 선택)
-    if (navigator.canShare) {
-      try {
-        const shareFile = new File([file], 'customers.xlsx', {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        });
-        if (navigator.canShare({ files: [shareFile] })) {
-          await navigator.share({
-            files: [shareFile],
-            title: '고객 목록'
-          });
-          return;
-        }
-      } catch(e) {
-        if (e.name === 'AbortError') return;  // 사용자 취소
-        console.warn('share 실패:', e);
-      }
-    }
-
-    // Web Share API 미지원 시 안내
-    showToast(`📂 customers.xlsx 파일은 "${photoFolderHandle.name}" 폴더에 저장되어 있습니다`, 'ok');
+    const fh = await photoFolderHandle.getFileHandle('customers.xlsx');
+    const f = await fh.getFile();
+    const kb = (f.size / 1024).toFixed(1);
+    fileSize = `${kb} KB`;
   } catch(e) {
-    hideOverlay();
-    if (e.name === 'NotFoundError') {
-      showToast('아직 customers.xlsx 파일이 없습니다.', 'err');
-    } else {
-      showToast('파일 준비 실패: ' + e.message, 'err');
-    }
+    // 파일 없음 - 안내만
   }
+
+  // ★ 위치/파일명 안내 모달
+  const existing = document.getElementById('xlsxInfoModal');
+  if (existing) existing.remove();
+
+  const wrap = document.createElement('div');
+  wrap.id = 'xlsxInfoModal';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:700;display:flex;align-items:center;justify-content:center;padding:16px;';
+  wrap.innerHTML = `
+    <div style="background:var(--sf);border-radius:14px;padding:22px;max-width:380px;width:100%;">
+      <div style="font-size:15px;font-weight:800;margin-bottom:16px;">📊 엑셀 파일 위치</div>
+      <div style="background:var(--sf2);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:11px;color:var(--mu);margin-bottom:4px;">📁 폴더</div>
+        <div style="font-size:14px;font-weight:700;word-break:break-all;">${photoFolderHandle.name}/</div>
+        <div style="margin-top:10px;font-size:11px;color:var(--mu);margin-bottom:4px;">📄 파일명</div>
+        <div style="font-size:14px;font-weight:700;">customers.xlsx</div>
+        ${fileSize ? `<div style="margin-top:6px;font-size:11px;color:var(--mu);">크기: ${fileSize}</div>` : `<div style="margin-top:6px;font-size:11px;color:#e55;">⚠️ 아직 파일이 없습니다 (작업 저장 후 자동 생성됨)</div>`}
+      </div>
+      <div style="font-size:12px;color:var(--mu);line-height:1.6;margin-bottom:16px;">
+        내 파일 앱에서 위 폴더를 열어<br>
+        <b>customers.xlsx</b> 파일을 실행하세요.
+      </div>
+      <button class="btn b-blue" id="xlsxInfoClose" style="width:100%;justify-content:center;">확인</button>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  wrap.querySelector('#xlsxInfoClose').addEventListener('click', () => wrap.remove());
+  wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
 }
 
 function escHtmlSafe(s) {
@@ -1425,16 +1421,6 @@ function bindCustomerEvents() {
   if (closeBtn) closeBtn.addEventListener('click', closeCustomerModal);
   if (closeFoot) closeFoot.addEventListener('click', closeCustomerModal);
   if (xlsxBtn) xlsxBtn.addEventListener('click', openCustomersXlsxFile);
-
-  // 모든 작업 보기 - 기존 불러오기 모달 열기 (고객 정보 없는 옛날 작업 접근)
-  if (allBtn) allBtn.addEventListener('click', () => {
-    closeCustomerModal();
-    if (typeof openLoadList === 'function') {
-      openLoadList();
-    } else {
-      showToast('불러오기 함수를 찾을 수 없습니다', 'err');
-    }
-  });
 }
 
 if (document.readyState === 'loading') {

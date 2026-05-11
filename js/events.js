@@ -81,6 +81,16 @@ function bindAll() {
     }
   });
 
+  // ★ 시설 고객 더보기 토글
+  document.getElementById('facilityCustMoreBtn')?.addEventListener('click', () => {
+    const detail = document.getElementById('facilityCustDetail');
+    const btn = document.getElementById('facilityCustMoreBtn');
+    if (!detail || !btn) return;
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : '';
+    btn.textContent = isOpen ? '더보기 ▼' : '접기 ▲';
+  });
+
   // 저장/불러오기
   document.getElementById('btnNew').addEventListener('click', newWork);
   document.getElementById('btnSave').addEventListener('click', handleSaveClick);

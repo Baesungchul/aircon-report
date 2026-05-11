@@ -1,5 +1,5 @@
-// 서비스워커 v84 - 1.130: 드래그 안정성 재작성 (RAF + 리스너 정리)
-const CACHE = 'ac1004-v84';
+// 서비스워커 v86 - 1.132: 온보딩 3단계 (소개/사용법/세팅)
+const CACHE = 'ac1004-v86';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

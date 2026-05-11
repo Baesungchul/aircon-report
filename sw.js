@@ -1,5 +1,5 @@
-// 서비스워커 v79 - 1.125: 저장중 오버레이 제거 + 시설정보 축소 + 버튼 고정
-const CACHE = 'ac1004-v79';
+// 서비스워커 v82 - 1.128: 순서편집 드래그 지원
+const CACHE = 'ac1004-v82';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

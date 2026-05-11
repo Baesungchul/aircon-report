@@ -45,18 +45,33 @@ function bindAll() {
           }
         }
       }
-      // 시설 → 가정: 시설 customer 정보 있으면 경고
+      // 시설 → 가정: 호수 2개 이상이면 차단
       else if (oldType === 'facility' && newType === 'household') {
-        const hasFacility = facilityCustomer.phone || facilityCustomer.address || facilityCustomer.memo;
-        if (hasFacility) {
-          if (!confirm('🏠 가정용 모드로 변경하시겠습니까?\n\n' +
-            '⚠️ 시설 고객 정보는 저장 시 무시됩니다.\n' +
-            '(다시 공용시설로 돌리면 복구됩니다)\n\n' +
-            '계속할까요?')) {
-            const r0 = document.getElementById('workTypeFacility');
-            if (r0) r0.checked = true;
-            return;
-          }
+        if (units.length >= 2) {
+          // 라디오 원복
+          const r0 = document.getElementById('workTypeFacility');
+          if (r0) r0.checked = true;
+
+          // 안내 다이얼로그
+          const wrap = document.createElement('div');
+          wrap.innerHTML = `
+            <div style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:700;display:flex;align-items:center;justify-content:center;padding:16px;" id="modeBlockOverlay">
+              <div style="background:var(--sf);border-radius:14px;padding:20px;max-width:400px;width:100%;">
+                <div style="font-size:16px;font-weight:800;margin-bottom:8px;">🏠 가정용으로 변경 불가</div>
+                <div style="font-size:13px;color:var(--mu);line-height:1.7;margin-bottom:16px;">
+                  현재 <b style="color:var(--tx);">${units.length}개</b> 영역이 입력되어 있습니다.<br>
+                  가정용은 <b style="color:var(--tx);">1호수만</b> 가능합니다.<br><br>
+                  영역을 <b style="color:var(--dn);">1개만 남기고 삭제</b>하면<br>
+                  가정용으로 변경할 수 있습니다.
+                </div>
+                <button class="btn b-ghost" style="width:100%;justify-content:center;" id="modeBlockClose">확인</button>
+              </div>
+            </div>`;
+          document.body.appendChild(wrap.firstElementChild);
+          document.getElementById('modeBlockClose').addEventListener('click', () => {
+            document.getElementById('modeBlockOverlay')?.remove();
+          });
+          return;
         }
       }
 

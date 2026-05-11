@@ -1680,56 +1680,189 @@ function renderReorderList() {
   if (!_reorderState) return;
 
   const before = _reorderState.before;
-  const after = _reorderState.after;
+  const after  = _reorderState.after;
 
-  // 양쪽 컬럼을 만들기 (각각 독립적으로 ▲▼)
   function colHtml(photos, side, label, color) {
     if (!photos.length) {
-      return `
-        <div class="reorder-col">
-          <div class="reorder-col-head" style="color:${color};">${label} (0장)</div>
-          <div class="reorder-empty">사진 없음</div>
-        </div>
-      `;
+      return `<div class="reorder-col" data-side="${side}">
+        <div class="reorder-col-head" style="color:${color};">${label} (0장)</div>
+        <div class="reorder-empty">사진 없음</div>
+      </div>`;
     }
-    return `
-      <div class="reorder-col">
-        <div class="reorder-col-head" style="color:${color};">${label} (${photos.length}장)</div>
-        <div class="reorder-list">
-          ${photos.map((p, idx) => `
-            <div class="reorder-item">
-              <div class="reorder-num">${idx + 1}</div>
-              <img class="reorder-thumb" src="${p.dataUrl}" alt="${label} ${idx+1}">
-              <div class="reorder-arrows">
-                <button class="reorder-arrow" data-side="${side}" data-action="up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button>
-                <button class="reorder-arrow" data-side="${side}" data-action="down" data-idx="${idx}" ${idx === photos.length - 1 ? 'disabled' : ''}>▼</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
+    return `<div class="reorder-col" data-side="${side}">
+      <div class="reorder-col-head" style="color:${color};">${label} (${photos.length}장)</div>
+      <div class="reorder-list" data-side="${side}">
+        ${photos.map((p, idx) => `
+          <div class="reorder-item" data-side="${side}" data-idx="${idx}">
+            <div class="reorder-drag-handle">⠿</div>
+            <div class="reorder-num">${idx + 1}</div>
+            <img class="reorder-thumb" src="${p.dataUrl}" data-fullview="${p.dataUrl}" alt="${label} ${idx+1}">
+            <button class="reorder-del" data-side="${side}" data-idx="${idx}" title="삭제">✕</button>
+          </div>`).join('')}
       </div>
-    `;
+    </div>`;
   }
 
   body.innerHTML = `
     <div class="reorder-info">
-      💡 양쪽을 보면서 ▲▼로 순서를 맞추세요. 같은 위치(1번끼리, 2번끼리)가 보고서에서 짝으로 표시됩니다.
+      ☰ 드래그로 순서 변경 · 사진 탭하면 크게 보기
     </div>
     <div class="reorder-cols">
       ${colHtml(before, 'before', '🔴 작업 전', '#f06060')}
-      ${colHtml(after, 'after', '🟢 작업 후', '#10b981')}
-    </div>
-  `;
+      ${colHtml(after,  'after',  '🟢 작업 후', '#10b981')}
+    </div>`;
 
-  // 이벤트 바인딩 (요소 새로 만들었으니 다시)
-  body.querySelectorAll('.reorder-arrow').forEach(btn => {
+  // ✕ 삭제
+  body.querySelectorAll('.reorder-del').forEach(btn => {
     btn.addEventListener('click', e => {
+      e.stopPropagation();
       const side = btn.dataset.side;
-      const action = btn.dataset.action;
-      const idx = parseInt(btn.dataset.idx);
-      moveReorderItem(side, idx, action === 'up' ? -1 : 1);
+      const idx  = parseInt(btn.dataset.idx);
+      if (!confirm('이 사진을 삭제할까요?')) return;
+      _reorderState[side].splice(idx, 1);
+      renderReorderList();
     });
   });
+
+  // 사진 탭 → 전체화면
+  body.querySelectorAll('.reorder-thumb').forEach(img => {
+    img.addEventListener('click', e => {
+      e.stopPropagation();
+      openReorderFullView(img.dataset.fullview);
+    });
+  });
+
+  // 드래그
+  bindReorderDrag(body);
+}
+
+/* ── 드래그 순서 변경 (터치 + 마우스) ── */
+function bindReorderDrag(body) {
+  let _drag = null;      // { side, fromIdx, el, ghost, listEl, startY, lastY }
+  let _overIdx = null;
+
+  function getItems(side) {
+    return Array.from(body.querySelectorAll(`.reorder-item[data-side="${side}"]`));
+  }
+
+  function createGhost(el) {
+    const r = el.getBoundingClientRect();
+    const g = el.cloneNode(true);
+    g.style.cssText = `
+      position:fixed;left:${r.left}px;top:${r.top}px;
+      width:${r.width}px;height:${r.height}px;
+      opacity:.8;pointer-events:none;z-index:999;
+      box-shadow:0 8px 24px rgba(0,0,0,.45);
+      border-radius:10px;background:var(--sf);
+      transition:none;
+    `;
+    g.classList.add('reorder-ghost');
+    document.body.appendChild(g);
+    return g;
+  }
+
+  function getClientY(e) {
+    return e.touches ? e.touches[0].clientY : e.clientY;
+  }
+
+  function onStart(e) {
+    const handle = e.target.closest('.reorder-drag-handle');
+    if (!handle) return;
+
+    const item = handle.closest('.reorder-item');
+    if (!item) return;
+
+    e.preventDefault();
+
+    const side    = item.dataset.side;
+    const fromIdx = parseInt(item.dataset.idx);
+    const listEl  = body.querySelector(`.reorder-list[data-side="${side}"]`);
+    const ghost   = createGhost(item);
+
+    item.classList.add('reorder-dragging');
+
+    _drag = {
+      side, fromIdx, el: item, ghost, listEl,
+      startY: getClientY(e),
+      ghostTop: item.getBoundingClientRect().top,
+    };
+    _overIdx = fromIdx;
+  }
+
+  function onMove(e) {
+    if (!_drag) return;
+    e.preventDefault();
+
+    const y = getClientY(e);
+    const dy = y - _drag.startY;
+
+    // 고스트 이동
+    _drag.ghost.style.top = (_drag.ghostTop + dy) + 'px';
+
+    // 어느 슬롯 위에 있는지 판단
+    const items = getItems(_drag.side);
+    let newOver = _drag.fromIdx;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i] === _drag.el) continue;
+      const r = items[i].getBoundingClientRect();
+      const mid = r.top + r.height / 2;
+      if (y > mid) newOver = i;
+    }
+
+    if (newOver !== _overIdx) {
+      _overIdx = newOver;
+      // 플레이스홀더 표시
+      items.forEach((el, i) => {
+        el.classList.toggle('reorder-over', i === _overIdx && i !== _drag.fromIdx);
+      });
+    }
+  }
+
+  function onEnd(e) {
+    if (!_drag) return;
+
+    _drag.ghost.remove();
+    _drag.el.classList.remove('reorder-dragging');
+    body.querySelectorAll('.reorder-over').forEach(el => el.classList.remove('reorder-over'));
+
+    // 실제 배열 재정렬
+    const photos = _reorderState[_drag.side];
+    if (_overIdx !== _drag.fromIdx) {
+      const [moved] = photos.splice(_drag.fromIdx, 1);
+      photos.splice(_overIdx, 0, moved);
+      // savedToFolder 해제 (순서 바뀌었으니 다시 저장 필요)
+      photos.forEach(p => { p.savedToFolder = false; });
+    }
+
+    _drag = null;
+    _overIdx = null;
+    renderReorderList();
+  }
+
+  // 터치
+  body.addEventListener('touchstart',  onStart, { passive: false });
+  body.addEventListener('touchmove',   onMove,  { passive: false });
+  body.addEventListener('touchend',    onEnd);
+  body.addEventListener('touchcancel', onEnd);
+
+  // 마우스 (데스크톱)
+  body.addEventListener('mousedown', onStart);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onEnd);
+}
+
+function openReorderFullView(src) {
+  let fv = document.getElementById('reorderFullView');
+  if (!fv) {
+    fv = document.createElement('div');
+    fv.id = 'reorderFullView';
+    fv.className = 'reorder-fullview';
+    fv.innerHTML = `<img id="reorderFullImg" src="" alt="전체화면">`;
+    fv.addEventListener('click', () => fv.classList.remove('open'));
+    document.body.appendChild(fv);
+  }
+  document.getElementById('reorderFullImg').src = src;
+  fv.classList.add('open');
 }
 
 function moveReorderItem(side, idx, direction) {

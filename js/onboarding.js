@@ -25,7 +25,7 @@ function hideOnboarding() {
 function renderOnboardingStep() {
   const content     = document.getElementById('obContent');
   const counter     = document.getElementById('obStepCounter');
-  const progressBar = document.getElementById('obProgress');
+  const progressBar = document.getElementById('obProgressBar');  // HTML ID와 일치
   const prevBtn     = document.getElementById('obPrev');
   const nextBtn     = document.getElementById('obNext');
 

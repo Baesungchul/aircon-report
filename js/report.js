@@ -504,6 +504,17 @@ function buildReportHTML(){
 }
 
 async function buildAndPreview(){
+  // ★ textarea 값을 units에 강제 동기화 (미리보기 직전)
+  document.querySelectorAll('.sp-txt').forEach(ta => {
+    const uid = +ta.dataset.uid;
+    const sid = +ta.dataset.sid;
+    const u = units.find(u => u.id === uid);
+    if (u) {
+      const s = u.specials.find(s => s.id === sid);
+      if (s) s.desc = ta.value;
+    }
+  });
+
   const html=buildReportHTML();
   document.getElementById('rpWrap').innerHTML=html;
   document.getElementById('btnPDF').disabled=false;

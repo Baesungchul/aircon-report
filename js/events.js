@@ -188,7 +188,7 @@ function bindAll() {
     const tdl = t.closest('.th-del');
     if (tdl) {
       e.stopPropagation();
-      // 특이사항 사진 삭제는 별도 핸들러에서 처리
+      // ★ sp-th-del(특이사항 사진)은 document 핸들러에서 처리
       if (tdl.classList.contains('sp-th-del')) return;
       const uid=+tdl.dataset.uid, type=tdl.dataset.type, idx=+tdl.dataset.idx;
       const u=findU(uid); if(u){ u[type].splice(idx,1); renderAll(); updateStats(); sessionAutoSave(); } return;
@@ -216,14 +216,6 @@ function bindAll() {
     }
     // 사진 크게 보기
     if (t.tagName==='IMG' && t.closest('.th-wrap')) { showImg(t.src); return; }
-    // 특이사항 사진 삭제
-    const spdl = t.closest('.sp-th-del');
-    if (spdl) {
-      e.stopPropagation();
-      const uid=+spdl.dataset.uid, sid=+spdl.dataset.sid, idx=+spdl.dataset.idx;
-      const u=findU(uid); if(!u) return;
-      const s=u.specials.find(s=>s.id===sid); if(s){ s.photos.splice(idx,1); renderAll(); sessionAutoSave(); } return;
-    }
   });
 
   // 파일 업로드 위임
@@ -636,7 +628,7 @@ function updateCustSaveBtnState(unitId) {
 
 // 호수 카드의 저장 버튼 클릭 (이벤트 위임)
 document.addEventListener('click', async e => {
-  // ★ 특이사항 삭제 (document 레벨 - stopPropagation 영향 없음)
+  // ★ 특이사항 삭제 (document 레벨)
   const spDelBtn = e.target.closest('.sp-del');
   if (spDelBtn) {
     e.stopPropagation();
@@ -645,8 +637,22 @@ document.addEventListener('click', async e => {
     const u = findU(uid);
     if (u) {
       u.specials = u.specials.filter(s => s.id !== sid);
-      renderAll();
-      sessionAutoSave();
+      renderAll(); sessionAutoSave();
+    }
+    return;
+  }
+
+  // ★ 특이사항 사진 삭제 (document 레벨)
+  const spPhDel = e.target.closest('.sp-th-del');
+  if (spPhDel) {
+    e.stopPropagation();
+    const uid = +spPhDel.dataset.uid;
+    const sid = +spPhDel.dataset.sid;
+    const idx = +spPhDel.dataset.idx;
+    const u = findU(uid);
+    if (u) {
+      const s = u.specials.find(s => s.id === sid);
+      if (s) { s.photos.splice(idx, 1); renderAll(); sessionAutoSave(); }
     }
     return;
   }
@@ -658,8 +664,7 @@ document.addEventListener('click', async e => {
     const u = findU(+addSpBtn.dataset.uid);
     if (u) {
       u.specials.push({ id: Date.now(), desc: '', photos: [] });
-      renderAll();
-      sessionAutoSave();
+      renderAll(); sessionAutoSave();
     }
     return;
   }

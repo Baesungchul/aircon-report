@@ -134,44 +134,48 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 
 /* 시설 고객 정보 영역 */
 .facility-cust-sec{
-  margin-top:10px;
-  padding:12px;
+  margin-top:8px;
+  padding:8px 10px;
   background:rgba(77,208,225,.06);
   border:1.5px solid var(--ac);
   border-radius:10px;
   width:100%;
   box-sizing:border-box;
 }
-.facility-cust-hdr{
-  font-size:13px;
-  font-weight:700;
-  color:var(--ac);
-  margin-bottom:8px;
+.facility-cust-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
 }
-.facility-cust-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:6px;
+.facility-cust-ic{
+  font-size:14px;
+  flex-shrink:0;
 }
-@media (max-width:480px){
-  .facility-cust-grid{grid-template-columns:1fr;}
+.facility-cust-main{
+  min-width:0;
 }
+.facility-cust-detail{
+  padding-top:4px;
+}
+/* 구버전 호환 - hdr 스타일 */
+.facility-cust-hdr{font-size:13px;font-weight:700;color:var(--ac);margin-bottom:8px;}
+.facility-cust-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+@media (max-width:480px){.facility-cust-grid{grid-template-columns:1fr;}}
+
 .hf{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .hf label{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;font-weight:600;}
 .hf input{background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:7px 9px;color:var(--tx);font-family:inherit;font-size:13px;font-weight:600;width:100%;}
 .hf input:focus{outline:none;border-color:var(--ac);}
 .hf input[type="date"]{font-family:inherit;font-size:12px;letter-spacing:-.3px;padding:7px 6px;font-weight:700;text-align:center;}
-/* 날짜 입력 - 모바일에서 잘리지 않도록 */
 .hf input[type="date"]::-webkit-date-and-time-value{text-align:center;}
 
-/* 버튼 그리드 (4열 균등) */
-.hdr-btns{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:100%;}
+/* ★ 버튼 그리드 - hdr 바깥에 있어서 접기와 무관하게 항상 표시 */
+.hdr-btns{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:100%;padding:6px 12px;box-sizing:border-box;background:var(--hdr);border-top:1px solid rgba(255,255,255,.06);}
 .hdr-btns .btn{min-height:36px;width:100%;justify-content:center;padding:5px 2px;font-size:11px;font-weight:600;letter-spacing:-0.3px;}
 .hdr-btns .co-hdr-btn{min-height:36px;width:100%;font-size:11px;letter-spacing:-0.3px;}
 
-/* 좁은 화면에서는 자동 축소 */
 @media (max-width:600px){
-  .hdr-btns{gap:3px;}
+  .hdr-btns{gap:3px;padding:5px 10px;}
   .hdr-btns .btn,.hdr-btns .co-hdr-btn{font-size:10px;padding:4px 1px;letter-spacing:-0.5px;}
 }
 @media (max-width:380px){

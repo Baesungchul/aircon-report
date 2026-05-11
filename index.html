@@ -60,27 +60,30 @@
 
     <!-- 시설 고객 정보 (공용시설 모드에서만) -->
     <div class="facility-cust-sec" id="facilityCustSec" style="display:none;">
-      <div class="facility-cust-hdr">
-        🏢 시설 고객 정보 <span style="font-size:11px;color:var(--mu);font-weight:400;">(작업 전체에 적용)</span>
+      <div class="facility-cust-row" id="facilityCustToggleRow">
+        <span class="facility-cust-ic">🏢</span>
+        <input class="cust-inp facility-cust-main" type="text" inputmode="tel"
+          placeholder="시설 연락처 (예: 010-1234-5678)" id="facilityPhone" style="flex:1;">
+        <button class="btn b-ghost facility-cust-more-btn" id="facilityCustMoreBtn" style="flex-shrink:0;font-size:11px;padding:4px 8px;">
+          더보기 ▼
+        </button>
       </div>
-      <div class="facility-cust-grid">
-        <input class="cust-inp" type="text" inputmode="tel" placeholder="📞 시설 연락처 (예: 010-1234-5678)" id="facilityPhone">
-        <input class="cust-inp" type="text" placeholder="👤 담당자 (예: 관리자 홍길동)" id="facilityContact">
+      <div class="facility-cust-detail" id="facilityCustDetail" style="display:none;">
+        <input class="cust-inp" type="text" placeholder="👤 담당자" id="facilityContact" style="margin-top:6px;">
+        <input class="cust-inp" type="text" placeholder="🏠 주소 (선택)" id="facilityAddress" style="margin-top:6px;">
+        <textarea class="cust-memo" rows="2" placeholder="💬 메모 (입금정보, 요청사항 등)" id="facilityMemo" style="margin-top:6px;"></textarea>
       </div>
-      <input class="cust-inp" type="text" placeholder="🏠 시설 주소 (선택)" id="facilityAddress" style="margin-top:6px;">
-      <textarea class="cust-memo" rows="2" placeholder="💬 시설 메모 (입금 정보, 요청사항 등)" id="facilityMemo" style="margin-top:6px;"></textarea>
     </div>
+  </div>
 
-    <div class="hdr-btns">
-      <!-- 1행: 데이터 관리 (3열) -->
-      <button class="co-hdr-btn" id="btnSettings" data-i18n="btn.settings">⚙️ 설정</button>
-      <button class="btn b-orange" id="btnNew" data-i18n="btn.newWork">🆕 새작업</button>
-      <button class="btn b-gold" id="btnSave" data-i18n="btn.save">💾 저장</button>
-      <!-- 2행: 보고서 출력 (3열) -->
-      <button class="btn b-blue" id="btnGen" disabled data-i18n="btn.preview">📄 미리보기</button>
-      <button class="btn b-green" id="btnPDF" disabled data-i18n="btn.pdf">⬇️ PDF</button>
-      <button class="btn b-orange" id="btnJPG" disabled data-i18n="btn.jpg">🖼️ JPG</button>
-    </div>
+  <!-- ★ 버튼 영역: 접기 상태에서도 항상 표시 -->
+  <div class="hdr-btns" id="hdrBtns">
+    <button class="co-hdr-btn" id="btnSettings" data-i18n="btn.settings">⚙️ 설정</button>
+    <button class="btn b-orange" id="btnNew" data-i18n="btn.newWork">🆕 새작업</button>
+    <button class="btn b-gold" id="btnSave" data-i18n="btn.save">💾 저장</button>
+    <button class="btn b-blue" id="btnGen" disabled data-i18n="btn.preview">📄 미리보기</button>
+    <button class="btn b-green" id="btnPDF" disabled data-i18n="btn.pdf">⬇️ PDF</button>
+    <button class="btn b-orange" id="btnJPG" disabled data-i18n="btn.jpg">🖼️ JPG</button>
   </div>
 </div>
 
@@ -420,8 +423,7 @@
     </div>
     <div class="rd-body" id="customerBody"></div>
     <div class="rd-foot">
-      <button class="btn b-blue" id="customerOpenAll">📂 모든 작업</button>
-      <button class="btn b-green" id="customerOpenXlsx">📊 엑셀 공유</button>
+      <button class="btn b-green" id="customerOpenXlsx">📊 엑셀 파일 위치</button>
       <button class="btn b-ghost" id="customerCloseFoot">닫기</button>
     </div>
   </div>

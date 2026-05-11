@@ -1,5 +1,5 @@
-// 서비스워커 v76 - 1.122: 2건 특이사항 사진 크기 수정
-const CACHE = 'ac1004-v76';
+// 서비스워커 v79 - 1.125: 저장중 오버레이 제거 + 시설정보 축소 + 버튼 고정
+const CACHE = 'ac1004-v79';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

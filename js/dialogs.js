@@ -1694,10 +1694,10 @@ function renderReorderList() {
       <div class="reorder-list" data-side="${side}">
         ${photos.map((p, idx) => `
           <div class="reorder-item" data-side="${side}" data-idx="${idx}">
-            <div class="reorder-drag-handle">⠿</div>
             <div class="reorder-num">${idx + 1}</div>
             <img class="reorder-thumb" src="${p.dataUrl}" data-fullview="${p.dataUrl}" alt="${label} ${idx+1}">
             <button class="reorder-del" data-side="${side}" data-idx="${idx}" title="삭제">✕</button>
+            <div class="reorder-drag-handle">≡</div>
           </div>`).join('')}
       </div>
     </div>`;
@@ -1736,119 +1736,163 @@ function renderReorderList() {
   bindReorderDrag(body);
 }
 
-/* ── 드래그 순서 변경 (터치 + 마우스) ── */
+/* ── 드래그 순서 변경 (안정적 재작성) ── */
+let _dragCleanup = null;  // 이전 드래그 리스너 정리용
+
 function bindReorderDrag(body) {
-  let _drag = null;      // { side, fromIdx, el, ghost, listEl, startY, lastY }
-  let _overIdx = null;
+  // ★ 이전 드래그 리스너 완전 정리
+  if (_dragCleanup) { _dragCleanup(); _dragCleanup = null; }
 
-  function getItems(side) {
-    return Array.from(body.querySelectorAll(`.reorder-item[data-side="${side}"]`));
-  }
+  let drag = null;  // 드래그 상태
+  let rafId = null; // requestAnimationFrame ID
+  let pendingY = 0; // 최신 Y 좌표
 
+  // ── 고스트 생성 ──
   function createGhost(el) {
     const r = el.getBoundingClientRect();
     const g = el.cloneNode(true);
-    g.style.cssText = `
-      position:fixed;left:${r.left}px;top:${r.top}px;
-      width:${r.width}px;height:${r.height}px;
-      opacity:.8;pointer-events:none;z-index:999;
-      box-shadow:0 8px 24px rgba(0,0,0,.45);
-      border-radius:10px;background:var(--sf);
-      transition:none;
-    `;
-    g.classList.add('reorder-ghost');
+    // 버튼 이벤트 제거
+    g.querySelectorAll('button,input').forEach(b => b.disabled = true);
+    Object.assign(g.style, {
+      position: 'fixed',
+      left: r.left + 'px',
+      top:  r.top  + 'px',
+      width: r.width + 'px',
+      height: r.height + 'px',
+      margin: '0',
+      zIndex: '9999',
+      opacity: '0.85',
+      pointerEvents: 'none',
+      boxShadow: '0 8px 28px rgba(0,0,0,.5)',
+      borderRadius: '10px',
+      background: 'var(--sf)',
+      transform: 'scale(1.02)',
+      transition: 'none',
+      willChange: 'top',
+    });
     document.body.appendChild(g);
-    return g;
+    return { el: g, baseTop: r.top };
   }
 
-  function getClientY(e) {
-    return e.touches ? e.touches[0].clientY : e.clientY;
+  // ── 모든 항목의 중간 Y 계산 ──
+  function getDropIndex(side, clientY) {
+    const items = [...body.querySelectorAll(`.reorder-item[data-side="${side}"]`)];
+    let idx = items.length - 1;
+    for (let i = 0; i < items.length; i++) {
+      const r = items[i].getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) { idx = i; break; }
+    }
+    return idx;
   }
 
+  // ── 드롭 강조 갱신 ──
+  function updateHighlight(side, dropIdx) {
+    body.querySelectorAll('.reorder-item').forEach((el, i) => {
+      const isSide = el.dataset.side === side;
+      const isTarget = isSide && parseInt(el.dataset.idx) === dropIdx && dropIdx !== drag.fromIdx;
+      el.classList.toggle('reorder-over', isTarget);
+    });
+  }
+
+  // ── RAF 루프 ──
+  function rafLoop() {
+    if (!drag) return;
+    const dy = pendingY - drag.startY;
+    drag.ghost.el.style.top = (drag.ghost.baseTop + dy) + 'px';
+    const dropIdx = getDropIndex(drag.side, pendingY);
+    if (dropIdx !== drag.lastDropIdx) {
+      drag.lastDropIdx = dropIdx;
+      updateHighlight(drag.side, dropIdx);
+    }
+    rafId = requestAnimationFrame(rafLoop);
+  }
+
+  // ── 시작 ──
   function onStart(e) {
     const handle = e.target.closest('.reorder-drag-handle');
     if (!handle) return;
-
     const item = handle.closest('.reorder-item');
     if (!item) return;
 
     e.preventDefault();
+    e.stopPropagation();
 
-    const side    = item.dataset.side;
-    const fromIdx = parseInt(item.dataset.idx);
-    const listEl  = body.querySelector(`.reorder-list[data-side="${side}"]`);
-    const ghost   = createGhost(item);
-
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const ghost = createGhost(item);
     item.classList.add('reorder-dragging');
 
-    _drag = {
-      side, fromIdx, el: item, ghost, listEl,
-      startY: getClientY(e),
-      ghostTop: item.getBoundingClientRect().top,
+    drag = {
+      side:        item.dataset.side,
+      fromIdx:     parseInt(item.dataset.idx),
+      el:          item,
+      ghost,
+      startY:      clientY,
+      lastDropIdx: parseInt(item.dataset.idx),
     };
-    _overIdx = fromIdx;
+    pendingY = clientY;
+    rafId = requestAnimationFrame(rafLoop);
   }
 
+  // ── 이동 ──
   function onMove(e) {
-    if (!_drag) return;
+    if (!drag) return;
     e.preventDefault();
-
-    const y = getClientY(e);
-    const dy = y - _drag.startY;
-
-    // 고스트 이동
-    _drag.ghost.style.top = (_drag.ghostTop + dy) + 'px';
-
-    // 어느 슬롯 위에 있는지 판단
-    const items = getItems(_drag.side);
-    let newOver = _drag.fromIdx;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i] === _drag.el) continue;
-      const r = items[i].getBoundingClientRect();
-      const mid = r.top + r.height / 2;
-      if (y > mid) newOver = i;
-    }
-
-    if (newOver !== _overIdx) {
-      _overIdx = newOver;
-      // 플레이스홀더 표시
-      items.forEach((el, i) => {
-        el.classList.toggle('reorder-over', i === _overIdx && i !== _drag.fromIdx);
-      });
-    }
+    pendingY = e.touches ? e.touches[0].clientY : e.clientY;
   }
 
+  // ── 종료 ──
   function onEnd(e) {
-    if (!_drag) return;
+    if (!drag) return;
 
-    _drag.ghost.remove();
-    _drag.el.classList.remove('reorder-dragging');
+    cancelAnimationFrame(rafId); rafId = null;
+
+    // 정리
+    drag.ghost.el.remove();
+    drag.el.classList.remove('reorder-dragging');
     body.querySelectorAll('.reorder-over').forEach(el => el.classList.remove('reorder-over'));
 
-    // 실제 배열 재정렬
-    const photos = _reorderState[_drag.side];
-    if (_overIdx !== _drag.fromIdx) {
-      const [moved] = photos.splice(_drag.fromIdx, 1);
-      photos.splice(_overIdx, 0, moved);
-      // savedToFolder 해제 (순서 바뀌었으니 다시 저장 필요)
+    const dropIdx = drag.lastDropIdx;
+    const fromIdx = drag.fromIdx;
+
+    if (dropIdx !== fromIdx) {
+      const photos = _reorderState[drag.side];
+      const [moved] = photos.splice(fromIdx, 1);
+      photos.splice(dropIdx, 0, moved);
       photos.forEach(p => { p.savedToFolder = false; });
+      renderReorderList();
     }
 
-    _drag = null;
-    _overIdx = null;
-    renderReorderList();
+    drag = null;
   }
 
-  // 터치
-  body.addEventListener('touchstart',  onStart, { passive: false });
-  body.addEventListener('touchmove',   onMove,  { passive: false });
+  // ── 이벤트 등록 ──
+  // 터치: body에만 (passive:false 필수)
+  const touchOpts = { passive: false };
+  body.addEventListener('touchstart',  onStart, touchOpts);
+  body.addEventListener('touchmove',   onMove,  touchOpts);
   body.addEventListener('touchend',    onEnd);
   body.addEventListener('touchcancel', onEnd);
 
-  // 마우스 (데스크톱)
+  // 마우스: move/up은 document에 (드래그가 영역 벗어나도 대응)
   body.addEventListener('mousedown', onStart);
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onEnd);
+  const docMove = e => onMove(e);
+  const docUp   = e => onEnd(e);
+  document.addEventListener('mousemove', docMove);
+  document.addEventListener('mouseup',   docUp);
+
+  // ★ 정리 함수 등록 (모달 닫을 때 호출)
+  _dragCleanup = () => {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    if (drag?.ghost?.el?.parentNode) drag.ghost.el.remove();
+    drag = null;
+    body.removeEventListener('touchstart',  onStart, touchOpts);
+    body.removeEventListener('touchmove',   onMove,  touchOpts);
+    body.removeEventListener('touchend',    onEnd);
+    body.removeEventListener('touchcancel', onEnd);
+    body.removeEventListener('mousedown',   onStart);
+    document.removeEventListener('mousemove', docMove);
+    document.removeEventListener('mouseup',   docUp);
+  };
 }
 
 function openReorderFullView(src) {
@@ -1903,6 +1947,8 @@ function saveReorder() {
 }
 
 function closeReorderModal() {
+  // ★ 드래그 리스너 정리 (메모리 누수 방지)
+  if (_dragCleanup) { _dragCleanup(); _dragCleanup = null; }
   _reorderState = null;
   document.getElementById('reorderModal').classList.remove('open');
 }

@@ -1019,7 +1019,11 @@ async function savePhotosToFolder() {
 /* UTILS */
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function escH(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function showImg(src){document.getElementById('modalImg').src=src;document.getElementById('imgModal').classList.add('open');}
+function showImg(src) {
+  document.getElementById('modalImg').src = src;
+  document.getElementById('imgModal').classList.add('open');
+  history.pushState({ imgModal: true }, '');
+}
 function showOverlay(t){
   document.getElementById('ovTitle').textContent=t;
   document.getElementById('progFl').style.width='0%';

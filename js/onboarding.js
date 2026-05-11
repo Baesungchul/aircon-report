@@ -3,265 +3,189 @@
 ═══════════════════════════════════════════════ */
 
 const ONBOARDING_DONE_KEY = 'ac_onboarding_done_v1';
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 3;
 let _obStep = 1;
+
 let _obData = {
-  industryMajor: '',
-  industryMinor: '',
-  reportTitle: '',
-  unitLabel: '',
-  stageLabel: '',
-  coName: '',
-  coTel: '',
-  coIcon: '',
-  folderSet: false
+  coName: '', coTel: '', coIcon: '❄️',
+  folderSet: false,
 };
 
-// ════════════════════════════════════════
-// 온보딩이 필요한지 확인 + 시작
-// ════════════════════════════════════════
-function checkAndStartOnboarding() {
-  // 이미 완료했으면 스킵
-  if (localStorage.getItem(ONBOARDING_DONE_KEY) === '1') return;
-
-  // 업체정보가 이미 있으면 (기존 사용자) 스킵
-  try {
-    const ci = JSON.parse(localStorage.getItem(CO_KEY) || '{}');
-    if (ci.coName && ci.coName.trim()) {
-      // 기존 사용자 - 온보딩 표시 안 함
-      localStorage.setItem(ONBOARDING_DONE_KEY, '1');
-      return;
-    }
-  } catch(e) {}
-
-  // 첫 사용자 - 온보딩 시작 (페이지 로드 후 약간 지연)
-  setTimeout(() => startOnboarding(), 500);
-}
-
-function startOnboarding() {
+function showOnboarding() {
   _obStep = 1;
-  _obData = {
-    industryMajor: '',
-    industryMinor: '',
-    reportTitle: '',
-    unitLabel: '',
-    stageLabel: '',
-    coName: '',
-    coTel: '',
-    coIcon: '',
-    folderSet: false
-  };
-  document.getElementById('onboardingModal').classList.add('open');
+  _obData = { coName: '', coTel: '', coIcon: '❄️', folderSet: false };
   renderOnboardingStep();
+  document.getElementById('onboardingModal').classList.add('open');
 }
 
-function closeOnboarding(completed) {
+function hideOnboarding() {
   document.getElementById('onboardingModal').classList.remove('open');
-  if (completed) {
-    localStorage.setItem(ONBOARDING_DONE_KEY, '1');
-  }
 }
 
-// ════════════════════════════════════════
-// 단계별 콘텐츠 렌더
-// ════════════════════════════════════════
 function renderOnboardingStep() {
-  const content = document.getElementById('obContent');
-  const counter = document.getElementById('obStepCounter');
-  const progressBar = document.getElementById('obProgressBar');
-  const prevBtn = document.getElementById('obPrev');
-  const nextBtn = document.getElementById('obNext');
+  const content     = document.getElementById('obContent');
+  const counter     = document.getElementById('obStepCounter');
+  const progressBar = document.getElementById('obProgress');
+  const prevBtn     = document.getElementById('obPrev');
+  const nextBtn     = document.getElementById('obNext');
+
+  if (!content) return;
 
   counter.textContent = `${_obStep} / ${TOTAL_STEPS}`;
   progressBar.style.width = `${(_obStep / TOTAL_STEPS) * 100}%`;
   prevBtn.style.display = _obStep > 1 ? 'inline-flex' : 'none';
 
   if (_obStep === TOTAL_STEPS) {
-    nextBtn.textContent = '✓ 시작하기';
+    nextBtn.textContent = '시작하기 🚀';
     nextBtn.className = 'btn b-green';
   } else {
     nextBtn.textContent = '다음 →';
     nextBtn.className = 'btn b-blue';
   }
 
-  // 단계별 화면
   switch (_obStep) {
-    case 1: renderStep1Welcome(content); break;
-    case 2: renderStep2Industry(content); break;
-    case 3: renderStep3Company(content); break;
-    case 4: renderStep4Folder(content); break;
-    case 5: renderStep5Done(content); break;
+    case 1: renderStep1Intro(content); break;
+    case 2: renderStep2HowTo(content); break;
+    case 3: renderStep3Setup(content); break;
   }
 }
 
-// 1단계: 환영
-function renderStep1Welcome(c) {
+// ─── 1단계: 소개 ───────────────────────────────────
+function renderStep1Intro(c) {
   c.innerHTML = `
     <div class="ob-step ob-welcome">
-      <div class="ob-icon-big">📋</div>
-      <h2 class="ob-title">작업 보고서 생성기</h2>
-      <p class="ob-subtitle">현장 사진과 작업 내역을 깔끔한 보고서로</p>
+      <div class="ob-icon-big">❄️</div>
+      <h2 class="ob-title">에어컨 작업 보고서</h2>
+      <p class="ob-subtitle">현장 사진 + 작업 내역을 전문 보고서로<br>고객 관리까지 한번에</p>
 
       <div class="ob-features">
         <div class="ob-feature">
           <div class="ob-feature-ic">📸</div>
           <div>
-            <div class="ob-feature-name">사진 자동 정리</div>
-            <div class="ob-feature-desc">작업 전/후 사진을 한 번에</div>
+            <div class="ob-feature-name">작업 전·후 사진 정리</div>
+            <div class="ob-feature-desc">호수별로 깔끔하게 분류</div>
           </div>
         </div>
         <div class="ob-feature">
           <div class="ob-feature-ic">📄</div>
           <div>
-            <div class="ob-feature-name">PDF 즉시 생성</div>
-            <div class="ob-feature-desc">전문적인 보고서 출력</div>
+            <div class="ob-feature-name">PDF · JPG 보고서</div>
+            <div class="ob-feature-desc">전문적인 보고서 즉시 출력</div>
           </div>
         </div>
         <div class="ob-feature">
           <div class="ob-feature-ic">👥</div>
           <div>
             <div class="ob-feature-name">고객 자동 관리</div>
-            <div class="ob-feature-desc">전화번호로 재의뢰 추적</div>
+            <div class="ob-feature-desc">전화번호로 방문 이력 추적</div>
           </div>
         </div>
         <div class="ob-feature">
           <div class="ob-feature-ic">💾</div>
           <div>
-            <div class="ob-feature-name">자동 저장</div>
-            <div class="ob-feature-desc">선택한 폴더에 자동 백업</div>
+            <div class="ob-feature-name">자동 저장 · 백업</div>
+            <div class="ob-feature-desc">내 폴더에 사진·데이터 보관</div>
+          </div>
+        </div>
+        <div class="ob-feature">
+          <div class="ob-feature-ic">🏢</div>
+          <div>
+            <div class="ob-feature-name">가정용 · 공용시설</div>
+            <div class="ob-feature-desc">작업 유형별 최적화</div>
+          </div>
+        </div>
+        <div class="ob-feature">
+          <div class="ob-feature-ic">⚠️</div>
+          <div>
+            <div class="ob-feature-name">특이사항 보고서</div>
+            <div class="ob-feature-desc">사진 + 메모 별도 페이지</div>
           </div>
         </div>
       </div>
 
-      <p class="ob-hint">간단한 5단계로 설정해드릴게요. 1분이면 됩니다!</p>
-    </div>
-  `;
+      <p class="ob-hint">3단계로 빠르게 시작해요 👉</p>
+    </div>`;
 }
 
-// 2단계: 업종 선택 (가장 중요)
-function renderStep2Industry(c) {
+// ─── 2단계: 사용법 ─────────────────────────────────
+function renderStep2HowTo(c) {
   c.innerHTML = `
     <div class="ob-step">
-      <h2 class="ob-title">어떤 업종이세요?</h2>
-      <p class="ob-subtitle">업종에 맞춰 보고서를 자동 세팅합니다</p>
+      <h2 class="ob-title">이렇게 사용하세요</h2>
+      <p class="ob-subtitle">4단계로 보고서 완성</p>
 
-      <div class="ob-form">
-        <div class="ob-field">
-          <label>대분류</label>
-          <select class="ob-input" id="obMajor">
-            <option value="">선택하세요</option>
-          </select>
-        </div>
-
-        <div class="ob-field">
-          <label>소분류</label>
-          <select class="ob-input" id="obMinor" disabled>
-            <option value="">먼저 대분류를 선택하세요</option>
-          </select>
-        </div>
-
-        <div id="obIndustryPreview" style="display:none;background:rgba(77,208,225,.1);border:1px solid rgba(77,208,225,.3);border-radius:10px;padding:12px;margin-top:10px;">
-          <div style="font-size:12px;color:var(--ac);font-weight:700;margin-bottom:6px;">✨ 자동 설정될 항목</div>
-          <div style="font-size:13px;line-height:1.7;">
-            <div>📄 보고서 제목: <b id="obPreviewTitle">-</b></div>
-            <div>🏷️ 현장 호칭: <b id="obPreviewUnit">-</b></div>
-            <div>🔧 작업 단계: <b id="obPreviewStage">-</b></div>
+      <div class="ob-howto-list">
+        <div class="ob-howto-item">
+          <div class="ob-howto-num">1</div>
+          <div class="ob-howto-body">
+            <div class="ob-howto-title">호수 추가</div>
+            <div class="ob-howto-desc">
+              작업명(아파트명)과 날짜 입력 후<br>
+              <b>➕ 추가</b>로 호수를 입력해요.<br>
+              <span class="ob-tip">💡 일괄 추가로 여러 호수를 한번에!</span>
+            </div>
           </div>
         </div>
 
-        <p class="ob-hint" style="margin-top:14px;">
-          나중에 설정에서 자유롭게 수정할 수 있어요
-        </p>
+        <div class="ob-howto-arrow">↓</div>
+
+        <div class="ob-howto-item">
+          <div class="ob-howto-num">2</div>
+          <div class="ob-howto-body">
+            <div class="ob-howto-title">사진 추가</div>
+            <div class="ob-howto-desc">
+              호수 카드를 펼쳐<br>
+              <b>📷 카메라</b> 또는 <b>🖼 갤러리</b>로<br>
+              작업 전·후 사진을 넣어요.<br>
+              <span class="ob-tip">💡 특이사항도 사진+메모로 기록!</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ob-howto-arrow">↓</div>
+
+        <div class="ob-howto-item">
+          <div class="ob-howto-num">3</div>
+          <div class="ob-howto-body">
+            <div class="ob-howto-title">저장</div>
+            <div class="ob-howto-desc">
+              <b>💾 저장</b> 버튼으로 폴더에 저장.<br>
+              고객 전화번호 입력 시<br>재의뢰 이력이 자동 관리돼요.<br>
+              <span class="ob-tip">💡 새작업 누르면 이전 작업 자동 저장!</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ob-howto-arrow">↓</div>
+
+        <div class="ob-howto-item">
+          <div class="ob-howto-num">4</div>
+          <div class="ob-howto-body">
+            <div class="ob-howto-title">보고서 출력</div>
+            <div class="ob-howto-desc">
+              <b>📄 미리보기</b> 확인 후<br>
+              <b>⬇️ PDF</b> 또는 <b>🖼️ JPG</b>로 저장·공유.<br>
+              <span class="ob-tip">💡 작업 기록(📋)에서 과거 작업 불러오기!</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  `;
-
-  // 대분류 채우기
-  const majorSel = document.getElementById('obMajor');
-  if (typeof INDUSTRIES !== 'undefined') {
-    INDUSTRIES.forEach(major => {
-      const opt = document.createElement('option');
-      opt.value = major.id;
-      opt.textContent = major.label;
-      majorSel.appendChild(opt);
-    });
-  }
-
-  // 저장된 값 복원
-  if (_obData.industryMajor) {
-    majorSel.value = _obData.industryMajor;
-    updateOnboardingMinor(_obData.industryMajor, _obData.industryMinor);
-  }
-
-  // 이벤트
-  majorSel.addEventListener('change', () => {
-    _obData.industryMajor = majorSel.value;
-    _obData.industryMinor = '';
-    updateOnboardingMinor(majorSel.value, '');
-  });
-
-  document.getElementById('obMinor').addEventListener('change', e => {
-    _obData.industryMinor = e.target.value;
-    const item = findIndustryItem(_obData.industryMajor, e.target.value);
-    if (item) {
-      _obData.reportTitle = item.title;
-      _obData.unitLabel = item.unit;
-      _obData.stageLabel = item.stage;
-      // 미리보기 표시
-      document.getElementById('obIndustryPreview').style.display = 'block';
-      document.getElementById('obPreviewTitle').textContent = item.title;
-      document.getElementById('obPreviewUnit').textContent = item.unit;
-      document.getElementById('obPreviewStage').textContent = item.stage;
-    } else {
-      document.getElementById('obIndustryPreview').style.display = 'none';
-    }
-  });
+    </div>`;
 }
 
-function updateOnboardingMinor(majorId, currentMinorId) {
-  const minorSel = document.getElementById('obMinor');
-  if (!minorSel) return;
-  minorSel.innerHTML = '';
+// ─── 3단계: 세팅 ───────────────────────────────────
+function renderStep3Setup(c) {
+  const hasFolder = (typeof photoFolderHandle !== 'undefined' && photoFolderHandle);
 
-  if (!majorId) {
-    minorSel.innerHTML = '<option value="">먼저 대분류를 선택하세요</option>';
-    minorSel.disabled = true;
-    return;
-  }
-
-  const major = INDUSTRIES.find(i => i.id === majorId);
-  if (!major || major.items.length === 0) {
-    minorSel.innerHTML = '<option value="">(직접 입력)</option>';
-    minorSel.disabled = false;
-    return;
-  }
-
-  minorSel.disabled = false;
-  minorSel.innerHTML = '<option value="">소분류 선택</option>';
-  major.items.forEach(item => {
-    const opt = document.createElement('option');
-    opt.value = item.id;
-    opt.textContent = item.label;
-    minorSel.appendChild(opt);
-  });
-
-  if (currentMinorId) {
-    minorSel.value = currentMinorId;
-    minorSel.dispatchEvent(new Event('change'));
-  }
-}
-
-// 3단계: 업체 정보
-function renderStep3Company(c) {
   c.innerHTML = `
     <div class="ob-step">
-      <h2 class="ob-title">업체 정보</h2>
-      <p class="ob-subtitle">보고서 표지에 표시됩니다</p>
+      <h2 class="ob-title">기본 설정</h2>
+      <p class="ob-subtitle">보고서에 표시될 업체 정보를 입력해요</p>
 
       <div class="ob-form">
         <div class="ob-field">
           <label>업체 아이콘</label>
-          <div class="ob-icon-picker">
+          <div class="ob-icon-grid">
             <button class="ob-icon-opt" data-ic="❄️">❄️</button>
             <button class="ob-icon-opt" data-ic="🔧">🔧</button>
             <button class="ob-icon-opt" data-ic="🏠">🏠</button>
@@ -275,20 +199,30 @@ function renderStep3Company(c) {
 
         <div class="ob-field">
           <label>업체명 <span style="color:var(--dn);">*</span></label>
-          <input class="ob-input" id="obCoName" type="text" placeholder="예: 평택에어컨1004" value="${_obData.coName || ''}">
+          <input class="ob-input" id="obCoName" type="text"
+            placeholder="예: 평택에어컨1004" value="${_obData.coName || ''}">
         </div>
 
         <div class="ob-field">
           <label>대표 연락처</label>
-          <input class="ob-input" id="obCoTel" type="text" inputmode="tel" placeholder="010-1234-5678" value="${_obData.coTel || ''}">
+          <input class="ob-input" id="obCoTel" type="text" inputmode="tel"
+            placeholder="010-1234-5678" value="${_obData.coTel || ''}">
         </div>
 
-        <p class="ob-hint">나머지 정보(주소/이메일/소개 등)는 나중에 설정에서 추가할 수 있어요</p>
+        <div class="ob-field">
+          <label>저장 폴더 <span style="color:var(--mu);font-size:11px;">(선택)</span></label>
+          <button class="btn ${hasFolder ? 'b-green' : 'b-blue'}" id="obSelectFolder"
+            style="width:100%;justify-content:center;padding:11px;">
+            ${hasFolder ? `✅ ${escHtml(photoFolderHandle.name)}` : '📁 폴더 선택하기'}
+          </button>
+          <p style="font-size:11px;color:var(--mu);margin:4px 0 0;">
+            사진·데이터를 자동 저장할 폴더. 나중에 설정에서도 가능.
+          </p>
+        </div>
       </div>
-    </div>
-  `;
+    </div>`;
 
-  // 아이콘 선택 (기존 선택 표시)
+  // 아이콘 선택
   document.querySelectorAll('.ob-icon-opt').forEach(btn => {
     if (btn.dataset.ic === _obData.coIcon) btn.classList.add('selected');
     btn.addEventListener('click', () => {
@@ -299,74 +233,28 @@ function renderStep3Company(c) {
   });
 
   // 입력 저장
-  document.getElementById('obCoName').addEventListener('input', e => {
-    _obData.coName = e.target.value;
-  });
-
+  document.getElementById('obCoName').addEventListener('input', e => { _obData.coName = e.target.value; });
   document.getElementById('obCoTel').addEventListener('input', e => {
-    // 자동 하이픈
     const raw = e.target.value.replace(/[^\d]/g, '');
-    let formatted = e.target.value;
-    if (raw.length === 11 && raw.startsWith('010')) formatted = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7)}`;
-    else if (raw.length === 10 && raw.startsWith('02')) formatted = `${raw.slice(0,2)}-${raw.slice(2,6)}-${raw.slice(6)}`;
-    else if (raw.length === 11) formatted = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7)}`;
-    else if (raw.length === 10) formatted = `${raw.slice(0,3)}-${raw.slice(3,6)}-${raw.slice(6)}`;
-    if (formatted !== e.target.value) {
-      e.target.value = formatted;
-    }
+    let fmt = e.target.value;
+    if (raw.length === 11) fmt = `${raw.slice(0,3)}-${raw.slice(3,7)}-${raw.slice(7)}`;
+    else if (raw.length === 10) fmt = `${raw.slice(0,3)}-${raw.slice(3,6)}-${raw.slice(6)}`;
+    if (fmt !== e.target.value) e.target.value = fmt;
     _obData.coTel = e.target.value;
   });
-}
 
-// 4단계: 저장 폴더 (선택)
-function renderStep4Folder(c) {
-  const hasFolder = (typeof photoFolderHandle !== 'undefined' && photoFolderHandle);
-
-  c.innerHTML = `
-    <div class="ob-step">
-      <h2 class="ob-title">저장 폴더 설정 <span style="color:var(--mu);font-size:14px;font-weight:400;">(선택)</span></h2>
-      <p class="ob-subtitle">사진과 데이터를 자동 저장할 폴더를 선택하세요</p>
-
-      <div class="ob-form">
-        <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:14px;">
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px;">💾 폴더 설정 시 자동으로:</div>
-          <ul style="font-size:13px;line-height:1.8;color:var(--tx);margin:0;padding-left:20px;">
-            <li>호수별로 작업 사진 폴더 생성</li>
-            <li>고객 정보를 customers.xlsx로 저장</li>
-            <li>PDF/JPG 보고서를 같은 폴더에 저장</li>
-            <li>폰 바꿔도 폴더 옮기면 데이터 유지</li>
-          </ul>
-        </div>
-
-        <button class="btn b-blue" id="obSelectFolder" style="width:100%;justify-content:center;padding:12px;">
-          ${hasFolder ? `✅ 설정됨: ${escHtml(photoFolderHandle.name)}` : '📁 폴더 선택하기'}
-        </button>
-
-        <p class="ob-hint" style="margin-top:14px;">
-          지금 설정하지 않아도 됩니다. 나중에 설정 → 저장 폴더에서 가능
-        </p>
-
-        ${!('showDirectoryPicker' in window) ? `
-          <div style="background:rgba(240,180,41,.1);border:1px solid rgba(240,180,41,.3);border-radius:8px;padding:10px;margin-top:14px;font-size:12px;color:var(--wn);">
-            ⚠️ 이 브라우저는 폴더 선택을 지원하지 않습니다.<br>
-            크롬(안드로이드/PC)에서 사용하시면 폴더 자동저장이 가능합니다.
-          </div>
-        ` : ''}
-      </div>
-    </div>
-  `;
-
-  const btn = document.getElementById('obSelectFolder');
-  if (btn && 'showDirectoryPicker' in window) {
-    btn.addEventListener('click', async () => {
+  // 폴더 선택
+  const folderBtn = document.getElementById('obSelectFolder');
+  if (folderBtn && 'showDirectoryPicker' in window) {
+    folderBtn.addEventListener('click', async () => {
       try {
         if (typeof selectPhotoFolder === 'function') {
           await selectPhotoFolder();
-          _obData.folderSet = !!photoFolderHandle;
-          // 버튼 텍스트 갱신
           if (photoFolderHandle) {
-            btn.innerHTML = `✅ 설정됨: ${escHtml(photoFolderHandle.name)}`;
-            btn.className = 'btn b-green';
+            folderBtn.textContent = `✅ ${escHtml(photoFolderHandle.name)}`;
+            folderBtn.className = 'btn b-green';
+            folderBtn.style.cssText = 'width:100%;justify-content:center;padding:11px;';
+            _obData.folderSet = true;
           }
         }
       } catch(e) { console.warn('폴더 선택 실패:', e); }
@@ -374,79 +262,35 @@ function renderStep4Folder(c) {
   }
 }
 
-// 5단계: 완료
-function renderStep5Done(c) {
-  const summary = [];
-  if (_obData.industryMinor) {
-    const item = findIndustryItem(_obData.industryMajor, _obData.industryMinor);
-    if (item) summary.push(`✅ 업종: <b>${item.label}</b>`);
-  }
-  if (_obData.coName) summary.push(`✅ 업체명: <b>${escHtml(_obData.coName)}</b>`);
-  if (_obData.coTel)  summary.push(`✅ 연락처: <b>${escHtml(_obData.coTel)}</b>`);
-  if (_obData.folderSet) summary.push(`✅ 저장 폴더: <b>설정됨</b>`);
-
-  c.innerHTML = `
-    <div class="ob-step ob-done">
-      <div class="ob-icon-big" style="animation:obBounce .6s ease;">🎉</div>
-      <h2 class="ob-title">준비 완료!</h2>
-      <p class="ob-subtitle">설정한 내용으로 시작합니다</p>
-
-      ${summary.length > 0 ? `
-        <div style="background:rgba(0,201,167,.1);border:1px solid rgba(0,201,167,.3);border-radius:10px;padding:14px;text-align:left;margin:20px 0;">
-          ${summary.map(s => `<div style="font-size:13px;line-height:1.8;">${s}</div>`).join('')}
-        </div>
-      ` : ''}
-
-      <div style="background:var(--sf2);border-radius:10px;padding:14px;margin-top:10px;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">🚀 시작하는 방법</div>
-        <ol style="font-size:13px;line-height:1.7;color:var(--tx);margin:0;padding-left:20px;">
-          <li>"+추가" 버튼으로 첫 호수 입력</li>
-          <li>호수 카드 펼쳐서 사진 추가</li>
-          <li>📄 미리보기 → PDF/JPG로 보고서 생성</li>
-        </ol>
-      </div>
-    </div>
-  `;
-}
-
 // HTML escape
 function escHtml(s) {
   if (!s) return '';
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[c]));
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 // ════════════════════════════════════════
 // 다음/이전 버튼 처리
 // ════════════════════════════════════════
 function onboardingNext() {
-  // 단계 검증
-  if (_obStep === 3) {
-    if (!_obData.coName || !_obData.coName.trim()) {
-      showToast('업체명을 입력해주세요', 'err');
-      return;
-    }
+  // 3단계 완료 → 설정 적용 후 시작
+  if (_obStep === TOTAL_STEPS) {
+    applyOnboardingSettings();
+    localStorage.setItem(ONBOARDING_DONE_KEY, '1');
+    hideOnboarding();
+    return;
   }
-
-  if (_obStep < TOTAL_STEPS) {
-    _obStep++;
-    renderOnboardingStep();
-  } else {
-    finishOnboarding();
-  }
+  _obStep++;
+  renderOnboardingStep();
 }
 
 function onboardingPrev() {
-  if (_obStep > 1) {
-    _obStep--;
-    renderOnboardingStep();
-  }
+  if (_obStep > 1) { _obStep--; renderOnboardingStep(); }
 }
 
-// ════════════════════════════════════════
-// 완료 시 - 모든 설정 적용
-// ════════════════════════════════════════
+// applyOnboardingSettings → finishOnboarding 래퍼
+function applyOnboardingSettings() { finishOnboarding(); }
+
 async function finishOnboarding() {
   try {
     // 1. 업체정보 저장

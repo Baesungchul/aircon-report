@@ -106,8 +106,29 @@ function bindAll() {
     btn.textContent = isOpen ? '더보기 ▼' : '접기 ▲';
   });
 
-  // 저장/불러오기
-  document.getElementById('btnNew').addEventListener('click', newWork);
+  // ★ 뒤로가기(Android 물리버튼) 통합 처리
+  window.addEventListener('popstate', () => {
+    // 1) 순서편집 전체화면
+    const rfv = document.getElementById('reorderFullView');
+    if (rfv && rfv.classList.contains('open')) {
+      rfv.classList.remove('open');
+      return;
+    }
+    // 2) 사진 크게보기
+    const imgM = document.getElementById('imgModal');
+    if (imgM && imgM.classList.contains('open')) {
+      imgM.classList.remove('open');
+      return;
+    }
+    // 3) 열린 모달 닫기 (작업기록, 불러오기 등)
+    const openModal = document.querySelector(
+      '.sl-modal.open, #customerModal.open, #reorderModal.open, #settingsModal.open, #pvModal.open'
+    );
+    if (openModal) {
+      openModal.classList.remove('open');
+      return;
+    }
+  });
   document.getElementById('btnSave').addEventListener('click', handleSaveClick);
   document.getElementById('btnLoad')?.addEventListener('click', openLoadList);
 
@@ -186,8 +207,15 @@ function bindAll() {
   document.getElementById('btnPvZoomOut')?.addEventListener('click', () => setPvZoom(_pvZoom - 0.2));
 
   // 이미지 모달
-  document.getElementById('imgX').addEventListener('click', ()=>document.getElementById('imgModal').classList.remove('open'));
-  document.getElementById('imgModal').addEventListener('click', e=>{ if(e.target===document.getElementById('imgModal')) document.getElementById('imgModal').classList.remove('open'); });
+  function closeImgModal() {
+    const m = document.getElementById('imgModal');
+    m.classList.remove('open');
+    if (history.state?.imgModal) history.back();
+  }
+  document.getElementById('imgX').addEventListener('click', closeImgModal);
+  document.getElementById('imgModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('imgModal')) closeImgModal();
+  });
 
   // 유닛 리스트 이벤트 위임
   const ul = document.getElementById('uList');

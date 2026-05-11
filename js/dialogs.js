@@ -1902,11 +1902,19 @@ function openReorderFullView(src) {
     fv.id = 'reorderFullView';
     fv.className = 'reorder-fullview';
     fv.innerHTML = `<img id="reorderFullImg" src="" alt="전체화면">`;
-    fv.addEventListener('click', () => fv.classList.remove('open'));
+    fv.addEventListener('click', () => closeReorderFullView());
     document.body.appendChild(fv);
   }
   document.getElementById('reorderFullImg').src = src;
   fv.classList.add('open');
+  history.pushState({ reorderFullView: true }, '');
+}
+
+function closeReorderFullView() {
+  const fv = document.getElementById('reorderFullView');
+  if (!fv || !fv.classList.contains('open')) return;
+  fv.classList.remove('open');
+  if (history.state?.reorderFullView) history.back();
 }
 
 function moveReorderItem(side, idx, direction) {

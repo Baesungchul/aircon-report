@@ -1,5 +1,5 @@
-// 서비스워커 v72 - 1.118: 불러오기 모달 즉시 표시 (3초 지연 수정)
-const CACHE = 'ac1004-v72';
+// 서비스워커 v74 - 1.120: 특이사항 삭제 수정 + 보고서 사진 1열 + 메모 표시
+const CACHE = 'ac1004-v74';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

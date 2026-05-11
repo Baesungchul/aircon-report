@@ -1,5 +1,5 @@
-// 서비스워커 v87 - 1.133: 온보딩 obProgress → obProgressBar ID 수정
-const CACHE = 'ac1004-v87';
+// 서비스워커 v88 - 1.134: 건너뛰기 수정 + 사용법 상세화
+const CACHE = 'ac1004-v88';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

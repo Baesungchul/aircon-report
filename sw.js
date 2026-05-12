@@ -1,5 +1,5 @@
-// 서비스워커 v93 - 1.139: 온보딩 7페이지 슬라이드 + 번호 말풍선
-const CACHE = 'ac1004-v93';
+// 서비스워커 v94 - 1.140: 온보딩 렌더 안정화 + 작업기록 백그라운드 캐시
+const CACHE = 'ac1004-v94';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

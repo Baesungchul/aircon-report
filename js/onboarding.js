@@ -48,22 +48,32 @@ function renderOnboardingStep() {
   const progressBar = document.getElementById('obProgressBar');
   const prevBtn     = document.getElementById('obPrev');
   const nextBtn     = document.getElementById('obNext');
-  if (!content) return;
+  if (!content) {
+    console.warn('[온보딩] obContent를 찾을 수 없음');
+    return;
+  }
 
-  counter.textContent = `${_obStep} / ${total}`;
-  progressBar.style.width = `${(_obStep / total) * 100}%`;
-  prevBtn.style.display = _obStep > 1 ? 'inline-flex' : 'none';
-  nextBtn.textContent = _obStep === total ? '시작하기 🚀' : '다음 →';
-  nextBtn.className   = _obStep === total ? 'btn b-green' : 'btn b-blue';
+  if (counter)     counter.textContent = `${_obStep} / ${total}`;
+  if (progressBar) progressBar.style.width = `${(_obStep / total) * 100}%`;
+  if (prevBtn)     prevBtn.style.display = _obStep > 1 ? 'inline-flex' : 'none';
+  if (nextBtn) {
+    nextBtn.textContent = _obStep === total ? '시작하기 🚀' : '다음 →';
+    nextBtn.className   = _obStep === total ? 'btn b-green' : 'btn b-blue';
+  }
 
-  content.style.opacity = '0';
-  content.style.transform = 'translateX(16px)';
-  setTimeout(() => {
+  try {
+    // 첫 렌더는 즉시 (setTimeout 제거 - 슬라이드 미표시 버그 해결)
     slides[_obStep - 1].render(content);
     content.style.transition = 'opacity .2s, transform .2s';
     content.style.opacity = '1';
     content.style.transform = 'translateX(0)';
-  }, 70);
+  } catch(e) {
+    console.error('[온보딩] 렌더 실패:', e);
+    content.innerHTML = `<div style="padding:20px;text-align:center;">
+      <div style="font-size:13px;color:var(--mu);">화면을 그리는 중 오류가 발생했습니다.</div>
+      <div style="font-size:11px;color:var(--mu);margin-top:8px;">${e.message}</div>
+    </div>`;
+  }
 }
 
 function onboardingNext() {

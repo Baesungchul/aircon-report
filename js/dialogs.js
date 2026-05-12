@@ -372,6 +372,10 @@ async function saveToFolder(opts) {
     if (typeof invalidateCustomersCache === 'function') {
       invalidateCustomersCache();
     }
+    // ★ 작업기록 캐시 무효화 + 백그라운드 재빌드
+    if (typeof invalidateRecordsCache === 'function') {
+      invalidateRecordsCache();
+    }
   } else {
     if (!isAutoSave) {
       showToast('저장 실패: 작업 정보를 저장하지 못했습니다', 'err');

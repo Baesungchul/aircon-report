@@ -270,21 +270,45 @@ async function renderCustomerList() {
   const body = document.getElementById('customerBody');
   if (!body) return;
 
-  // ★ 첫 로딩 시 (캐시 없음)에만 로딩 표시
-  if (!body.querySelector('.cust-card') && !body.querySelector('.cust-card-work')) {
-    body.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--mu);">
-      <div style="font-size:24px;margin-bottom:12px;">⏳</div>
-      <div>작업 기록 불러오는 중...</div>
-    </div>`;
+  // ★ 현재 기간 계산 (캐시 키 결정용)
+  let currentDays = null;
+  if (_customerUseDefault) {
+    currentDays = 3;  // 기본은 3일
+  } else if (_customerDateFrom) {
+    const from = new Date(_customerDateFrom);
+    const now = new Date();
+    currentDays = Math.ceil((now - from) / (1000 * 60 * 60 * 24));
+  } else {
+    currentDays = 999;  // 전체
   }
 
-  // ★ 통합 데이터 로딩
-  let items = [];
-  try {
-    items = await loadCombinedRecords();
-  } catch(e) {
-    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--mu);">목록 로드 실패: ${e.message}</div>`;
-    return;
+  // ★ 캐시에서 즉시 표시 (있으면)
+  let items = null;
+  if (typeof getRecordsFromCache === 'function') {
+    items = getRecordsFromCache(currentDays);
+  }
+
+  // 캐시 없으면 로딩 표시 후 직접 로드
+  if (!items) {
+    if (!body.querySelector('.cust-card') && !body.querySelector('.cust-card-work')) {
+      body.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--mu);">
+        <div style="font-size:24px;margin-bottom:12px;">⏳</div>
+        <div>작업 기록 불러오는 중...</div>
+      </div>`;
+    }
+    try {
+      items = await loadCombinedRecords();
+    } catch(e) {
+      body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--mu);">목록 로드 실패: ${e.message}</div>`;
+      return;
+    }
+  }
+
+  // 캐시가 오래되면 백그라운드에서 갱신 (사용자는 일단 캐시 데이터 봄)
+  if (typeof isRecordsCacheFresh === 'function' && !isRecordsCacheFresh(currentDays, 120000)) {
+    if (typeof scheduleBackgroundBuild === 'function') {
+      scheduleBackgroundBuild();
+    }
   }
 
   // 기간 필터

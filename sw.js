@@ -1,5 +1,5 @@
-// 서비스워커 v94 - 1.140: 온보딩 렌더 안정화 + 작업기록 백그라운드 캐시
-const CACHE = 'ac1004-v94';
+// 서비스워커 v95 - 1.141: 새작업 유지 + 불러오기 타임아웃 + 고객정보 공유 + 저장 피드백
+const CACHE = 'ac1004-v95';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

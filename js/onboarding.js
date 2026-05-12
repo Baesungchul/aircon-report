@@ -53,6 +53,9 @@ function renderOnboardingStep() {
     return;
   }
 
+  // ★ 이전 inline 스타일 모두 초기화 (이전 애니메이션 잔재 제거)
+  content.style.cssText = '';
+
   if (counter)     counter.textContent = `${_obStep} / ${total}`;
   if (progressBar) progressBar.style.width = `${(_obStep / total) * 100}%`;
   if (prevBtn)     prevBtn.style.display = _obStep > 1 ? 'inline-flex' : 'none';
@@ -62,16 +65,13 @@ function renderOnboardingStep() {
   }
 
   try {
-    // 첫 렌더는 즉시 (setTimeout 제거 - 슬라이드 미표시 버그 해결)
     slides[_obStep - 1].render(content);
-    content.style.transition = 'opacity .2s, transform .2s';
-    content.style.opacity = '1';
-    content.style.transform = 'translateX(0)';
+    console.log(`[온보딩] 슬라이드 ${_obStep}/${total} 렌더 완료`);
   } catch(e) {
     console.error('[온보딩] 렌더 실패:', e);
-    content.innerHTML = `<div style="padding:20px;text-align:center;">
-      <div style="font-size:13px;color:var(--mu);">화면을 그리는 중 오류가 발생했습니다.</div>
-      <div style="font-size:11px;color:var(--mu);margin-top:8px;">${e.message}</div>
+    content.innerHTML = `<div style="padding:20px;text-align:center;color:var(--tx);">
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px;">화면 표시 오류</div>
+      <div style="font-size:11px;color:var(--mu);">${e.message}</div>
     </div>`;
   }
 }

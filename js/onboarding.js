@@ -490,47 +490,64 @@ async function applyOnboardingSettings() {
 
 /* ── 체크 + 이벤트 ── */
 function checkAndStartOnboarding() {
-  if (safeGetItem(ONBOARDING_DONE_KEY) === '1') return;
-  setTimeout(() => showOnboarding(), 300);
+  const done = safeGetItem(ONBOARDING_DONE_KEY);
+  console.log('[온보딩] DONE_KEY 값:', done);
+  if (done === '1') {
+    console.log('[온보딩] 이미 완료됨 - 스킵');
+    return;
+  }
+  console.log('[온보딩] 시작 예약 (300ms 후)');
+  setTimeout(() => {
+    console.log('[온보딩] 시작!');
+    showOnboarding();
+  }, 300);
 }
 
 function bindOnboardingEvents() {
-  document.getElementById('obNext')?.addEventListener('click', onboardingNext);
-  document.getElementById('obPrev')?.addEventListener('click', onboardingPrev);
-  document.getElementById('obSkip')?.addEventListener('click', () => closeOnboarding(true));
+  console.log('[온보딩] bindOnboardingEvents 호출');
+  const next = document.getElementById('obNext');
+  const prev = document.getElementById('obPrev');
+  const skip = document.getElementById('obSkip');
+  console.log('[온보딩] 버튼 존재 여부:', { next: !!next, prev: !!prev, skip: !!skip });
 
-  // ★ 초기 설정 다시 하기 (같은 컨텍스트에서 바인딩)
-  const replayBtn = document.getElementById('setReplayOnboarding');
-  if (replayBtn) {
-    replayBtn.addEventListener('click', () => {
-      console.log('[온보딩] 초기 설정 다시 하기 클릭');
-      document.getElementById('settingsModal')?.classList.remove('open');
-      try {
-        const ci = JSON.parse(safeGetItem(CO_KEY) || '{}');
-        _obData.coName = ci.coName || '';
-        _obData.coTel  = ci.coTel  || '';
-        _obData.coIcon = safeGetItem(CO_ICON_KEY) || '❄️';
-        _obData.folderSet = !!photoFolderHandle;
-      } catch(e) {}
-      _obStep = 1;
-      const modal = document.getElementById('onboardingModal');
-      if (modal) modal.classList.add('open');
-      renderOnboardingStep();
-    });
-  } else {
-    console.warn('[온보딩] setReplayOnboarding 버튼 없음');
-  }
+  next?.addEventListener('click', onboardingNext);
+  prev?.addEventListener('click', onboardingPrev);
+  skip?.addEventListener('click', () => closeOnboarding(true));
 }
 
-// ★ readyState에 관계없이 즉시 + DOMContentLoaded 둘 다 시도 (모바일 브라우저 호환성)
+// ★ 전역으로 노출 (HTML onclick에서 호출)
+window.replayOnboarding = function() {
+  console.log('[온보딩] replayOnboarding 호출됨');
+  document.getElementById('settingsModal')?.classList.remove('open');
+  try {
+    const ci = JSON.parse(safeGetItem(CO_KEY) || '{}');
+    _obData.coName = ci.coName || '';
+    _obData.coTel  = ci.coTel  || '';
+    _obData.coIcon = safeGetItem(CO_ICON_KEY) || '❄️';
+    _obData.folderSet = !!(typeof photoFolderHandle !== 'undefined' && photoFolderHandle);
+  } catch(e) { console.warn('[온보딩] 데이터 로드 실패:', e); }
+  _obStep = 1;
+  showOnboarding();
+};
+
+// ★ showOnboarding도 전역 노출 (디버깅용 - 콘솔에서 호출 가능)
+window.showOnboarding = showOnboarding;
+window.checkOnboardingState = function() {
+  console.log('DONE_KEY:', safeGetItem(ONBOARDING_DONE_KEY));
+  console.log('모달 요소:', !!document.getElementById('onboardingModal'));
+  console.log('모달 클래스:', document.getElementById('onboardingModal')?.className);
+};
+
 function _initOnboarding() {
+  console.log('[온보딩] _initOnboarding 호출');
   bindOnboardingEvents();
   checkAndStartOnboarding();
 }
 
 if (document.readyState === 'loading') {
+  console.log('[온보딩] DOMContentLoaded 대기');
   document.addEventListener('DOMContentLoaded', _initOnboarding);
 } else {
-  // 이미 DOM 준비됨 → 즉시 실행
+  console.log('[온보딩] 즉시 초기화 (readyState:', document.readyState, ')');
   _initOnboarding();
 }

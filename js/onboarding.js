@@ -29,10 +29,16 @@ function getSlides() {
 }
 
 function showOnboarding() {
+  console.log('[온보딩] showOnboarding 호출');
   _obStep = 1;
   _obData = { coName: '', coTel: '', coIcon: '❄️', folderSet: false };
+  const modal = document.getElementById('onboardingModal');
+  if (!modal) {
+    console.warn('[온보딩] onboardingModal 없음');
+    return;
+  }
+  modal.classList.add('open');
   renderOnboardingStep();
-  document.getElementById('onboardingModal').classList.add('open');
 }
 function hideOnboarding() { document.getElementById('onboardingModal').classList.remove('open'); }
 function closeOnboarding(completed) {
@@ -492,16 +498,12 @@ function bindOnboardingEvents() {
   document.getElementById('obNext')?.addEventListener('click', onboardingNext);
   document.getElementById('obPrev')?.addEventListener('click', onboardingPrev);
   document.getElementById('obSkip')?.addEventListener('click', () => closeOnboarding(true));
-}
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => { bindOnboardingEvents(); checkAndStartOnboarding(); });
-} else { bindOnboardingEvents(); checkAndStartOnboarding(); }
-
-document.addEventListener('DOMContentLoaded', () => {
+  // ★ 초기 설정 다시 하기 (같은 컨텍스트에서 바인딩)
   const replayBtn = document.getElementById('setReplayOnboarding');
   if (replayBtn) {
     replayBtn.addEventListener('click', () => {
+      console.log('[온보딩] 초기 설정 다시 하기 클릭');
       document.getElementById('settingsModal')?.classList.remove('open');
       try {
         const ci = JSON.parse(safeGetItem(CO_KEY) || '{}');
@@ -511,8 +513,24 @@ document.addEventListener('DOMContentLoaded', () => {
         _obData.folderSet = !!photoFolderHandle;
       } catch(e) {}
       _obStep = 1;
-      document.getElementById('onboardingModal').classList.add('open');
+      const modal = document.getElementById('onboardingModal');
+      if (modal) modal.classList.add('open');
       renderOnboardingStep();
     });
+  } else {
+    console.warn('[온보딩] setReplayOnboarding 버튼 없음');
   }
-});
+}
+
+// ★ readyState에 관계없이 즉시 + DOMContentLoaded 둘 다 시도 (모바일 브라우저 호환성)
+function _initOnboarding() {
+  bindOnboardingEvents();
+  checkAndStartOnboarding();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initOnboarding);
+} else {
+  // 이미 DOM 준비됨 → 즉시 실행
+  _initOnboarding();
+}

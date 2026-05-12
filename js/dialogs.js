@@ -41,6 +41,9 @@ async function handleSaveClick() {
     return;
   }
 
+  // ★ 즉시 피드백 - 사용자가 저장 클릭 시 바로 알림
+  showToast('💾 저장 중...', 'ok');
+
   // 폴더가 설정되어 있으면 → 폴더 저장 (사진 + 세션)
   if (photoFolderHandle) {
     await saveToFolder();

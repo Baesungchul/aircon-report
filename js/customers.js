@@ -304,12 +304,8 @@ async function renderCustomerList() {
     }
   }
 
-  // 캐시가 오래되면 백그라운드에서 갱신 (사용자는 일단 캐시 데이터 봄)
-  if (typeof isRecordsCacheFresh === 'function' && !isRecordsCacheFresh(currentDays, 120000)) {
-    if (typeof scheduleBackgroundBuild === 'function') {
-      scheduleBackgroundBuild();
-    }
-  }
+  // 캐시는 변경 발생 전까지 무한 유효 (시간 기반 자동 갱신 제거)
+  // 변경 발생 시 invalidateRecordsCache()가 호출되어 무효화됨
 
   // 기간 필터
   let dateFrom = _customerDateFrom;
@@ -729,10 +725,17 @@ async function renderCustomerList() {
 }
 
 // 현재 화면이 같은 작업인지 확인 (apt + date)
-function isSameAsCurrent(targetApt, targetDate) {
+function isSameAsCurrent(targetApt, targetDate, targetFolderName) {
   try {
+    // ★ folderName으로 비교 (가장 정확)
+    if (targetFolderName && typeof currentFolderName !== 'undefined' && currentFolderName) {
+      return currentFolderName === targetFolderName;
+    }
+    // 폴더명 정보 없을 때만 apt+date 비교 (느슨한 비교)
     const curApt = (document.getElementById('aptName').value || '').trim();
     const curDate = (document.getElementById('workDate').value || '').trim();
+    // 현재 작업이 새 작업 상태(currentFolderName이 null이면) - 무조건 다른 작업
+    if (typeof currentFolderName !== 'undefined' && !currentFolderName) return false;
     return curApt === (targetApt || '').trim() && curDate === (targetDate || '').trim();
   } catch(e) { return false; }
 }
@@ -789,18 +792,27 @@ async function openWorkByFolder(folderName) {
 
   let dirHandle, data;
   try {
-    dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
-    const sessionFile = await dirHandle.getFileHandle('_session.json');
-    const file = await sessionFile.getFile();
-    data = JSON.parse(await file.text());
+    // ★ 타임아웃 적용 (무한 대기 방지 - 10초)
+    const readPromise = (async () => {
+      const dh = await photoFolderHandle.getDirectoryHandle(folderName);
+      const sf = await dh.getFileHandle('_session.json');
+      const f = await sf.getFile();
+      const d = JSON.parse(await f.text());
+      return { dh, d };
+    })();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('읽기 시간 초과')), 10000));
+    const result = await Promise.race([readPromise, timeoutPromise]);
+    dirHandle = result.dh;
+    data = result.d;
   } catch(e) {
     hideOverlay();
     showToast('작업 정보를 읽을 수 없습니다: ' + e.message, 'err');
     return;
   }
 
-  // 현재 작업과 같은 작업이면 닫기
-  if (isSameAsCurrent(data.apt, data.date)) {
+  // 현재 작업과 같은 작업이면 닫기 (folderName 정확 비교)
+  if (isSameAsCurrent(data.apt, data.date, folderName)) {
     hideOverlay();
     showToast('이미 현재 작업입니다', 'ok');
     return;
@@ -815,7 +827,11 @@ async function openWorkByFolder(folderName) {
   showOverlay('불러오는 중...');
   try {
     if (typeof loadFromDateFolder === 'function') {
-      await loadFromDateFolder(dirHandle, data);
+      // ★ 타임아웃 적용 (60초)
+      await Promise.race([
+        loadFromDateFolder(dirHandle, data),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('불러오기 시간 초과')), 60000))
+      ]);
     } else {
       hideOverlay();
       showToast('불러오기 함수를 찾을 수 없습니다', 'err');

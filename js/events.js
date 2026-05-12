@@ -34,14 +34,16 @@ function bindAll() {
         const hasUnitCustomer = units.some(u =>
           u.customer && (u.customer.phone || u.customer.address || u.customer.memo));
         if (hasUnitCustomer) {
-          if (!confirm('🏢 공용시설 모드로 변경하시겠습니까?\n\n' +
-            '⚠️ 호수에 입력한 고객 정보(전화번호/주소/메모)는 저장 시 빈 값이 됩니다.\n' +
-            '(다시 가정용으로 돌리면 복구됩니다)\n\n' +
-            '계속할까요?')) {
-            // 취소: 라디오 원복
-            const r0 = document.getElementById('workTypeHousehold');
-            if (r0) r0.checked = true;
-            return;
+          // ★ 자동으로 첫 호수의 customer를 facilityCustomer로 복사 (확인 없이)
+          const firstWithData = units.find(u =>
+            u.customer && (u.customer.phone || u.customer.address || u.customer.memo));
+          if (firstWithData && firstWithData.customer) {
+            facilityCustomer = {
+              phone:   firstWithData.customer.phone   || facilityCustomer.phone   || '',
+              contact: firstWithData.customer.contact || facilityCustomer.contact || '',
+              address: firstWithData.customer.address || facilityCustomer.address || '',
+              memo:    firstWithData.customer.memo    || facilityCustomer.memo    || ''
+            };
           }
         }
       }
@@ -72,6 +74,16 @@ function bindAll() {
             document.getElementById('modeBlockOverlay')?.remove();
           });
           return;
+        }
+        // ★ 시설 → 가정: facilityCustomer를 첫 호수 customer로 복사
+        if (facilityCustomer.phone || facilityCustomer.address || facilityCustomer.memo || facilityCustomer.contact) {
+          if (units[0]) {
+            units[0].customer = units[0].customer || {};
+            if (!units[0].customer.phone)   units[0].customer.phone   = facilityCustomer.phone || '';
+            if (!units[0].customer.contact) units[0].customer.contact = facilityCustomer.contact || '';
+            if (!units[0].customer.address) units[0].customer.address = facilityCustomer.address || '';
+            if (!units[0].customer.memo)    units[0].customer.memo    = facilityCustomer.memo || '';
+          }
         }
       }
 

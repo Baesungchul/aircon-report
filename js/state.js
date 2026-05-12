@@ -180,6 +180,29 @@ async function init() {
     }
 
     if (s) {
+      // ★ 새 작업 상태 (units 비어있음)였으면 → 새 작업으로 시작 (이전 작업 복원 X)
+      // s.isEmpty가 명시적으로 true이거나, units가 비어있고 currentWorkId가 비어있으면 새 작업
+      const wasEmpty = s.isEmpty === true ||
+                       (!s.units || s.units.length === 0) && !s.workId;
+      if (wasEmpty) {
+        // 새 작업 상태로 시작
+        units = [];
+        nid = 1;
+        currentWorkId = '';
+        currentFolderName = null;
+        currentWorkType = 'household';
+        facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
+        // 업체정보는 복원
+        if (s.companyName) document.getElementById('coName').value = s.companyName;
+        if (s.companyTel)  document.getElementById('coTel').value  = s.companyTel;
+        if (s.companyDesc) document.getElementById('coDesc').value = s.companyDesc;
+        // workType UI 적용
+        setTimeout(() => {
+          if (typeof applyWorkTypeUI === 'function') applyWorkTypeUI();
+        }, 50);
+        return; // 이전 작업 복원 안 함
+      }
+
       // ★ workType 먼저 복원 (UI 적용 순서 중요)
       currentWorkId = s.workId || '';
       currentWorkType = s.workType || 'household';
@@ -191,18 +214,19 @@ async function init() {
           address: s.facilityCustomer.address || '',
           memo: s.facilityCustomer.memo || ''
         };
+      } else if (s.facilityCustomer) {
+        // ★ 가정용이어도 facilityCustomer 복원 (모드 전환 시 공유)
+        facilityCustomer = {
+          phone: s.facilityCustomer.phone || '',
+          contact: s.facilityCustomer.contact || '',
+          address: s.facilityCustomer.address || '',
+          memo: s.facilityCustomer.memo || ''
+        };
       } else {
         facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
       }
 
-      // isEmpty가 true면 빈 새 작업 상태 (작업명/날짜는 저장된 값 유지)
-      if (s.isEmpty) {
-        units = [];
-        nid = 1;
-        document.getElementById('aptName').value    = s.apt||'';
-        document.getElementById('workDate').value   = s.date||kstDateStr();
-        document.getElementById('workerName').value = s.worker||'';
-      } else if (s.units && s.units.length > 0) {
+      if (s.units && s.units.length > 0) {
         units = normalizeUnits(s.units);
         nid   = s.nid || units.length + 1;
         document.getElementById('aptName').value    = s.apt||'';

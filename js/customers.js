@@ -756,8 +756,13 @@ async function openWorkByFolder(folderName) {
     return;
   }
 
-  // 먼저 _session.json 읽어서 현재 작업과 같은지 확인
-  showOverlay('작업 정보 읽는 중...');
+  // ★ 모달 즉시 닫기 + 오버레이 즉시 표시 (5초 지연 체감 제거)
+  closeCustomerModal();
+  showOverlay('불러오는 중...');
+
+  // 브라우저가 화면 그릴 시간 확보
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
   let dirHandle, data;
   try {
     dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
@@ -770,22 +775,20 @@ async function openWorkByFolder(folderName) {
     return;
   }
 
-  // 현재 작업과 같은 작업이면 그냥 닫기 (이미 열려있음)
+  // 현재 작업과 같은 작업이면 닫기
   if (isSameAsCurrent(data.apt, data.date)) {
     hideOverlay();
-    closeCustomerModal();
     showToast('이미 현재 작업입니다', 'ok');
     return;
   }
 
   hideOverlay();
-  // 저장되지 않은 변경사항 확인
+
+  // 변경사항 확인 (저장 필요하면 저장)
   const proceed = await confirmBeforeLoad();
   if (!proceed) return;
 
-  closeCustomerModal();
-  showOverlay('작업 불러오는 중...');
-
+  showOverlay('불러오는 중...');
   try {
     if (typeof loadFromDateFolder === 'function') {
       await loadFromDateFolder(dirHandle, data);
@@ -795,7 +798,6 @@ async function openWorkByFolder(folderName) {
     }
   } catch(e) {
     hideOverlay();
-    console.error(e);
     showToast('작업 불러오기 실패: ' + e.message, 'err');
   }
 }

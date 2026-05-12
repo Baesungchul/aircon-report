@@ -754,133 +754,52 @@ async function exportJPG(){
   showToast(savedToFolder ? `✓ JPG ${blobs.length}장 저장됨 (${folderInfo.folderName} 폴더)` : `✓ JPG ${blobs.length}장 다운로드 완료`, 'ok');
 }
 
-// 보고서 저장 전: 작업이 폴더에 저장되어 있는지 확인하고 없으면 자동 저장
-// 반환: { workDir, folderName } 또는 null (폴더 미설정 또는 저장 실패)
+// 보고서 생성 전 폴더 핸들 반환 (자료 유실 방지 최소 저장만)
 async function ensureWorkSavedToFolder() {
-  if (!photoFolderHandle) {
-    console.log('폴더 미설정 - 보고서는 다운로드로 저장됨');
-    return null;
-  }
+  if (!photoFolderHandle) return null;
 
   // 권한 확인
   try {
-    let perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') {
-      perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
-      if (perm !== 'granted') {
-        showToast('폴더 권한이 거부되어 다운로드로 저장됩니다', 'err');
-        return null;
-      }
-    }
-  } catch(e) {
-    return null;
+    const perm = await Promise.race([
+      photoFolderHandle.requestPermission({ mode: 'readwrite' }),
+      new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 8000))
+    ]);
+    if (perm !== 'granted') return null;
+  } catch(e) { return null; }
+
+  // ★ Case 1: 불러온 작업 (currentFolderName 있음) + 변경 없음 → 바로 반환
+  const hasFolderName = typeof currentFolderName !== 'undefined' && currentFolderName;
+  const isDirty = typeof _dataDirty !== 'undefined' && _dataDirty;
+  const snap = typeof quickSnapshot === 'function' ? quickSnapshot() : '';
+  const snapChanged = snap !== (typeof _lastSaveSnapshot !== 'undefined' ? _lastSaveSnapshot : '');
+  const hasChanges = isDirty || snapChanged;
+
+  if (hasFolderName && !hasChanges) {
+    // 변경 없음 → 저장 스킵, 바로 폴더 핸들 반환
+    try {
+      const dirHandle = await photoFolderHandle.getDirectoryHandle(currentFolderName);
+      console.log(`✓ 보고서: 저장 스킵 (변경 없음) - ${currentFolderName}`);
+      return { workDir: dirHandle, folderName: currentFolderName };
+    } catch(e) { return null; }
   }
 
-  const apt = (document.getElementById('aptName').value || '').trim();
-  const date = document.getElementById('workDate').value || getLocalDateStr();
+  // ★ Case 2: 변경 있거나 폴더 모름 → 저장 후 반환 (자료 유실 방지)
+  if (hasChanges || !hasFolderName) {
+    try {
+      await saveToFolder({ auto: true, force: true, silent: true });
+      console.log(`✓ 보고서 전 자동저장 완료`);
+    } catch(e) {
+      console.warn('보고서 전 자동저장 실패:', e.message);
+    }
+  }
 
-  // ✨ 1차: 이미 저장된 같은 작업 폴더가 있는지 + 변경사항 없는지 확인
-  let matchFolder = null;
-  let matchTime = '';
-  let needsSave = true;  // 기본은 저장 필요
+  const targetFolder = typeof currentFolderName !== 'undefined' ? currentFolderName : null;
+  if (!targetFolder) return null;
 
   try {
-    for await (const [name, handle] of photoFolderHandle.entries()) {
-      if (handle.kind !== 'directory') continue;
-      if (name !== date && !name.startsWith(date + '_')) continue;
-
-      try {
-        const fh = await handle.getFileHandle('_session.json');
-        const file = await fh.getFile();
-        const buffer = await file.arrayBuffer();
-        let text = new TextDecoder('utf-8').decode(buffer);
-        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-        const parsed = JSON.parse(text.trim());
-        const folderApt = (parsed.apt || '').trim();
-        if (folderApt === apt && name > matchTime) {
-          matchFolder = { name, handle, savedData: parsed };
-          matchTime = name;
-        }
-      } catch(e) {}
-    }
-  } catch(e) {
-    console.warn('폴더 검색 실패:', e.message);
-  }
-
-  // ✨ 변경사항 비교: 저장된 데이터와 현재 메모리 비교
-  if (matchFolder) {
-    const saved = matchFolder.savedData;
-    const currentUnits = units.length;
-    const savedUnits = (saved.units || []).length;
-
-    // 호수 개수 비교
-    if (currentUnits === savedUnits) {
-      let allMatch = true;
-      for (let i = 0; i < currentUnits; i++) {
-        const cu = units[i];
-        const su = saved.units[i];
-        if (!su) { allMatch = false; break; }
-        // 호수명 + 사진 개수만 비교 (간단 비교)
-        const curBefore = cu.before.length;
-        const curAfter = cu.after.length;
-        const curSpec = cu.specials.length;
-        const savBefore = su.beforeCount || 0;
-        const savAfter = su.afterCount || 0;
-        const savSpec = (su.specials || []).length;
-
-        if (cu.name !== su.name || curBefore !== savBefore ||
-            curAfter !== savAfter || curSpec !== savSpec) {
-          allMatch = false;
-          break;
-        }
-      }
-
-      if (allMatch) {
-        needsSave = false;
-        console.log('✓ 작업 이미 저장됨 - 자동저장 스킵');
-      }
-    }
-  }
-
-  // ✨ 변경사항 있을 때만 저장
-  if (needsSave) {
-    showOverlay('작업 자동저장 중...');
-    try {
-      if (typeof saveToFolder === 'function') {
-        await saveToFolder();
-      }
-    } catch(e) {
-      console.warn('작업 자동저장 실패:', e.message);
-    }
-    hideOverlay();
-
-    // 저장 후 다시 폴더 찾기
-    matchFolder = null;
-    matchTime = '';
-    try {
-      for await (const [name, handle] of photoFolderHandle.entries()) {
-        if (handle.kind !== 'directory') continue;
-        if (name !== date && !name.startsWith(date + '_')) continue;
-        try {
-          const fh = await handle.getFileHandle('_session.json');
-          const file = await fh.getFile();
-          const buffer = await file.arrayBuffer();
-          let text = new TextDecoder('utf-8').decode(buffer);
-          if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-          const parsed = JSON.parse(text.trim());
-          const folderApt = (parsed.apt || '').trim();
-          if (folderApt === apt && name > matchTime) {
-            matchFolder = { name, handle };
-            matchTime = name;
-          }
-        } catch(e) {}
-      }
-    } catch(e) {}
-  }
-
-  if (matchFolder) {
-    return { workDir: matchFolder.handle, folderName: matchFolder.name };
-  }
-  return null;
+    const dirHandle = await photoFolderHandle.getDirectoryHandle(targetFolder);
+    return { workDir: dirHandle, folderName: targetFolder };
+  } catch(e) { return null; }
 }
+
 

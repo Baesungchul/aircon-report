@@ -1,5 +1,5 @@
-// 서비스워커 v95 - 1.141: 새작업 유지 + 불러오기 타임아웃 + 고객정보 공유 + 저장 피드백
-const CACHE = 'ac1004-v95';
+// 서비스워커 v96 - 1.142: 온보딩 빈 화면 수정 (애니메이션 잔재 + CSS 변수)
+const CACHE = 'ac1004-v96';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

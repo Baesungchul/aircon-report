@@ -1,5 +1,5 @@
-// 서비스워커 v90 - 1.136: 새작업 버튼 수정 + 사용법 CSS 미니어처
-const CACHE = 'ac1004-v90';
+// 서비스워커 v93 - 1.139: 온보딩 7페이지 슬라이드 + 번호 말풍선
+const CACHE = 'ac1004-v93';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

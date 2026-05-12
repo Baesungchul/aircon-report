@@ -1,5 +1,5 @@
-// 서비스워커 v96 - 1.142: 온보딩 빈 화면 수정 (애니메이션 잔재 + CSS 변수)
-const CACHE = 'ac1004-v96';
+// 서비스워커 v98 - 1.144: 온보딩 인라인 onclick + 진단 로그
+const CACHE = 'ac1004-v98';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

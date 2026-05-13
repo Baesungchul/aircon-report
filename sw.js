@@ -1,5 +1,5 @@
-// 서비스워커 v98 - 1.144: 온보딩 인라인 onclick + 진단 로그
-const CACHE = 'ac1004-v98';
+// 서비스워커 v100 - 1.146: CO_KEY 중복 선언 제거 (SyntaxError 수정)
+const CACHE = 'ac1004-v100';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

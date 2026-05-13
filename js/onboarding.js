@@ -29,15 +29,24 @@ function getSlides() {
 }
 
 function showOnboarding() {
-  console.log('[온보딩] showOnboarding 호출');
   _obStep = 1;
   _obData = { coName: '', coTel: '', coIcon: '❄️', folderSet: false };
   const modal = document.getElementById('onboardingModal');
   if (!modal) {
-    console.warn('[온보딩] onboardingModal 없음');
+    alert('[디버그] onboardingModal 요소 없음 - HTML 확인 필요');
     return;
   }
   modal.classList.add('open');
+
+  // 모달이 실제로 열렸는지 확인
+  const isOpen = modal.classList.contains('open');
+  const computedDisplay = getComputedStyle(modal).display;
+  if (computedDisplay === 'none') {
+    alert('[디버그] 모달이 열렸지만 display:none 상태\nopen 클래스: ' + isOpen +
+          '\n계산된 display: ' + computedDisplay +
+          '\n→ CSS .ob-modal.open 규칙이 적용되지 않음');
+  }
+
   renderOnboardingStep();
 }
 function hideOnboarding() { document.getElementById('onboardingModal').classList.remove('open'); }
@@ -467,8 +476,8 @@ function renderSlideSetup(c) {
 }
 
 /* ── 설정 적용 ── */
-const CO_KEY = 'ac_company_info';
-const CO_ICON_KEY = 'ac_company_icon';
+// CO_KEY, CO_ICON_KEY는 state.js에서 이미 선언됨 (중복 선언 금지!)
+// const CO_KEY, const CO_ICON_KEY 사용
 
 async function applyOnboardingSettings() {
   try {
@@ -517,7 +526,9 @@ function bindOnboardingEvents() {
 
 // ★ 전역으로 노출 (HTML onclick에서 호출)
 window.replayOnboarding = function() {
-  console.log('[온보딩] replayOnboarding 호출됨');
+  alert('[디버그] replayOnboarding 호출됨\n\nDONE_KEY: ' + safeGetItem(ONBOARDING_DONE_KEY) +
+        '\n모달 존재: ' + !!document.getElementById('onboardingModal') +
+        '\nobContent 존재: ' + !!document.getElementById('obContent'));
   document.getElementById('settingsModal')?.classList.remove('open');
   try {
     const ci = JSON.parse(safeGetItem(CO_KEY) || '{}');
@@ -525,7 +536,7 @@ window.replayOnboarding = function() {
     _obData.coTel  = ci.coTel  || '';
     _obData.coIcon = safeGetItem(CO_ICON_KEY) || '❄️';
     _obData.folderSet = !!(typeof photoFolderHandle !== 'undefined' && photoFolderHandle);
-  } catch(e) { console.warn('[온보딩] 데이터 로드 실패:', e); }
+  } catch(e) { alert('[디버그] 데이터 로드 실패: ' + e.message); }
   _obStep = 1;
   showOnboarding();
 };

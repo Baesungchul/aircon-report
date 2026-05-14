@@ -138,11 +138,5 @@ window.scheduleBackgroundBuild = function() {
   }, 100);
 };
 
-// 앱 시작 시 자동 빌드 (3초 지연 - 초기 로딩 방해 안 함)
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => scheduleBackgroundBuild(), 3000);
-  });
-} else {
-  setTimeout(() => scheduleBackgroundBuild(), 3000);
-}
+// ★ 앱 시작 시 자동 빌드는 folder.js에서 권한 확보 후 호출됨
+// (권한 없을 때 빌드하면 의미 없으므로 여기서는 시작 안 함)

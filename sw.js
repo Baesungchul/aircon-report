@@ -1,5 +1,5 @@
-// 서비스워커 v102 - 1.148: 작업 목록 중복 카드 수정 (고객 매칭 중복 제거 복원)
-const CACHE = 'ac1004-v102';
+// 서비스워커 v106 - 1.152: 총 호수를 검색바 옆 칩으로 통합 (공간 절약)
+const CACHE = 'ac1004-v106';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

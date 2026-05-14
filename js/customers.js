@@ -221,6 +221,7 @@ async function loadCombinedRecords() {
 
       // 3단계: 메모리에서 처리
       const seenAptDate = new Set();
+      const seenWorkIds = new Set();
       for (const result of results) {
         if (!result) continue;
         const { entry, data } = result;
@@ -231,17 +232,16 @@ async function loadCombinedRecords() {
         const date = data.date || entry.name.slice(0, 10);
         const workId = data.workId || '';
 
-        // ★ 고객 카드로 이미 표시되는 작업은 작업 카드에서 제외 (중복 방지)
-        if (workId && customerWorkIds.has(workId)) continue;
-        if (!workId) {
-          const aptDateKey = `${apt}::${date}`;
-          if (customerAptDateKeys.has(aptDateKey)) continue;
+        // ★ 폴더 자체의 중복만 제거 (같은 작업이 여러 폴더에 있는 경우)
+        // 고객 매칭과 무관하게 모든 작업을 표시
+        if (workId) {
+          if (seenWorkIds.has(workId)) continue;
+          seenWorkIds.add(workId);
+        } else {
+          const aptDateKey = `${apt}::${date}::${entry.name}`;
+          if (seenAptDate.has(aptDateKey)) continue;
+          seenAptDate.add(aptDateKey);
         }
-
-        // 폴더 자체의 중복 제거
-        const dupKey = `${apt}::${date}`;
-        if (seenAptDate.has(dupKey)) continue;
-        seenAptDate.add(dupKey);
 
         items.push({
           type: 'work',

@@ -1,5 +1,5 @@
-// 서비스워커 v101 - 1.147: 작업 목록 누락 수정 (고객 매칭 제외 로직 제거)
-const CACHE = 'ac1004-v101';
+// 서비스워커 v106 - 1.152: 총 호수를 검색바 옆 칩으로 통합 (공간 절약)
+const CACHE = 'ac1004-v106';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

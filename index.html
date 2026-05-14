@@ -81,9 +81,7 @@
     <button class="co-hdr-btn" id="btnSettings" data-i18n="btn.settings">⚙️ 설정</button>
     <button class="btn b-orange" id="btnNew" data-i18n="btn.newWork">🆕 새작업</button>
     <button class="btn b-gold" id="btnSave" data-i18n="btn.save">💾 저장</button>
-    <button class="btn b-blue" id="btnGen" disabled data-i18n="btn.preview">📄 미리보기</button>
-    <button class="btn b-green" id="btnPDF" disabled data-i18n="btn.pdf">⬇️ PDF</button>
-    <button class="btn b-orange" id="btnJPG" disabled data-i18n="btn.jpg">🖼️ JPG</button>
+    <button class="btn b-blue" id="btnGen" disabled data-i18n="btn.report">📄 보고서</button>
   </div>
 </div>
 
@@ -91,12 +89,7 @@
   <!-- 회사 정보 (모달에서 관리 - 이 섹션은 표시 안 됨) -->
   <div class="cmp-sec" style="display:none!important;"></div>
 
-  <div class="stats">
-    <div class="stat"><div class="stat-lbl" data-i18n="stats.totalUnits">총 호수</div><div class="stat-val c-bl" id="sTot">0</div></div>
-    <div class="stat"><div class="stat-lbl" data-i18n="stats.completed">전후 완비</div><div class="stat-val c-gr" id="sCmp">0</div></div>
-    <div class="stat"><div class="stat-lbl" data-i18n="stats.incomplete">미완료</div><div class="stat-val c-wn" id="sPrt">0</div></div>
-    <div class="stat"><div class="stat-lbl" data-i18n="stats.totalPhotos">총 사진</div><div class="stat-val c-mu" id="sPh">0</div></div>
-  </div>
+  <!-- 총 호수: 검색바 옆 칩으로 표시 -->
 
   <div class="add-row">
     <input class="add-inp" id="newName" data-i18n-placeholder="unit.placeholder" placeholder="호수 입력 (예: 101동 201호)">
@@ -107,6 +100,7 @@
 
   <div class="toolbar">
     <input class="srch" id="srch" data-i18n-placeholder="unit.search" placeholder="🔍 호수 검색">
+    <span class="stat-chip" title="총 호수"><span class="stat-chip-ic">🏠</span><span id="sTot">0</span></span>
     <button class="btn b-ghost b-xs" id="btnExp" data-i18n="unit.expandAll">전체 펼치기</button>
     <button class="btn b-ghost b-xs" id="btnCol" data-i18n="unit.collapseAll">전체 접기</button>
   </div>
@@ -141,6 +135,10 @@
         <div id="setCoSummary" style="font-size:12px;color:var(--mu);background:var(--sf2);border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6;display:none;"></div>
         <button class="btn b-blue" id="setOpenCoInfo" style="width:100%;justify-content:center;" data-i18n="set.company.edit">업체정보 편집</button>
         <button class="btn b-ghost" id="setReplayOnboarding" onclick="window.replayOnboarding && window.replayOnboarding()" style="width:100%;justify-content:center;margin-top:6px;font-size:12px;">📋 초기 설정 다시 하기</button>
+        <button class="btn b-blue" id="setInstallPWA" onclick="window.promptPWAInstall && window.promptPWAInstall()" style="width:100%;justify-content:center;margin-top:6px;font-size:12px;display:none;">📲 홈 화면에 앱 설치 (권한 유지)</button>
+        <div id="pwaInstallHint" style="font-size:11px;color:var(--mu);text-align:center;margin-top:6px;line-height:1.5;display:none;">
+          💡 앱으로 설치하면 폴더 권한 묻는 횟수가 줄어들어요
+        </div>
       </div>
 
       <!-- 저장 폴더 -->
@@ -452,7 +450,7 @@
 <!-- 미리보기 -->
 <div class="pv-modal" id="pvModal">
   <div class="pv-bar">
-    <div class="pv-title">📄 보고서 미리보기</div>
+    <div class="pv-title">📄 보고서</div>
     <div class="pv-btns">
       <button class="btn b-ghost b-xs" id="btnPvZoomOut" style="font-size:18px;font-weight:bold;min-width:42px;">－</button>
       <button class="btn b-ghost b-xs" id="btnPvZoomIn" style="font-size:18px;font-weight:bold;min-width:42px;">＋</button>

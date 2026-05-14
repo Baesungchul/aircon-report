@@ -166,8 +166,8 @@ function bindAll() {
 
   // 보고서
   document.getElementById('btnGen').addEventListener('click', buildAndPreview);
-  document.getElementById('btnPDF')?.addEventListener('click', exportPDF);
-  document.getElementById('btnJPG')?.addEventListener('click', exportJPG);
+  document.getElementById('btnPDF').addEventListener('click', exportPDF);
+  document.getElementById('btnJPG').addEventListener('click', exportJPG);
   document.getElementById('btnPDF2').addEventListener('click', exportPDF);
   document.getElementById('btnJPG2').addEventListener('click', exportJPG);
   document.getElementById('btnPvClose').addEventListener('click', () => {
@@ -475,8 +475,8 @@ function clearAll() {
   if(!confirm('모든 호수와 사진을 초기화할까요?')) return;
   units=[]; nid=1;
   document.getElementById('rpWrap').innerHTML='';
-  { const _b = document.getElementById('btnPDF'); if (_b) _b.disabled = true; }
-  { const _b = document.getElementById('btnJPG'); if (_b) _b.disabled = true; }
+  document.getElementById('btnPDF').disabled=true;
+  document.getElementById('btnJPG').disabled=true;
   renderAll(); updateStats();
 }
 
@@ -534,8 +534,8 @@ async function newWork() {
   currentFolderName = null;
   if (typeof resetWorkType === 'function') resetWorkType();
   document.getElementById('rpWrap').innerHTML = '';
-  { const _b = document.getElementById('btnPDF'); if (_b) _b.disabled = true; }
-  { const _b = document.getElementById('btnJPG'); if (_b) _b.disabled = true; }
+  document.getElementById('btnPDF').disabled = true;
+  document.getElementById('btnJPG').disabled = true;
   document.getElementById('aptName').value = '';
   document.getElementById('aptName').placeholder = '작업명을 입력하세요';
   document.getElementById('workDate').value = kstDateStr();

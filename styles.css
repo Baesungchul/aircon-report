@@ -205,13 +205,13 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 /* STATS - 큰 숫자 */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;}
 .stat-chip{
-  display:inline-flex;align-items:center;gap:5px;
+  display:inline-flex;align-items:center;gap:3px;
   background:var(--sf);border:1px solid var(--bd);
-  border-radius:14px;padding:4px 10px;
+  border-radius:12px;padding:4px 8px;
   font-size:12px;font-weight:700;color:var(--ac);
   white-space:nowrap;flex-shrink:0;
 }
-.stat-chip-ic{font-size:13px;}
+.stat-chip-ic{font-size:12px;}
 .stat{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:7px 6px;text-align:center;}
 .stat-lbl{font-size:9px;color:var(--mu);text-transform:uppercase;margin-bottom:2px;font-weight:600;}
 .stat-val{font-size:20px;font-weight:900;font-family:'DM Mono',monospace;line-height:1;}
@@ -222,7 +222,9 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .add-inp{background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:12px 14px;color:var(--tx);font-family:inherit;font-size:15px;flex:1;min-width:0;}
 .add-inp:focus{outline:none;border-color:var(--ac);}
 .add-inp::placeholder{color:var(--mu);}
-.toolbar{display:flex;gap:7px;margin-bottom:12px;align-items:center;flex-wrap:wrap;}
+.toolbar{display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:nowrap;}
+.toolbar .srch{flex:1;min-width:0;}
+.toolbar .btn{flex-shrink:0;padding:6px 8px;font-size:11px;}
 .srch{flex:1;min-width:120px;background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:10px 13px;color:var(--tx);font-family:inherit;font-size:14px;}
 .srch:focus{outline:none;border-color:var(--ac);}
 

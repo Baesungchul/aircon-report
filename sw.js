@@ -1,5 +1,5 @@
-// 서비스워커 v106 - 1.152: 총 호수를 검색바 옆 칩으로 통합 (공간 절약)
-const CACHE = 'ac1004-v106';
+// 서비스워커 v107 - 1.153: 툴바 wrap 방지 - 한 줄에 다 들어가게
+const CACHE = 'ac1004-v107';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

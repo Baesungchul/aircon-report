@@ -98,7 +98,13 @@ async function initPhotoFolder() {
     // 2단계: 이미 granted면 바로 사용 (PWA + 영구권한 케이스)
     if (perm === 'granted') {
       updateFolderUI(handle, 'granted');
-      // ★ 첫 실행이면 마이그레이션 (조용히)
+      // ★ 권한 있음 → 작업기록 캐시 백그라운드 빌드 (3초 후)
+      setTimeout(() => {
+        if (typeof scheduleBackgroundBuild === 'function') {
+          scheduleBackgroundBuild();
+        }
+      }, 3000);
+      // 첫 실행이면 마이그레이션 (조용히)
       if (typeof maybeRunMigration === 'function') {
         setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
       }
@@ -111,7 +117,12 @@ async function initPhotoFolder() {
       const autoPerm = await handle.requestPermission({ mode: 'readwrite' });
       if (autoPerm === 'granted') {
         updateFolderUI(handle, 'granted');
-        // ★ 마이그레이션
+        // ★ 권한 받음 → 캐시 빌드
+        setTimeout(() => {
+          if (typeof scheduleBackgroundBuild === 'function') {
+            scheduleBackgroundBuild();
+          }
+        }, 1000);
         if (typeof maybeRunMigration === 'function') {
           setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
         }
@@ -123,6 +134,46 @@ async function initPhotoFolder() {
 
     // 4단계: 자동 실패 → 사용자가 버튼 눌러야 함
     updateFolderUI(handle, 'prompt');
+
+    // ★ 사용자가 화면을 처음 터치할 때 자동 권한 복구 시도
+    const tryResumeOnFirstGesture = async () => {
+      if (!photoFolderHandle) return;
+      try {
+        const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+        if (curPerm === 'granted') {
+          updateFolderUI(photoFolderHandle, 'granted');
+          // ★ 권한 OK → 작업기록 캐시 백그라운드 빌드
+          if (typeof scheduleBackgroundBuild === 'function') {
+            scheduleBackgroundBuild();
+          }
+          return;
+        }
+        // 사용자 제스처 컨텍스트 안에서 권한 요청
+        const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+        if (newPerm === 'granted') {
+          updateFolderUI(photoFolderHandle, 'granted');
+          showToast?.(`✅ ${photoFolderHandle.name} 폴더 연결됨`, 'ok');
+          // ★ 권한 받자마자 작업기록 캐시 백그라운드 빌드
+          if (typeof scheduleBackgroundBuild === 'function') {
+            scheduleBackgroundBuild();
+          }
+          if (typeof maybeRunMigration === 'function') {
+            setTimeout(() => maybeRunMigration().catch(()=>{}), 500);
+          }
+        }
+      } catch(e) {
+        // 사용자가 거부했거나 다른 이유 - 무시
+      }
+    };
+
+    // 첫 클릭/터치 한 번만 시도하고 리스너 제거
+    const onceHandler = () => {
+      document.removeEventListener('click', onceHandler);
+      document.removeEventListener('touchend', onceHandler);
+      tryResumeOnFirstGesture();
+    };
+    document.addEventListener('click', onceHandler, { once: true });
+    document.addEventListener('touchend', onceHandler, { once: true });
   } catch(e) {
     console.warn('폴더 복원 실패:', e);
     updateFolderUI(null);

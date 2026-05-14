@@ -521,8 +521,8 @@ async function buildAndPreview(){
 
   const html=buildReportHTML();
   document.getElementById('rpWrap').innerHTML=html;
-  document.getElementById('btnPDF').disabled=false;
-  document.getElementById('btnJPG').disabled=false;
+  { const _b = document.getElementById('btnPDF'); if (_b) _b.disabled = false; }
+  { const _b = document.getElementById('btnJPG'); if (_b) _b.disabled = false; }
   const scroll=document.getElementById('pvScroll');
   scroll.innerHTML='';
   const pages=document.getElementById('rpWrap').querySelectorAll('.rpage');

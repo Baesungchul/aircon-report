@@ -1,5 +1,5 @@
-// 서비스워커 v101 - 1.147: 작업 목록 누락 수정 (고객 매칭 제외 로직 제거)
-const CACHE = 'ac1004-v101';
+// 서비스워커 v107 - 1.153: 툴바 wrap 방지 - 한 줄에 다 들어가게
+const CACHE = 'ac1004-v107';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

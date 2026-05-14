@@ -170,7 +170,7 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .hf input[type="date"]::-webkit-date-and-time-value{text-align:center;}
 
 /* ★ 버튼 그리드 - hdr 바깥에 있어서 접기와 무관하게 항상 표시 */
-.hdr-btns{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:100%;padding:6px 12px;box-sizing:border-box;background:var(--hdr);border-top:1px solid rgba(255,255,255,.06);}
+.hdr-btns{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;width:100%;padding:6px 12px;box-sizing:border-box;background:var(--hdr);border-top:1px solid rgba(255,255,255,.06);}
 .hdr-btns .btn{min-height:36px;width:100%;justify-content:center;padding:5px 2px;font-size:11px;font-weight:600;letter-spacing:-0.3px;}
 .hdr-btns .co-hdr-btn{min-height:36px;width:100%;font-size:11px;letter-spacing:-0.3px;}
 
@@ -204,6 +204,14 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 
 /* STATS - 큰 숫자 */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;}
+.stat-chip{
+  display:inline-flex;align-items:center;gap:3px;
+  background:var(--sf);border:1px solid var(--bd);
+  border-radius:12px;padding:4px 8px;
+  font-size:12px;font-weight:700;color:var(--ac);
+  white-space:nowrap;flex-shrink:0;
+}
+.stat-chip-ic{font-size:12px;}
 .stat{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:7px 6px;text-align:center;}
 .stat-lbl{font-size:9px;color:var(--mu);text-transform:uppercase;margin-bottom:2px;font-weight:600;}
 .stat-val{font-size:20px;font-weight:900;font-family:'DM Mono',monospace;line-height:1;}
@@ -214,7 +222,9 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .add-inp{background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:12px 14px;color:var(--tx);font-family:inherit;font-size:15px;flex:1;min-width:0;}
 .add-inp:focus{outline:none;border-color:var(--ac);}
 .add-inp::placeholder{color:var(--mu);}
-.toolbar{display:flex;gap:7px;margin-bottom:12px;align-items:center;flex-wrap:wrap;}
+.toolbar{display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:nowrap;}
+.toolbar .srch{flex:1;min-width:0;}
+.toolbar .btn{flex-shrink:0;padding:6px 8px;font-size:11px;}
 .srch{flex:1;min-width:120px;background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:10px 13px;color:var(--tx);font-family:inherit;font-size:14px;}
 .srch:focus{outline:none;border-color:var(--ac);}
 

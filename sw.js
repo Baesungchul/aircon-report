@@ -1,5 +1,5 @@
-// 서비스워커 v100 - 1.146: CO_KEY 중복 선언 제거 (SyntaxError 수정)
-const CACHE = 'ac1004-v100';
+// 서비스워커 v101 - 1.147: 작업 목록 누락 수정 (고객 매칭 제외 로직 제거)
+const CACHE = 'ac1004-v101';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -22,6 +22,21 @@ let _customerUseDefault = true;
   } catch(e) {}
 })();
 
+// ★ 외부에서 필터 조회/설정 (records_cache.js에서 사용)
+window.getCustomerFilter = function() {
+  return {
+    useDefault: _customerUseDefault,
+    dateFrom: _customerDateFrom,
+    dateTo: _customerDateTo
+  };
+};
+window.setCustomerFilter = function(f) {
+  if (!f) return;
+  if ('useDefault' in f) _customerUseDefault = f.useDefault;
+  if ('dateFrom' in f)   _customerDateFrom   = f.dateFrom;
+  if ('dateTo' in f)     _customerDateTo     = f.dateTo;
+};
+
 // 필터 저장
 function saveCustomerFilter() {
   try {
@@ -272,25 +287,14 @@ async function renderCustomerList() {
   const body = document.getElementById('customerBody');
   if (!body) return;
 
-  // ★ 현재 기간 계산 (캐시 키 결정용)
-  let currentDays = null;
-  if (_customerUseDefault) {
-    currentDays = 3;  // 기본은 3일
-  } else if (_customerDateFrom) {
-    const from = new Date(_customerDateFrom);
-    const now = new Date();
-    currentDays = Math.ceil((now - from) / (1000 * 60 * 60 * 24));
-  } else {
-    currentDays = 999;  // 전체
-  }
-
-  // ★ 캐시에서 즉시 표시 (있으면)
+  // ★ 캐시에서 전체 데이터 가져오기 (있으면)
   let items = null;
   if (typeof getRecordsFromCache === 'function') {
-    items = getRecordsFromCache(currentDays);
+    items = getRecordsFromCache();
   }
 
-  // 캐시 없으면 로딩 표시 후 직접 로드
+  // 캐시 없으면 직접 로드 (loadCombinedRecords가 현재 필터로 조회)
+  // → 사용자가 처음 모달 열 때만 발생, 다음부터는 캐시 사용
   if (!items) {
     if (!body.querySelector('.cust-card') && !body.querySelector('.cust-card-work')) {
       body.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--mu);">
@@ -298,18 +302,32 @@ async function renderCustomerList() {
         <div>작업 기록 불러오는 중...</div>
       </div>`;
     }
+    // 필터 잠시 "전체"로 (캐시 채우기 위해)
+    const prevDefault = _customerUseDefault;
+    const prevFrom = _customerDateFrom;
+    const prevTo = _customerDateTo;
     try {
+      _customerUseDefault = false;
+      _customerDateFrom = null;
+      _customerDateTo = null;
       items = await loadCombinedRecords();
+      // 백그라운드 캐시에도 저장
+      if (typeof window !== 'undefined') {
+        window.__cacheAllRecords && window.__cacheAllRecords(items);
+      }
     } catch(e) {
       body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--mu);">목록 로드 실패: ${e.message}</div>`;
+      _customerUseDefault = prevDefault;
+      _customerDateFrom = prevFrom;
+      _customerDateTo = prevTo;
       return;
     }
+    _customerUseDefault = prevDefault;
+    _customerDateFrom = prevFrom;
+    _customerDateTo = prevTo;
   }
 
-  // 캐시는 변경 발생 전까지 무한 유효 (시간 기반 자동 갱신 제거)
-  // 변경 발생 시 invalidateRecordsCache()가 호출되어 무효화됨
-
-  // 기간 필터
+  // ★ 사용자가 보는 기간 필터 적용
   let dateFrom = _customerDateFrom;
   let dateTo = _customerDateTo;
   if (_customerUseDefault) {
@@ -320,7 +338,8 @@ async function renderCustomerList() {
   let filtered = items;
   if (dateFrom || dateTo) {
     filtered = items.filter(it => {
-      if (!it.sortDate) return false;
+      // sortDate 없는 항목은 통과 (필터 못 함)
+      if (!it.sortDate) return true;
       if (dateFrom && it.sortDate < dateFrom) return false;
       if (dateTo && it.sortDate > dateTo) return false;
       return true;

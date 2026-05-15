@@ -1,5 +1,5 @@
-// 서비스워커 v110 - 1.156: 새작업 시 facilityCustomer 등 완전 초기화 (workType 전환 시 부활 방지)
-const CACHE = 'ac1004-v110';
+// 서비스워커 v111 - 1.157: 변경 판정에 dirty 플래그 제거 (실제 스냅샷 비교만 사용)
+const CACHE = 'ac1004-v111';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

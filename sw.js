@@ -1,5 +1,5 @@
-// 서비스워커 v108 - 1.154: updateStats null 안전 처리 (제거된 sCmp/sPrt/sPh 참조 수정)
-const CACHE = 'ac1004-v108';
+// 서비스워커 v109 - 1.155: btn.report i18n 키 추가 (📄 보고서)
+const CACHE = 'ac1004-v109';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -178,10 +178,15 @@ function updateStats() {
   const c=units.filter(u=>u.before.length>0&&u.after.length>0).length;
   const p=units.filter(u=>(u.before.length>0||u.after.length>0)&&!(u.before.length>0&&u.after.length>0)).length;
   const ph=units.reduce((s,u)=>s+u.before.length+u.after.length+u.specials.reduce((a,sp)=>a+sp.photos.length,0),0);
-  document.getElementById('sTot').textContent=t;
-  document.getElementById('sCmp').textContent=c;
-  document.getElementById('sPrt').textContent=p;
-  document.getElementById('sPh').textContent=ph;
-  document.getElementById('btnGen').disabled=t===0;
+  const sTot = document.getElementById('sTot');
+  const sCmp = document.getElementById('sCmp');
+  const sPrt = document.getElementById('sPrt');
+  const sPh  = document.getElementById('sPh');
+  const btnGen = document.getElementById('btnGen');
+  if (sTot) sTot.textContent = t;
+  if (sCmp) sCmp.textContent = c;
+  if (sPrt) sPrt.textContent = p;
+  if (sPh)  sPh.textContent  = ph;
+  if (btnGen) btnGen.disabled = t === 0;
 }
 

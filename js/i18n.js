@@ -21,6 +21,7 @@ const I18N = {
     'btn.save': '💾 저장',
     'btn.load': '📂 불러오기',
     'btn.preview': '📋 미리보기',
+    'btn.report': '📄 보고서',
     'btn.pdf': '⬇️ PDF',
     'btn.jpg': '🖼️ JPG',
 
@@ -217,6 +218,7 @@ const I18N = {
     'btn.save': '💾 Save',
     'btn.load': '📂 Load',
     'btn.preview': '📋 Preview',
+    'btn.report': '📄 Report',
     'btn.pdf': '⬇️ PDF',
     'btn.jpg': '🖼️ JPG',
 

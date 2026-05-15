@@ -487,9 +487,22 @@ async function newWork() {
     document.getElementById('workDate').value = kstDateStr();
     document.getElementById('aptName').value  = '';
     document.getElementById('aptName').placeholder = '작업명을 입력하세요';
+    document.getElementById('workerName').value = '';
     currentWorkId = '';
     currentFolderName = null;
+    nid = 1;
+    // ★ facilityCustomer 완전 초기화 (workType 전환 시 부활 방지)
+    facilityCustomer = { phone: '', contact: '', address: '', memo: '' };
     if (typeof resetWorkType === 'function') resetWorkType();
+    if (typeof _indexCounter !== 'undefined') _indexCounter.clear();
+    if (typeof _unitWorkNumber !== 'undefined') _unitWorkNumber.clear();
+    if (typeof _savedPhotoIds !== 'undefined') _savedPhotoIds.clear();
+    if (typeof pendingSaves !== 'undefined') pendingSaves.length = 0;
+    if (typeof _dataDirty !== 'undefined') _dataDirty = false;
+    if (typeof _lastSaveSnapshot === 'string') _lastSaveSnapshot = quickSnapshot ? quickSnapshot() : '';
+    renderAll();
+    updateStats();
+    try { await sessionAutoSaveNow(); } catch(e) {}
     showToast('🆕 새 작업', 'ok');
     return;
   }
@@ -539,6 +552,7 @@ async function newWork() {
   document.getElementById('aptName').value = '';
   document.getElementById('aptName').placeholder = '작업명을 입력하세요';
   document.getElementById('workDate').value = kstDateStr();
+  document.getElementById('workerName').value = '';
   if (typeof _indexCounter !== 'undefined') _indexCounter.clear();
   if (typeof _unitWorkNumber !== 'undefined') _unitWorkNumber.clear();
   if (typeof _savedPhotoIds !== 'undefined') _savedPhotoIds.clear();

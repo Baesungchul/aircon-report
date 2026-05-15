@@ -1,5 +1,5 @@
-// 서비스워커 v111 - 1.157: 변경 판정에 dirty 플래그 제거 (실제 스냅샷 비교만 사용)
-const CACHE = 'ac1004-v111';
+// 서비스워커 v113 - 1.159: 빈 결과 캐시 안 함 + sortDate 없는 항목 통과
+const CACHE = 'ac1004-v113';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -748,13 +748,12 @@ async function confirmBeforeLoad() {
   // 작업 없으면 그냥 진행
   if (typeof units === 'undefined' || !units || units.length === 0) return true;
 
-  // ★ 변경 없으면 그냥 진행 (dirty 플래그 + 스냅샷 비교)
-  const isDirty = (typeof _dataDirty !== 'undefined' && _dataDirty);
+  // ★ 실제 데이터 변경만 체크 (dirty 플래그는 input 이벤트로 인한 거짓 양성 많음)
   let snapsEqual = true;
   if (typeof quickSnapshot === 'function' && typeof _lastSaveSnapshot !== 'undefined') {
     snapsEqual = (quickSnapshot() === _lastSaveSnapshot);
   }
-  if (!isDirty && snapsEqual) {
+  if (snapsEqual) {
     console.log('✓ 변경 없음 - 저장 스킵 (불러오기 전)');
     return true;
   }

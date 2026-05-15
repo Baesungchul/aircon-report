@@ -507,10 +507,9 @@ async function newWork() {
     return;
   }
 
-  // 변경 여부 체크
-  const isDirty = (typeof _dataDirty !== 'undefined' && _dataDirty);
+  // 변경 여부 체크 (실제 데이터 비교 - dirty 플래그는 거짓 양성 많음)
   const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
-  const hasChanges = isDirty || (currentSnap !== _lastSaveSnapshot);
+  const hasChanges = (currentSnap !== _lastSaveSnapshot);
 
   const totalPhotos = units.reduce((s,u) =>
     s + u.before.length + u.after.length +

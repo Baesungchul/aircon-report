@@ -1,5 +1,5 @@
-// 서비스워커 v107 - 1.153: 툴바 wrap 방지 - 한 줄에 다 들어가게
-const CACHE = 'ac1004-v107';
+// 서비스워커 v108 - 1.154: updateStats null 안전 처리 (제거된 sCmp/sPrt/sPh 참조 수정)
+const CACHE = 'ac1004-v108';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

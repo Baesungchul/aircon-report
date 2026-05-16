@@ -2,21 +2,51 @@
    APP ENTRY POINT
 ═══════════════════════════════ */
 
+// ★ 전역 에러 핸들러 - 한 곳 에러로 앱 전체 멈춤 방지
+window.addEventListener('error', e => {
+  console.error('[전역에러]', e.error?.message || e.message, '\n', e.error?.stack);
+  // 사용자에게는 알리지 않음 (이미 발생한 에러는 막을 수 없음)
+});
+
+window.addEventListener('unhandledrejection', e => {
+  console.error('[Promise 거부]', e.reason?.message || e.reason);
+  e.preventDefault();  // 콘솔 노이즈 차단
+});
+
 // 서비스 워커 등록 (PWA) - 자동 업데이트 + 새 버전 즉시 적용
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').then(reg => {
-    // 1시간마다 업데이트 체크
-    setInterval(() => reg.update(), 60 * 60 * 1000);
+  // SW가 보내는 메시지 수신 (활성화 완료 시)
+  let _reloadingFromSW = false;
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'SW_UPDATED' && !_reloadingFromSW) {
+      _reloadingFromSW = true;
+      console.log('🔄 SW 갱신됨 - 새로고침:', e.data.version);
+      setTimeout(() => window.location.reload(), 100);
+    }
+  });
 
-    // 새 버전 감지 시 즉시 reload
+  // SW controllerchange 시에도 새로고침 (가장 확실)
+  let _refreshingFromController = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_refreshingFromController) return;
+    _refreshingFromController = true;
+    console.log('🔄 새 SW 활성화 - 새로고침');
+    window.location.reload();
+  });
+
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    // 30분마다 업데이트 체크 (이전 1시간 → 30분)
+    setInterval(() => reg.update(), 30 * 60 * 1000);
+
+    // 새 버전 감지 시 즉시 활성화 (skipWaiting 트리거)
     reg.addEventListener('updatefound', () => {
       const newWorker = reg.installing;
       if (!newWorker) return;
       newWorker.addEventListener('statechange', () => {
         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          // 새 버전이 설치됐으면 자동으로 새로고침
-          console.log('🔄 새 버전 감지 - 새로고침');
-          window.location.reload();
+          console.log('🔄 새 버전 감지 - 활성화 신호 전송');
+          // 새 SW에게 즉시 활성화 명령
+          newWorker.postMessage({ type: 'SKIP_WAITING' });
         }
       });
     });
@@ -51,9 +81,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (typeof applyCoIcon === 'function') applyCoIcon();
 });
 
-// ════════════════════════════════════════
-// PWA 설치 프롬프트 (Android Chrome)
-// ════════════════════════════════════════
+// ★ 앱 캐시 초기화 (버튼 안 먹힐 때 사용)
+window.clearAppCache = async function() {
+  const ok = confirm(
+    '🗑️ 앱 캐시를 초기화합니다.\n\n' +
+    '• 저장된 작업 파일은 삭제되지 않아요\n' +
+    '• 폴더 권한을 다시 선택해야 해요\n\n' +
+    '계속할까요?'
+  );
+  if (!ok) return;
+
+  try {
+    // 1. 서비스워커 캐시 전체 삭제
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+
+    // 2. 서비스워커 등록 해제
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+
+    // 3. localStorage 앱 설정 유지 (작업 데이터 제외하고 캐시만 삭제)
+    // IndexedDB의 임시 캐시는 남겨둠 (작업 데이터 보호)
+
+    alert('✅ 캐시 초기화 완료!\n\n지금 앱을 다시 시작합니다.');
+    window.location.reload(true);
+  } catch(e) {
+    alert('캐시 삭제 실패: ' + e.message + '\n\nAndroid 설정 → 앱 → Chrome → 저장공간 → 캐시 삭제를 해주세요.');
+  }
+};
 let _deferredPWAPrompt = null;
 
 window.addEventListener('beforeinstallprompt', (e) => {

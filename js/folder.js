@@ -14,48 +14,58 @@ function sessionAutoSave() {
 
 async function sessionAutoSaveNow() {
   clearTimeout(_autoSaveTimer);
-  const obj = {
-    saveId:      'session_data',
-    label:       '[세션]',
-    apt:         document.getElementById('aptName').value,
-    date:        document.getElementById('workDate').value || new Date().toISOString().split('T')[0],
-    savedAt:     new Date().toISOString(),
-    worker:      document.getElementById('workerName').value,
-    companyName: document.getElementById('coName').value,
-    companyTel:  document.getElementById('coTel').value,
-    companyDesc: document.getElementById('coDesc').value,
-    units:       JSON.parse(JSON.stringify(units)),
-    nid,
-    // ★ workType + facilityCustomer 자동저장
-    workId:      currentWorkId || '',
-    workType:    currentWorkType || 'household',
-    currentFolderName: currentFolderName || null,  // ★ 불러온 폴더명 보존
-    facilityCustomer: (currentWorkType === 'facility')
-      ? { ...facilityCustomer }
-      : null,
-    // 명시적 플래그: 빈 작업인지 표시
-    isEmpty: (units.length === 0)
-  };
-  // 1차: IndexedDB
   try {
-    await dbPut(obj);
-    if (units.length > 0) showSaveStatus('saved', '✓ 자동저장됨');
-  } catch(e) {
-    if (units.length > 0) showSaveStatus('saving', '저장 실패');
-  }
-  // 2차: localStorage 백업 (사진 dataURL 제외하여 크기 줄임)
-  try {
-    const backup = {
-      ...obj,
-      units: obj.units.map(u => ({
-        ...u,
-        before: u.before.map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
-        after:  u.after.map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
-        specials: u.specials.map(s => ({ desc: s.desc, photos: s.photos.map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })) }))
-      }))
+    const apt = document.getElementById('aptName')?.value || '';
+    const date = document.getElementById('workDate')?.value || new Date().toISOString().split('T')[0];
+    const worker = document.getElementById('workerName')?.value || '';
+    const coName = document.getElementById('coName')?.value || '';
+    const coTel = document.getElementById('coTel')?.value || '';
+    const coDesc = document.getElementById('coDesc')?.value || '';
+
+    const obj = {
+      saveId:      'session_data',
+      label:       '[세션]',
+      apt, date, worker,
+      savedAt:     new Date().toISOString(),
+      companyName: coName,
+      companyTel:  coTel,
+      companyDesc: coDesc,
+      units:       JSON.parse(JSON.stringify(units || [])),
+      nid:         (typeof nid !== 'undefined') ? nid : 1,
+      workId:      currentWorkId || '',
+      workType:    currentWorkType || 'household',
+      currentFolderName: currentFolderName || null,
+      facilityCustomer: (currentWorkType === 'facility')
+        ? { ...facilityCustomer }
+        : (facilityCustomer || null),
+      isEmpty: (!units || units.length === 0)
     };
-    localStorage.setItem('ac_session_backup', JSON.stringify(backup));
-  } catch(e) {}
+
+    // 1차: IndexedDB
+    try {
+      await dbPut(obj);
+      if (units && units.length > 0) showSaveStatus('saved', '✓ 자동저장됨');
+    } catch(e) {
+      console.warn('[세션저장] IndexedDB 실패:', e.message);
+      if (units && units.length > 0) showSaveStatus('saving', '저장 실패');
+    }
+
+    // 2차: localStorage 백업
+    try {
+      const backup = {
+        ...obj,
+        units: obj.units.map(u => ({
+          ...u,
+          before: (u.before || []).map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
+          after:  (u.after  || []).map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
+          specials: (u.specials || []).map(s => ({ desc: s.desc, photos: (s.photos || []).map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })) }))
+        }))
+      };
+      localStorage.setItem('ac_session_backup', JSON.stringify(backup));
+    } catch(e) {}
+  } catch(e) {
+    console.error('[sessionAutoSaveNow] 실패:', e);
+  }
 }
 
 function showSaveStatus(cls, msg) {

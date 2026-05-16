@@ -40,12 +40,14 @@ function renderCustomerCopyButtons(u) {
 }
 
 function renderAll() {
-  const q=document.getElementById('srch').value.trim().toLowerCase();
-  const filtered=q?units.filter(u=>u.name.toLowerCase().includes(q)):units;
-  const el=document.getElementById('uList');
+  try {
+    const q=document.getElementById('srch').value.trim().toLowerCase();
+    const filtered=q?units.filter(u=>u.name.toLowerCase().includes(q)):units;
+    const el=document.getElementById('uList');
+    if (!el) return;
 
-  if(units.length===0){ el.innerHTML=`<div class="empty"><div class="empty-ic">🏠</div><p>위에서 호수를 추가해주세요</p></div>`; return; }
-  if(filtered.length===0){ el.innerHTML=`<div class="empty"><div class="empty-ic">🔍</div><p>검색 결과 없음</p></div>`; return; }
+    if(units.length===0){ el.innerHTML=`<div class="empty"><div class="empty-ic">🏠</div><p>위에서 호수를 추가해주세요</p></div>`; return; }
+    if(filtered.length===0){ el.innerHTML=`<div class="empty"><div class="empty-ic">🔍</div><p>검색 결과 없음</p></div>`; return; }
 
   el.innerHTML=filtered.map(u=>{
     const ri=units.indexOf(u);
@@ -171,11 +173,17 @@ function renderAll() {
 
   // ★ 호수 변경 후 UI 동기화 (가정용 1호수 제한 등)
   if (typeof applyWorkTypeUI === 'function') applyWorkTypeUI();
+  } catch(e) {
+    console.error('[renderAll] 실패:', e);
+    const el = document.getElementById('uList');
+    if (el) el.innerHTML = `<div class="empty"><div class="empty-ic">⚠️</div><p>화면 표시 오류 - 새로고침해주세요</p></div>`;
+  }
 }
 
 function updateStats() {
-  const t=units.length;
-  const c=units.filter(u=>u.before.length>0&&u.after.length>0).length;
+  try {
+    const t=units.length;
+    const c=units.filter(u=>u.before.length>0&&u.after.length>0).length;
   const p=units.filter(u=>(u.before.length>0||u.after.length>0)&&!(u.before.length>0&&u.after.length>0)).length;
   const ph=units.reduce((s,u)=>s+u.before.length+u.after.length+u.specials.reduce((a,sp)=>a+sp.photos.length,0),0);
   const sTot = document.getElementById('sTot');
@@ -188,5 +196,8 @@ function updateStats() {
   if (sPrt) sPrt.textContent = p;
   if (sPh)  sPh.textContent  = ph;
   if (btnGen) btnGen.disabled = t === 0;
+  } catch(e) {
+    console.error('[updateStats] 실패:', e);
+  }
 }
 

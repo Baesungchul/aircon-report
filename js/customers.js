@@ -462,15 +462,27 @@ async function renderCustomerList() {
     card.addEventListener('click', e => {
       if (e.target.closest('.cust-card-del')) return;
       if (e.target.closest('.cust-card-edit')) return;
+      if (e.target.closest('.cust-card-open')) return;
       if (e.target.closest('.cust-card-work-del')) return;
       // 작업 카드면 폴더로 열기, 고객 카드면 전화번호로 열기
       if (card.classList.contains('cust-card-work')) {
-        openWorkByFolder(card.dataset.folder);
+        openWorkByFolder(card.dataset.folder, card.dataset.apt, card.dataset.date);
       } else {
         const aptFilter = card.dataset.aptFilter || '';
         const workId = card.dataset.workid || '';
         openWorkForCustomer(card.dataset.phone, aptFilter, workId);
       }
+    });
+  });
+
+  // ★ 고객 카드 "열기" 버튼
+  body.querySelectorAll('.cust-card-open').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const phone = btn.dataset.phone;
+      const aptFilter = btn.dataset.aptFilter || '';
+      const workId = btn.dataset.workid || '';
+      openWorkForCustomer(phone, aptFilter, workId);
     });
   });
 
@@ -797,68 +809,65 @@ async function confirmBeforeLoad() {
 
 
 // 폴더명으로 작업 직접 열기
-async function openWorkByFolder(folderName) {
+async function openWorkByFolder(folderName, apt, date) {
   if (!photoFolderHandle) {
     showToast('저장 폴더가 설정되지 않았습니다', 'err');
     return;
   }
 
-  // ★ 모달 즉시 닫기 + 오버레이 즉시 표시 (5초 지연 체감 제거)
-  closeCustomerModal();
-  showOverlay('불러오는 중...');
-
-  // 브라우저가 화면 그릴 시간 확보
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-  let dirHandle, data;
-  try {
-    // ★ 타임아웃 적용 (무한 대기 방지 - 10초)
-    const readPromise = (async () => {
-      const dh = await photoFolderHandle.getDirectoryHandle(folderName);
-      const sf = await dh.getFileHandle('_session.json');
-      const f = await sf.getFile();
-      const d = JSON.parse(await f.text());
-      return { dh, d };
-    })();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('읽기 시간 초과')), 10000));
-    const result = await Promise.race([readPromise, timeoutPromise]);
-    dirHandle = result.dh;
-    data = result.d;
-  } catch(e) {
-    hideOverlay();
-    showToast('작업 정보를 읽을 수 없습니다: ' + e.message, 'err');
-    return;
-  }
-
-  // 현재 작업과 같은 작업이면 닫기 (folderName 정확 비교)
-  if (isSameAsCurrent(data.apt, data.date, folderName)) {
-    hideOverlay();
+  // ★ 현재 작업이면 바로 닫기
+  if (folderName && currentFolderName === folderName) {
+    closeCustomerModal();
     showToast('이미 현재 작업입니다', 'ok');
     return;
   }
 
-  hideOverlay();
+  // ★ 1단계: 확인 다이얼로그 먼저 (모달 그대로 열린 채)
+  const aptName = apt || folderName;
+  const dateStr = date || '';
+  const msg = `📂 작업 불러오기\n\n${aptName}${dateStr ? ' · ' + dateStr : ''}\n\n이 작업을 불러올까요?`;
 
-  // 변경사항 확인 (저장 필요하면 저장)
-  const proceed = await confirmBeforeLoad();
-  if (!proceed) return;
+  // 현재 변경사항 체크
+  const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
+  const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
+  const fullMsg = hasChanges
+    ? msg + '\n\n⚠️ 현재 작업에 변경사항이 있어요.\n저장 후 진행됩니다.'
+    : msg;
 
-  showOverlay('불러오는 중...');
+  if (!confirm(fullMsg)) return;
+
+  // ★ 2단계: 모달 닫고 하나의 오버레이만 표시
+  closeCustomerModal();
+  showOverlay('📂 불러오는 중...');
+
+  // 화면 그릴 시간 확보
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // 변경사항 있으면 먼저 저장
+  if (hasChanges && photoFolderHandle && typeof saveToFolder === 'function') {
+    try {
+      await saveToFolder({ auto: true, force: true, silent: true });
+    } catch(e) {
+      console.warn('불러오기 전 자동저장 실패:', e);
+    }
+  }
+
+  // 폴더 읽기 + 불러오기 (한 번에)
   try {
+    const dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
+    const sf = await dirHandle.getFileHandle('_session.json');
+    const f = await sf.getFile();
+    const data = JSON.parse(await f.text());
+
     if (typeof loadFromDateFolder === 'function') {
-      // ★ 타임아웃 적용 (60초)
       await Promise.race([
         loadFromDateFolder(dirHandle, data),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('불러오기 시간 초과')), 60000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('시간 초과')), 60000))
       ]);
-    } else {
-      hideOverlay();
-      showToast('불러오기 함수를 찾을 수 없습니다', 'err');
     }
   } catch(e) {
     hideOverlay();
-    showToast('작업 불러오기 실패: ' + e.message, 'err');
+    showToast('불러오기 실패: ' + e.message, 'err');
   }
 }
 
@@ -910,7 +919,8 @@ function renderCustomerCard(c) {
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
-          <button class="cust-card-btn cust-card-edit" data-phone="${escHtmlSafe(c.phone)}" title="정보 수정"><span class="btn-ic">✏️</span><span class="btn-tx">수정</span></button>
+          <button class="cust-card-btn cust-card-open" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="작업 열기"><span class="btn-ic">📂</span><span class="btn-tx">열기</span></button>
+          <button class="cust-card-btn cust-card-edit" data-phone="${escHtmlSafe(c.phone)}" title="정보 수정"><span class="btn-ic">✏️</span><span class="btn-tx">정보</span></button>
           <button class="cust-card-btn cust-card-del" data-phone="${escHtmlSafe(c.phone)}" data-apt-filter="${escHtmlSafe(c._aptFilter || '')}" data-workid="${escHtmlSafe(c._workIdFilter || '')}" title="삭제"><span class="btn-ic">🗑️</span><span class="btn-tx">삭제</span></button>
         </div>
       </div>
@@ -939,7 +949,7 @@ function renderWorkCard(w) {
   const titleLine = `${escHtmlSafe(w.apt || '작업')} · ${unitText ? escHtmlSafe(unitText) : `${w.units.length}호수`}`;
 
   return `
-    <div class="cust-card cust-card-work" data-folder="${escHtmlSafe(w.folderName)}" title="클릭하여 작업 열기">
+    <div class="cust-card cust-card-work" data-folder="${escHtmlSafe(w.folderName)}" data-apt="${escHtmlSafe(w.apt || '')}" data-date="${escHtmlSafe(w.date || '')}" title="클릭하여 작업 열기">
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
@@ -1245,7 +1255,7 @@ async function loadWorkByVisit(visit) {
     return;
   }
 
-  // 현재 작업과 같으면 그냥 닫기 (workId 우선 비교)
+  // 현재 작업과 같으면 그냥 닫기
   if (visit.workId && currentWorkId === visit.workId) {
     closeCustomerModal();
     showToast('이미 현재 작업입니다', 'ok');
@@ -1257,12 +1267,26 @@ async function loadWorkByVisit(visit) {
     return;
   }
 
-  // 저장 확인
-  const proceed = await confirmBeforeLoad();
-  if (!proceed) return;
+  // ★ 확인 다이얼로그
+  const aptName = visit.apt || '작업';
+  const dateStr = visit.date || '';
+  const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
+  const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
+  let msg = `📂 작업 불러오기\n\n${aptName}${dateStr ? ' · ' + dateStr : ''}\n\n이 작업을 불러올까요?`;
+  if (hasChanges) msg += '\n\n⚠️ 현재 작업에 변경사항이 있어요.\n저장 후 진행됩니다.';
+  if (!confirm(msg)) return;
 
+  // 모달 닫고 단일 오버레이
   closeCustomerModal();
-  showOverlay('작업 불러오는 중...');
+  showOverlay('📂 불러오는 중...');
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // 변경사항 있으면 먼저 저장
+  if (hasChanges && photoFolderHandle && typeof saveToFolder === 'function') {
+    try {
+      await saveToFolder({ auto: true, force: true, silent: true });
+    } catch(e) { console.warn('자동저장 실패:', e); }
+  }
 
   try {
     let matchedFolder = null;
@@ -1324,7 +1348,7 @@ async function loadWorkByVisit(visit) {
   } catch(e) {
     hideOverlay();
     console.error(e);
-    showToast('작업 불러오기 실패: ' + e.message, 'err');
+    showToast('불러오기 실패: ' + e.message, 'err');
   }
 }
 

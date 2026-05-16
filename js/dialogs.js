@@ -15,23 +15,25 @@ window.markDataDirty = markDataDirty;
 // 현재 데이터의 빠른 스냅샷 (변경 비교용 - 사진 ID + 호수명 + 특이사항)
 function quickSnapshot() {
   try {
-    const apt = document.getElementById('aptName').value || '';
-    const date = document.getElementById('workDate').value || '';
-    const worker = document.getElementById('workerName').value || '';
-    // ★ workType + facilityCustomer 변경 추적
+    const apt = document.getElementById('aptName')?.value || '';
+    const date = document.getElementById('workDate')?.value || '';
+    const worker = document.getElementById('workerName')?.value || '';
     const wt = currentWorkType || 'household';
-    const fc = (wt === 'facility')
-      ? `${facilityCustomer.phone}|${facilityCustomer.contact}|${facilityCustomer.address}|${facilityCustomer.memo}`
+    const fc = (wt === 'facility' && facilityCustomer)
+      ? `${facilityCustomer.phone||''}|${facilityCustomer.contact||''}|${facilityCustomer.address||''}|${facilityCustomer.memo||''}`
       : '';
-    const unitsKey = units.map(u => {
-      const bIds = u.before.map(p => p.id || p.name || '').join('|');
-      const aIds = u.after.map(p => p.id || p.name || '').join('|');
-      const sp = u.specials.map(s => s.desc + ':' + s.photos.length).join(';');
-      const cust = u.customer ? `${u.customer.phone}|${u.customer.address}|${u.customer.memo}` : '';
-      return `${u.name}::${bIds}::${aIds}::${sp}::${cust}`;
+    const unitsKey = (units || []).map(u => {
+      const bIds = (u.before || []).map(p => p.id || p.name || '').join('|');
+      const aIds = (u.after || []).map(p => p.id || p.name || '').join('|');
+      const sp = (u.specials || []).map(s => (s.desc||'') + ':' + (s.photos||[]).length).join(';');
+      const cust = u.customer ? `${u.customer.phone||''}|${u.customer.address||''}|${u.customer.memo||''}` : '';
+      return `${u.name||''}::${bIds}::${aIds}::${sp}::${cust}`;
     }).join('@@');
     return `${apt}|${date}|${worker}|${wt}|${fc}|${unitsKey}`;
-  } catch(e) { return Math.random().toString(); }  // 에러 시 항상 dirty로 처리
+  } catch(e) {
+    console.warn('[quickSnapshot] 실패:', e.message);
+    return '';  // 빈 문자열 → "변경 없음"으로 처리
+  }
 }
 
 // 저장 버튼 메인 핸들러 - 상황에 맞게 자동 분기

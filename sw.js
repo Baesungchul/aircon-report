@@ -1,5 +1,5 @@
-// 서비스워커 v115 - 1.161: SW 갱신 시 모든 클라이언트 자동 새로고침
-const CACHE = 'ac1004-v115';
+// 서비스워커 v118 - 1.164: confirm 다이얼로그 즉시 표시 (변경사항 체크는 확인 후)
+const CACHE = 'ac1004-v118';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -17,7 +17,7 @@ self.addEventListener('activate', e => {
     // 3. 모든 열린 탭/창에 새로고침 신호 전송
     const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     allClients.forEach(client => {
-      client.postMessage({ type: 'SW_UPDATED', version: 'v115' });
+      client.postMessage({ type: 'SW_UPDATED', version: 'v116' });
     });
   })());
 });

@@ -178,20 +178,20 @@ async function customerSave(info) {
 
     if (visit) {
       customer.lastVisit = visit.date || now.slice(0, 10);
-      customer.visits = customer.visits || [];
+      customer.visits = (customer.visits || []).filter(v => v && typeof v === 'object');  // ★ null/잘못된 항목 제거
 
       // 0차 (★ 최우선): workId + unitName 매칭 (불변 식별자)
       let dupIdx = -1;
       if (visit.workId && visit.unitName) {
         dupIdx = customer.visits.findIndex(v =>
-          v.workId === visit.workId && (v.unitName === visit.unitName || v.unit === visit.unitName)
+          v && v.workId === visit.workId && (v.unitName === visit.unitName || v.unit === visit.unitName)
         );
       }
 
       // 0-B차: workId + 옛 unitName 매칭 (호수명 수정 직후)
       if (dupIdx < 0 && visit.workId && visit._oldUnitName) {
         dupIdx = customer.visits.findIndex(v =>
-          v.workId === visit.workId &&
+          v && v.workId === visit.workId &&
           (v.unitName === visit._oldUnitName || v.unit === visit._oldUnitName)
         );
       }
@@ -199,28 +199,28 @@ async function customerSave(info) {
       // 1차: 정확 매칭 (date + unit + apt)
       if (dupIdx < 0) {
         dupIdx = customer.visits.findIndex(v =>
-          v.date === visit.date && v.unit === visit.unit && v.apt === visit.apt
+          v && v.date === visit.date && v.unit === visit.unit && v.apt === visit.apt
         );
       }
 
       // 1-B차: 옛 unit 이름으로 정확 매칭
       if (dupIdx < 0 && visit._oldUnitName) {
         dupIdx = customer.visits.findIndex(v =>
-          v.date === visit.date && v.unit === visit._oldUnitName && v.apt === visit.apt
+          v && v.date === visit.date && v.unit === visit._oldUnitName && v.apt === visit.apt
         );
       }
 
       // 2차: 작업명 수정 대응 - 같은 날짜+호수
       if (dupIdx < 0) {
         dupIdx = customer.visits.findIndex(v =>
-          v.date === visit.date && v.unit === visit.unit
+          v && v.date === visit.date && v.unit === visit.unit
         );
       }
 
       // 3차: sourceFolderName 매칭 (예비)
       if (dupIdx < 0 && visit.sourceFolderName) {
         dupIdx = customer.visits.findIndex(v =>
-          v.sourceFolderName === visit.sourceFolderName && v.unit === visit.unit
+          v && v.sourceFolderName === visit.sourceFolderName && v.unit === visit.unit
         );
       }
 

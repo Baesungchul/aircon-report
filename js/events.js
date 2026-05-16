@@ -943,6 +943,9 @@ document.addEventListener('click', async e => {
     if (typeof flushCustomersXlsx === 'function') flushCustomersXlsx().catch(()=>{});
   } catch(err) {
     btn.disabled = false;
+    console.error('[고객저장 상세]', err);
+    console.error('  stack:', err?.stack);
+    console.error('  unit:', u?.name, 'phone:', u?.customer?.phone);
     showToast('저장 실패: ' + (err.message || err), 'err');
   }
 });

@@ -34,6 +34,10 @@ async function loadCustomerMeta() {
     const file = await fh.getFile();
     const text = await file.text();
     _metaCache = JSON.parse(text || '{}');
+    // ★ null 또는 비객체 방어
+    if (!_metaCache || typeof _metaCache !== 'object' || Array.isArray(_metaCache)) {
+      _metaCache = {};
+    }
   } catch(e) {
     // 파일 없으면 빈 객체
     _metaCache = {};
@@ -65,6 +69,8 @@ async function saveCustomerMeta() {
 // 메타 업데이트 (이름/주소/메모)
 async function updateCustomerMeta(phone, info) {
   await loadCustomerMeta();
+  if (!_metaCache || typeof _metaCache !== 'object') _metaCache = {};
+
   const norm = normalizePhone(phone);
   if (!_metaCache[norm]) _metaCache[norm] = {};
 

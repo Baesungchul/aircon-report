@@ -280,20 +280,44 @@ function bindAll() {
       }
       return;
     }
-    // 사진 크게 보기 - 원본 우선 (썸네일은 화질 떨어짐)
+    // 사진 크게 보기 - 원본만 표시 (썸네일 잠깐 보이는 것 방지)
     if (t.tagName==='IMG' && t.closest('.th-wrap')) {
       const pid = t.dataset.photoId;
       const p = pid ? findPhotoById(pid) : null;
-      if (p && p.fileHandle && !p._originalDataUrl) {
-        // 원본 로드 후 표시
-        showImg(t.src);  // 일단 썸네일로 띄움
-        p.fileHandle.getFile().then(file => blobToDataURL(file)).then(dataUrl => {
-          p._originalDataUrl = dataUrl;
-          const modalImg = document.getElementById('modalImg');
-          if (modalImg) modalImg.src = dataUrl;
-        }).catch(()=>{});
+
+      if (p && p._originalDataUrl) {
+        showImg(p._originalDataUrl);
+        return;
+      }
+
+      const canLoad = p && (p.fileHandle || (p._workDir && p.fileName));
+      if (canLoad) {
+        showImg('');
+        const modalImg = document.getElementById('modalImg');
+        if (modalImg) {
+          modalImg.style.opacity = '0';
+          modalImg.style.transition = 'opacity .15s';
+        }
+        (async () => {
+          try {
+            let fh = p.fileHandle;
+            if (!fh && p._workDir && p.fileName) {
+              fh = await p._workDir.getFileHandle(p.fileName);
+              p.fileHandle = fh;
+            }
+            const file = await fh.getFile();
+            const dataUrl = await blobToDataURL(file);
+            p._originalDataUrl = dataUrl;
+            if (modalImg) {
+              modalImg.src = dataUrl;
+              modalImg.style.opacity = '1';
+            }
+          } catch(e) {
+            if (modalImg) modalImg.style.opacity = '1';
+          }
+        })();
       } else {
-        showImg(p && p._originalDataUrl ? p._originalDataUrl : t.src);
+        showImg(t.src);
       }
       return;
     }
@@ -418,14 +442,13 @@ async function loadLazyPhoto(p) {
 }
 
 // ★ 모든 사진의 원본 로드 (보고서/PDF/JPG 생성 전)
-// 썸네일(dataUrl)은 그대로 두고 _originalDataUrl에 원본 저장
 async function ensureAllPhotosLoaded() {
   const targets = [];
   for (const u of (units || [])) {
-    (u.before || []).forEach(p => { if (p && p.fileHandle && !p._originalDataUrl) targets.push(p); });
-    (u.after  || []).forEach(p => { if (p && p.fileHandle && !p._originalDataUrl) targets.push(p); });
+    (u.before || []).forEach(p => { if (p && !p._originalDataUrl && (p.fileHandle || (p._workDir && p.fileName))) targets.push(p); });
+    (u.after  || []).forEach(p => { if (p && !p._originalDataUrl && (p.fileHandle || (p._workDir && p.fileName))) targets.push(p); });
     (u.specials || []).forEach(s => {
-      (s.photos || []).forEach(p => { if (p && p.fileHandle && !p._originalDataUrl) targets.push(p); });
+      (s.photos || []).forEach(p => { if (p && !p._originalDataUrl && (p.fileHandle || (p._workDir && p.fileName))) targets.push(p); });
     });
   }
   if (targets.length === 0) return;
@@ -436,10 +459,16 @@ async function ensureAllPhotosLoaded() {
     const batch = targets.slice(i, i + BATCH);
     await Promise.all(batch.map(async p => {
       try {
-        const file = await p.fileHandle.getFile();
+        // ★ fileHandle 확보 (이미 있으면 그대로, 없으면 _workDir에서 가져옴)
+        let fh = p.fileHandle;
+        if (!fh && p._workDir && p.fileName) {
+          fh = await p._workDir.getFileHandle(p.fileName);
+          p.fileHandle = fh;  // 캐싱
+        }
+        if (!fh) return;
+        const file = await fh.getFile();
         const dataUrl = await blobToDataURL(file);
-        p._originalDataUrl = dataUrl;  // ★ 원본은 별도 필드에
-        // 썸네일이 없었다면 (lazy = true) dataUrl도 채우기
+        p._originalDataUrl = dataUrl;
         if (!p.dataUrl) p.dataUrl = dataUrl;
         p.lazy = false;
       } catch(e) {

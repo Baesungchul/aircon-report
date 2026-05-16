@@ -305,20 +305,33 @@ async function saveToFolder(opts) {
     coTel:   document.getElementById('coTel')?.value || '',
     coBiz:   document.getElementById('coBiz')?.value || '',
     coDesc:  document.getElementById('coDesc')?.value || '',
-    units: units.map(u => ({
-      name: u.name,
-      workNum: u._workNum || getWorkNumber(u.name),  // ★ 보존된 _workNum 우선
-      beforeCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.before || 0) : u.before.length,
-      afterCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.after || 0) : u.after.length,
-      specials: u.specials.map((s, si) => ({
-        desc: s.desc,
-        photoCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.specials?.[si] || 0) : s.photos.length
-      })),
-      // 가정용 모드일 때만 호수별 customer 저장
-      customer: currentWorkType === 'facility'
-        ? { phone: '', address: '', memo: '' }
-        : (u.customer || { phone: '', address: '', memo: '' })
-    }))
+    units: units.map(u => {
+      // ★ 각 사진의 메타데이터 추출 (파일명 + 썸네일 dataUrl)
+      const mapPhotoMeta = (p) => {
+        if (!p) return null;
+        return {
+          fname: p.fileName || null,           // 디스크 파일명 (불러올 때 매칭용)
+          thumb: p.thumbDataUrl || null        // 작은 썸네일 (앱 화면용)
+        };
+      };
+      return {
+        name: u.name,
+        workNum: u._workNum || getWorkNumber(u.name),
+        beforeCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.before || 0) : u.before.length,
+        afterCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.after || 0) : u.after.length,
+        // ★ 사진 메타데이터 - 폴더 스캔 없이 바로 사용 가능
+        beforeMeta: u.before.map(mapPhotoMeta).filter(Boolean),
+        afterMeta: u.after.map(mapPhotoMeta).filter(Boolean),
+        specials: u.specials.map((s, si) => ({
+          desc: s.desc,
+          photoCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.specials?.[si] || 0) : s.photos.length,
+          photosMeta: s.photos.map(mapPhotoMeta).filter(Boolean)
+        })),
+        customer: currentWorkType === 'facility'
+          ? { phone: '', address: '', memo: '' }
+          : (u.customer || { phone: '', address: '', memo: '' })
+      };
+    })
   };
 
   // JSON 텍스트 (쓰기 검증용)
@@ -1181,6 +1194,59 @@ async function restoreFromData(data, dateDir) {
     };
 
     if (restorePhotos && dateDir) {
+      // ★ 사진 개수 확인 - 모두 0이면 즉시 다음 호수로
+      const beforeCnt = u.beforeCount || 0;
+      const afterCnt = u.afterCount || 0;
+      const specialCnt = (u.specials || []).reduce((s, sp) => s + (sp.photoCount || 0), 0);
+      const totalPhotos = beforeCnt + afterCnt + specialCnt;
+
+      if (totalPhotos === 0) {
+        units.push(newUnit);
+        continue;
+      }
+
+      // ★ NEW: _session.json에 메타데이터 있으면 폴더 스캔 안 함
+      const hasMeta = (u.beforeMeta || u.afterMeta ||
+                       (u.specials || []).some(s => s.photosMeta));
+
+      if (hasMeta) {
+        // 폴더 핸들만 lazy 참조용으로 가져옴 (스캔 안 함)
+        let workDir = null;
+        try {
+          const workNum = String(u.workNum || (ui+1)).padStart(2,'0');
+          workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
+        } catch(e) { /* 폴더 없으면 원본 lazy 로딩 못 함 (썸네일은 가능) */ }
+
+        // 메타에서 사진 객체 생성 (썸네일은 즉시 사용 + 원본은 lazy)
+        const buildFromMeta = (meta) => {
+          if (!meta) return null;
+          const obj = {
+            id: photoId(),
+            dataUrl: meta.thumb || null,  // 썸네일 dataUrl (즉시 표시)
+            fileName: meta.fname,
+            savedToFolder: true,
+            hasOriginal: true,
+            lazy: !meta.thumb  // 썸네일 있으면 lazy 아님
+          };
+          // 원본 lazy 로딩을 위한 fileHandle (보고서 생성 시 필요)
+          if (workDir && meta.fname) {
+            obj._workDir = workDir;  // 나중에 getFileHandle 호출
+          }
+          return obj;
+        };
+
+        newUnit.before = (u.beforeMeta || []).map(buildFromMeta).filter(Boolean);
+        newUnit.after  = (u.afterMeta  || []).map(buildFromMeta).filter(Boolean);
+        newUnit.specials = (u.specials || []).map(s => ({
+          desc: s.desc || '',
+          photos: (s.photosMeta || []).map(buildFromMeta).filter(Boolean)
+        }));
+
+        units.push(newUnit);
+        continue;
+      }
+
+      // ★ 구버전 호환: 메타데이터 없으면 기존처럼 폴더 스캔
       try {
         // ★ 저장된 workNum 우선 사용, 없으면 인덱스+1 (구버전 호환)
         const workNum = String(u.workNum || (ui+1)).padStart(2,'0');

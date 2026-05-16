@@ -505,10 +505,13 @@ async function doWriteOne(photo, unitName, typeLabel) {
     step = 'close';
     await w.close();
 
-    if (typeof photo === 'object') photo.savedToFolder = true;
+    if (typeof photo === 'object') {
+      photo.savedToFolder = true;
+      photo.fileName = fname;  // ★ 파일명 저장 (다음 불러올 때 매칭용)
+    }
 
-    // ★ 썸네일 저장 (백그라운드 - 실패해도 무시)
-    saveThumbnailInBackground(workDir, fname, blob).catch(e => {
+    // ★ 썸네일 생성 + 저장 (백그라운드, 결과는 photo 객체에 저장)
+    saveThumbnailInBackground(workDir, fname, blob, photo).catch(e => {
       console.warn('썸네일 저장 실패 (무시):', e.message);
     });
 
@@ -517,18 +520,26 @@ async function doWriteOne(photo, unitName, typeLabel) {
   }
 }
 
-// ★ 썸네일을 백그라운드에서 _thumbs 폴더에 저장
-async function saveThumbnailInBackground(workDir, fname, originalBlob) {
+// ★ 썸네일을 백그라운드에서 _thumbs 폴더에 저장 + photo 객체에 dataUrl 보관
+async function saveThumbnailInBackground(workDir, fname, originalBlob, photo) {
   if (typeof createThumbnailBlob !== 'function') return;
   try {
     const thumbBlob = await createThumbnailBlob(originalBlob);
+
+    // ★ photo 객체에 썸네일 dataUrl 저장 (다음 저장 시 _session.json에 포함됨)
+    if (photo && typeof photo === 'object') {
+      try {
+        photo.thumbDataUrl = await blobToDataURL(thumbBlob);
+      } catch(e) {}
+    }
+
+    // _thumbs/ 폴더에도 파일로 저장 (백업 + 다른 세션에서 사용)
     const thumbsDir = await workDir.getDirectoryHandle('_thumbs', { create: true });
     const fh = await thumbsDir.getFileHandle(fname, { create: true });
     const w = await fh.createWritable();
     await w.write(thumbBlob);
     await w.close();
   } catch(e) {
-    // 썸네일 실패는 무시 (원본은 이미 저장됨)
     throw e;
   }
 }

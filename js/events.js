@@ -280,8 +280,23 @@ function bindAll() {
       }
       return;
     }
-    // 사진 크게 보기
-    if (t.tagName==='IMG' && t.closest('.th-wrap')) { showImg(t.src); return; }
+    // 사진 크게 보기 - 원본 우선 (썸네일은 화질 떨어짐)
+    if (t.tagName==='IMG' && t.closest('.th-wrap')) {
+      const pid = t.dataset.photoId;
+      const p = pid ? findPhotoById(pid) : null;
+      if (p && p.fileHandle && !p._originalDataUrl) {
+        // 원본 로드 후 표시
+        showImg(t.src);  // 일단 썸네일로 띄움
+        p.fileHandle.getFile().then(file => blobToDataURL(file)).then(dataUrl => {
+          p._originalDataUrl = dataUrl;
+          const modalImg = document.getElementById('modalImg');
+          if (modalImg) modalImg.src = dataUrl;
+        }).catch(()=>{});
+      } else {
+        showImg(p && p._originalDataUrl ? p._originalDataUrl : t.src);
+      }
+      return;
+    }
   });
 
   // 파일 업로드 위임
@@ -360,14 +375,99 @@ function newPhotoId() {
 function makePhoto(dataUrl) {
   return { id: newPhotoId(), dataUrl, savedToFolder: false };
 }
-// 사진의 dataUrl 추출 (객체든 문자열이든)
+
+// 1x1 투명 placeholder
+const PHOTO_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><rect width="60" height="60" fill="%23333"/><text x="30" y="33" text-anchor="middle" fill="%23888" font-size="11">📷</text></svg>';
+
+// 사진의 dataUrl 추출 (객체든 문자열이든) - lazy 로딩 지원
 function photoUrl(p) {
-  return typeof p === 'string' ? p : p.dataUrl;
+  if (typeof p === 'string') return p;
+  if (p.dataUrl) return p.dataUrl;
+  // lazy 사진: placeholder 반환 + 백그라운드 로딩 트리거
+  if (p.lazy && p.fileHandle && !p._loading) {
+    p._loading = true;
+    loadLazyPhoto(p);
+  }
+  return PHOTO_PLACEHOLDER;
 }
+
+// ★ 보고서용 - 원본 우선 (썸네일은 보고서에 쓰면 화질 떨어짐)
+function photoUrlFull(p) {
+  if (typeof p === 'string') return p;
+  if (p._originalDataUrl) return p._originalDataUrl;  // 원본
+  if (p.dataUrl) return p.dataUrl;                      // 썸네일 (폴백)
+  return PHOTO_PLACEHOLDER;
+}
+
+// 백그라운드에서 lazy 사진 로딩 + DOM 갱신
+async function loadLazyPhoto(p) {
+  try {
+    const file = await p.fileHandle.getFile();
+    const dataUrl = await blobToDataURL(file);
+    p.dataUrl = dataUrl;
+    p.lazy = false;
+    p._loading = false;
+    // 해당 사진을 보여주는 img 태그 갱신
+    document.querySelectorAll(`img[data-photo-id="${p.id}"]`).forEach(img => {
+      img.src = dataUrl;
+    });
+  } catch(e) {
+    p._loading = false;
+    console.warn('[photo lazy load] 실패:', e.message);
+  }
+}
+
+// ★ 모든 사진의 원본 로드 (보고서/PDF/JPG 생성 전)
+// 썸네일(dataUrl)은 그대로 두고 _originalDataUrl에 원본 저장
+async function ensureAllPhotosLoaded() {
+  const targets = [];
+  for (const u of (units || [])) {
+    (u.before || []).forEach(p => { if (p && p.fileHandle && !p._originalDataUrl) targets.push(p); });
+    (u.after  || []).forEach(p => { if (p && p.fileHandle && !p._originalDataUrl) targets.push(p); });
+    (u.specials || []).forEach(s => {
+      (s.photos || []).forEach(p => { if (p && p.fileHandle && !p._originalDataUrl) targets.push(p); });
+    });
+  }
+  if (targets.length === 0) return;
+
+  showOverlay?.(`📷 보고서용 사진 로딩 중... (${targets.length}장)`);
+  const BATCH = 6;
+  for (let i = 0; i < targets.length; i += BATCH) {
+    const batch = targets.slice(i, i + BATCH);
+    await Promise.all(batch.map(async p => {
+      try {
+        const file = await p.fileHandle.getFile();
+        const dataUrl = await blobToDataURL(file);
+        p._originalDataUrl = dataUrl;  // ★ 원본은 별도 필드에
+        // 썸네일이 없었다면 (lazy = true) dataUrl도 채우기
+        if (!p.dataUrl) p.dataUrl = dataUrl;
+        p.lazy = false;
+      } catch(e) {
+        console.warn('[ensureAllPhotos] 실패:', e.message);
+      }
+    }));
+    showOverlay?.(`📷 보고서용 사진 로딩 중... (${Math.min(i+BATCH, targets.length)}/${targets.length})`);
+  }
+  hideOverlay?.();
+}
+window.ensureAllPhotosLoaded = ensureAllPhotosLoaded;
+
 // 사진의 ID 추출 (없으면 즉석 생성)
 function photoId(p) {
   if (typeof p === 'string') return null;
   return p.id;
+}
+
+// ★ ID로 photo 객체 찾기 (units 전체 검색)
+function findPhotoById(pid) {
+  for (const u of (units || [])) {
+    for (const p of (u.before || [])) if (p && p.id == pid) return p;
+    for (const p of (u.after  || [])) if (p && p.id == pid) return p;
+    for (const s of (u.specials || [])) {
+      for (const p of (s.photos || [])) if (p && p.id == pid) return p;
+    }
+  }
+  return null;
 }
 // 배열을 객체 배열로 정규화 (문자열은 객체로 변환)
 function normalizePhotos(arr) {

@@ -66,3 +66,34 @@ function compressImage(file) {
     reader.readAsDataURL(file);
   });
 }
+
+// ═══════════════════════════════════════════════
+// 썸네일 생성 (앱 화면용 - 작은 사이즈)
+// ═══════════════════════════════════════════════
+const THUMB_MAX_PX = 300;       // 썸네일 최대 크기
+const THUMB_QUALITY = 0.65;     // 썸네일 품질 (작아도 충분)
+
+// File/Blob → 썸네일 Blob (JPEG)
+function createThumbnailBlob(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const ratio = Math.min(THUMB_MAX_PX / img.naturalWidth, THUMB_MAX_PX / img.naturalHeight, 1);
+      const w = Math.round(img.naturalWidth * ratio);
+      const h = Math.round(img.naturalHeight * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('썸네일 생성 실패'));
+      }, 'image/jpeg', THUMB_QUALITY);
+    };
+    img.onerror = e => { URL.revokeObjectURL(url); reject(new Error('이미지 로드 실패')); };
+    img.src = url;
+  });
+}

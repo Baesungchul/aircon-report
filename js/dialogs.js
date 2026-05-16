@@ -6,6 +6,50 @@
 let _dataDirty = true;  // 처음엔 dirty (한 번은 저장 필요)
 let _lastSaveSnapshot = '';  // 마지막 저장 시점의 데이터 스냅샷
 
+// ★ 썸네일 백그라운드 생성 큐 (불러오기 시 썸네일 없는 사진 등록 → 백그라운드로 생성)
+const _pendingThumbGen = [];
+let _thumbGenInProgress = false;
+
+async function processPendingThumbGen() {
+  if (_thumbGenInProgress || _pendingThumbGen.length === 0) return;
+  if (typeof createThumbnailBlob !== 'function') return;
+  _thumbGenInProgress = true;
+
+  // 일감 복사 후 큐 비우기 (다시 추가될 수 있도록)
+  const tasks = _pendingThumbGen.splice(0);
+
+  for (const t of tasks) {
+    try {
+      const { workDir, fh } = t;
+      let thumbsDir = t.thumbsDir;
+      if (!thumbsDir) {
+        try { thumbsDir = await workDir.getDirectoryHandle('_thumbs', { create: true }); } catch(e) { continue; }
+      }
+      // 이미 썸네일 있으면 스킵
+      try {
+        await thumbsDir.getFileHandle(fh.name);
+        continue;
+      } catch(e) { /* 없으니 생성 */ }
+
+      const origFile = await fh.getFile();
+      const thumbBlob = await createThumbnailBlob(origFile);
+      const tfh = await thumbsDir.getFileHandle(fh.name, { create: true });
+      const w = await tfh.createWritable();
+      await w.write(thumbBlob);
+      await w.close();
+    } catch(e) {
+      // 개별 실패는 무시 (다음 일감 진행)
+    }
+    // CPU 부하 분산: 다음 일감 전에 잠깐 양보
+    await new Promise(r => setTimeout(r, 30));
+  }
+
+  _thumbGenInProgress = false;
+  // 그동안 또 추가됐으면 재귀
+  if (_pendingThumbGen.length > 0) processPendingThumbGen();
+}
+window.processPendingThumbGen = processPendingThumbGen;
+
 // 데이터 변경 시 호출 (외부에서 사용)
 function markDataDirty() {
   _dataDirty = true;
@@ -1179,12 +1223,37 @@ async function restoreFromData(data, dateDir) {
         filesByType.B.sort((a, b) => a.idx - b.idx);
         Object.values(filesByType.S).forEach(arr => arr.sort((a, b) => a.idx - b.idx));
 
-        // ★ 파일 읽기 병렬화 (순차 await → 한번에)
+        // ★ 썸네일 폴더 핸들 가져오기 (있을 수도 없을 수도)
+        let thumbsDir = null;
+        try {
+          thumbsDir = await workDir.getDirectoryHandle('_thumbs');
+        } catch(e) { /* 썸네일 폴더 없음 */ }
+
+        // ★ 파일 읽기 - 썸네일 우선 + 원본은 lazy
         const readPhoto = async (fh) => {
           try {
-            const pf = await fh.getFile();
-            const dataUrl = await blobToDataURL(pf);
-            return { id: photoId(), dataUrl, savedToFolder: true };
+            let thumbDataUrl = null;
+            // 1) 썸네일 시도
+            if (thumbsDir) {
+              try {
+                const thumbFh = await thumbsDir.getFileHandle(fh.name);
+                const thumbFile = await thumbFh.getFile();
+                thumbDataUrl = await blobToDataURL(thumbFile);
+              } catch(e) { /* 썸네일 없음 */ }
+            }
+            // 2) 썸네일 없으면 백그라운드에서 생성 예약
+            if (!thumbDataUrl) {
+              _pendingThumbGen.push({ workDir, thumbsDir: thumbsDir, fh });
+            }
+            return {
+              id: photoId(),
+              dataUrl: thumbDataUrl,    // 썸네일 (작음) 또는 null
+              fileHandle: fh,            // 원본 핸들 (보고서/확대용)
+              fileName: fh.name,
+              savedToFolder: true,
+              hasOriginal: true,
+              lazy: !thumbDataUrl        // 썸네일 없으면 원본을 lazy
+            };
           } catch(e) { return null; }
         };
 
@@ -1279,6 +1348,11 @@ async function restoreFromData(data, dateDir) {
 
   hideOverlay();
   showToast(`✓ ${units.length}호수 불러옴`, 'ok');
+
+  // ★ 썸네일 없는 사진들 백그라운드 생성 (3초 후 시작 - 첫 렌더 방해 안 함)
+  if (_pendingThumbGen.length > 0) {
+    setTimeout(() => processPendingThumbGen(), 3000);
+  }
 }
 
 // 평문 이스케이프

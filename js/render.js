@@ -60,8 +60,9 @@ function renderAll() {
     const makeThumbs=(arr,type)=>arr.map((p,idx)=>{
       const src = photoUrl(p);
       const saved = (typeof p === 'object' && p.savedToFolder);
+      const pid = (typeof p === 'object' && p.id) ? p.id : '';
       return `<div class="th-wrap" title="${saved?'폴더 저장됨':''}">
-        <img src="${src}" alt="">
+        <img src="${src}" alt="" data-photo-id="${pid}" loading="lazy">
         ${saved?'<span class="th-saved">✓</span>':''}
         <button class="th-del" data-uid="${u.id}" data-type="${type}" data-idx="${idx}">✕</button>
         <button class="th-save-btn" data-uid="${u.id}" data-type="${type}" data-idx="${idx}" title="폴더로 저장">↓</button>
@@ -71,8 +72,9 @@ function renderAll() {
     const makeSpThumbs=(s)=>s.photos.map((p,idx)=>{
       const src = photoUrl(p);
       const saved = (typeof p === 'object' && p.savedToFolder);
+      const pid = (typeof p === 'object' && p.id) ? p.id : '';
       return `<div class="th-wrap" title="${saved?'폴더 저장됨':''}">
-        <img src="${src}" style="width:50px;height:50px;object-fit:cover;border-radius:5px;border:1px solid var(--bd);cursor:pointer;" alt="">
+        <img src="${src}" data-photo-id="${pid}" loading="lazy" style="width:50px;height:50px;object-fit:cover;border-radius:5px;border:1px solid var(--bd);cursor:pointer;" alt="">
         ${saved?'<span class="th-saved" style="font-size:8px;width:13px;height:13px;">✓</span>':''}
         <button class="th-del sp-th-del" data-uid="${u.id}" data-sid="${s.id}" data-idx="${idx}">✕</button>
         <button class="th-save-btn sp-save-btn" data-uid="${u.id}" data-sid="${s.id}" data-idx="${idx}" title="폴더로 저장" style="width:15px;height:15px;font-size:8px;">↓</button>

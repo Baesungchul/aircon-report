@@ -443,7 +443,7 @@ function buildReportHTML(){
     const items = [];
     for (let i = 0; i < slots; i++) {
       if (i < photos.length) {
-        items.push(`<div class="rp-pitem"><img src="${photoUrl(photos[i])}"></div>`);
+        items.push(`<div class="rp-pitem"><img src="${photoUrlFull(photos[i])}"></div>`);
       } else {
         items.push(`<div class="rp-pitem rp-empty"></div>`);
       }
@@ -457,7 +457,7 @@ function buildReportHTML(){
     const photoSlots = [];
     for (let i = 0; i < 4; i++) {
       if (i < photoSlice.length) {
-        photoSlots.push(`<div class="rp-sp-photo-item"><img src="${photoUrl(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
+        photoSlots.push(`<div class="rp-sp-photo-item"><img src="${photoUrlFull(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
       } else {
         photoSlots.push(`<div class="rp-sp-photo-item rp-empty"></div>`);
       }
@@ -486,7 +486,7 @@ function buildReportHTML(){
     const photoSlots = [];
     for (let i = 0; i < maxPhotos; i++) {
       if (i < photoSlice.length) {
-        photoSlots.push(`<div class="rp-sp-photo-item"><img src="${photoUrl(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
+        photoSlots.push(`<div class="rp-sp-photo-item"><img src="${photoUrlFull(photoSlice[i])}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;"></div>`);
       } else {
         photoSlots.push(`<div class="rp-sp-photo-item rp-empty"></div>`);
       }
@@ -518,6 +518,9 @@ async function buildAndPreview(){
       if (s) s.desc = ta.value;
     }
   });
+
+  // ★ lazy 사진 모두 로드 (보고서 생성에 필요)
+  await ensureAllPhotosLoaded();
 
   const html=buildReportHTML();
   document.getElementById('rpWrap').innerHTML=html;

@@ -507,8 +507,29 @@ async function doWriteOne(photo, unitName, typeLabel) {
 
     if (typeof photo === 'object') photo.savedToFolder = true;
 
+    // ★ 썸네일 저장 (백그라운드 - 실패해도 무시)
+    saveThumbnailInBackground(workDir, fname, blob).catch(e => {
+      console.warn('썸네일 저장 실패 (무시):', e.message);
+    });
+
   } catch(e) {
     throw new Error(`[${step}] ${e.name||'Error'}: ${e.message}`);
+  }
+}
+
+// ★ 썸네일을 백그라운드에서 _thumbs 폴더에 저장
+async function saveThumbnailInBackground(workDir, fname, originalBlob) {
+  if (typeof createThumbnailBlob !== 'function') return;
+  try {
+    const thumbBlob = await createThumbnailBlob(originalBlob);
+    const thumbsDir = await workDir.getDirectoryHandle('_thumbs', { create: true });
+    const fh = await thumbsDir.getFileHandle(fname, { create: true });
+    const w = await fh.createWritable();
+    await w.write(thumbBlob);
+    await w.close();
+  } catch(e) {
+    // 썸네일 실패는 무시 (원본은 이미 저장됨)
+    throw e;
   }
 }
 

@@ -1,5 +1,5 @@
-// 서비스워커 v118 - 1.164: confirm 다이얼로그 즉시 표시 (변경사항 체크는 확인 후)
-const CACHE = 'ac1004-v118';
+// 서비스워커 v120 - 1.166: 썸네일 시스템 (앱은 작은 썸네일, 보고서는 원본)
+const CACHE = 'ac1004-v120';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

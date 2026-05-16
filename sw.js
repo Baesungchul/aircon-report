@@ -1,5 +1,5 @@
-// 서비스워커 v122 - 1.168: _session.json에 사진 메타+썸네일 임베드 (폴더 스캔 제거)
-const CACHE = 'ac1004-v122';
+// 서비스워커 v123 - 1.169: 고객 visits 매칭 null 안전 + _metaCache 방어 + 에러 로깅
+const CACHE = 'ac1004-v123';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

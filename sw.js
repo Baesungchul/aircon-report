@@ -1,5 +1,5 @@
-// 서비스워커 v120 - 1.166: 썸네일 시스템 (앱은 작은 썸네일, 보고서는 원본)
-const CACHE = 'ac1004-v120';
+// 서비스워커 v122 - 1.168: _session.json에 사진 메타+썸네일 임베드 (폴더 스캔 제거)
+const CACHE = 'ac1004-v122';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

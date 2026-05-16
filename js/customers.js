@@ -822,37 +822,27 @@ async function openWorkByFolder(folderName, apt, date) {
     return;
   }
 
-  // ★ 1단계: 확인 다이얼로그 먼저 (모달 그대로 열린 채)
+  // ★ 1단계: 클릭 즉시 confirm (지연 없이)
   const aptName = apt || folderName;
   const dateStr = date || '';
   const msg = `📂 작업 불러오기\n\n${aptName}${dateStr ? ' · ' + dateStr : ''}\n\n이 작업을 불러올까요?`;
+  if (!confirm(msg)) return;
 
-  // 현재 변경사항 체크
-  const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
-  const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
-  const fullMsg = hasChanges
-    ? msg + '\n\n⚠️ 현재 작업에 변경사항이 있어요.\n저장 후 진행됩니다.'
-    : msg;
-
-  if (!confirm(fullMsg)) return;
-
-  // ★ 2단계: 모달 닫고 하나의 오버레이만 표시
+  // ★ 2단계: 확인 후 모달 닫고 오버레이
   closeCustomerModal();
   showOverlay('📂 불러오는 중...');
-
-  // 화면 그릴 시간 확보
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-  // 변경사항 있으면 먼저 저장
-  if (hasChanges && photoFolderHandle && typeof saveToFolder === 'function') {
-    try {
+  // ★ 3단계: 변경사항 체크는 확인 후에 (백그라운드)
+  try {
+    const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
+    const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
+    if (hasChanges && typeof saveToFolder === 'function') {
       await saveToFolder({ auto: true, force: true, silent: true });
-    } catch(e) {
-      console.warn('불러오기 전 자동저장 실패:', e);
     }
-  }
+  } catch(e) { console.warn('자동저장 실패:', e); }
 
-  // 폴더 읽기 + 불러오기 (한 번에)
+  // 폴더 읽기 + 불러오기
   try {
     const dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
     const sf = await dirHandle.getFileHandle('_session.json');
@@ -1267,13 +1257,10 @@ async function loadWorkByVisit(visit) {
     return;
   }
 
-  // ★ 확인 다이얼로그
+  // ★ 확인 다이얼로그 즉시 (지연 없이)
   const aptName = visit.apt || '작업';
   const dateStr = visit.date || '';
-  const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
-  const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
-  let msg = `📂 작업 불러오기\n\n${aptName}${dateStr ? ' · ' + dateStr : ''}\n\n이 작업을 불러올까요?`;
-  if (hasChanges) msg += '\n\n⚠️ 현재 작업에 변경사항이 있어요.\n저장 후 진행됩니다.';
+  const msg = `📂 작업 불러오기\n\n${aptName}${dateStr ? ' · ' + dateStr : ''}\n\n이 작업을 불러올까요?`;
   if (!confirm(msg)) return;
 
   // 모달 닫고 단일 오버레이
@@ -1281,12 +1268,14 @@ async function loadWorkByVisit(visit) {
   showOverlay('📂 불러오는 중...');
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-  // 변경사항 있으면 먼저 저장
-  if (hasChanges && photoFolderHandle && typeof saveToFolder === 'function') {
-    try {
+  // 변경사항 있으면 먼저 저장 (백그라운드)
+  try {
+    const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
+    const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
+    if (hasChanges && photoFolderHandle && typeof saveToFolder === 'function') {
       await saveToFolder({ auto: true, force: true, silent: true });
-    } catch(e) { console.warn('자동저장 실패:', e); }
-  }
+    }
+  } catch(e) { console.warn('자동저장 실패:', e); }
 
   try {
     let matchedFolder = null;

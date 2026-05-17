@@ -508,19 +508,33 @@ function buildReportHTML(){
 }
 
 async function buildAndPreview(){
-  // ★ textarea 값을 units에 강제 동기화 (미리보기 직전)
-  document.querySelectorAll('.sp-txt').forEach(ta => {
-    const uid = +ta.dataset.uid;
-    const sid = +ta.dataset.sid;
-    const u = units.find(u => u.id === uid);
-    if (u) {
-      const s = u.specials.find(s => s.id === sid);
-      if (s) s.desc = ta.value;
-    }
-  });
+  if (typeof _appBusy !== 'undefined' && _appBusy) return;
 
-  // ★ lazy 사진 모두 로드 (보고서 생성에 필요)
-  await ensureAllPhotosLoaded();
+  if (!units || units.length === 0) {
+    showToast('호수를 먼저 추가해주세요', 'err');
+    return;
+  }
+
+  // ★ 확인 다이얼로그 즉시 (지연 없이)
+  if (!confirm(`📄 보고서 생성\n\n${units.length}개 호수의 보고서를 만들까요?\n\n사진이 많으면 로딩에 시간이 걸려요.`)) return;
+
+  // 입력 차단
+  if (typeof setAppBusy === 'function') setAppBusy(true, '📄 보고서 생성 중...');
+
+  try {
+    // ★ textarea 값을 units에 강제 동기화 (미리보기 직전)
+    document.querySelectorAll('.sp-txt').forEach(ta => {
+      const uid = +ta.dataset.uid;
+      const sid = +ta.dataset.sid;
+      const u = units.find(u => u.id === uid);
+      if (u) {
+        const s = u.specials.find(s => s.id === sid);
+        if (s) s.desc = ta.value;
+      }
+    });
+
+    // ★ lazy 사진 모두 로드 (보고서 생성에 필요)
+    await ensureAllPhotosLoaded();
 
   const html=buildReportHTML();
   document.getElementById('rpWrap').innerHTML=html;
@@ -541,10 +555,16 @@ async function buildAndPreview(){
     const box=document.createElement('div'); box.className='pv-pg-scaled'; box.style.width=`${794*baseScale}px`; box.style.height=`${1123*baseScale}px`;
     box.appendChild(clone); wrap.appendChild(lbl); wrap.appendChild(box); scroll.appendChild(wrap);
   });
-  document.getElementById('pvModal').classList.add('open');
-  // 미리보기 열렸으니 손가락 줌 허용
-  if (typeof setViewportZoom === 'function') setViewportZoom(true);
-  showToast(`보고서 ${pages.length}페이지 준비됨`,'ok');
+    document.getElementById('pvModal').classList.add('open');
+    // 미리보기 열렸으니 손가락 줌 허용
+    if (typeof setViewportZoom === 'function') setViewportZoom(true);
+    showToast(`보고서 ${pages.length}페이지 준비됨`,'ok');
+  } catch(e) {
+    console.error('[보고서] 생성 실패:', e);
+    showToast('보고서 생성 실패: ' + (e.message || e), 'err');
+  } finally {
+    if (typeof setAppBusy === 'function') setAppBusy(false);
+  }
 }
 
 async function exportPDF(){

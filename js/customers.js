@@ -458,22 +458,8 @@ async function renderCustomerList() {
     renderCustomerList();
   });
 
-  body.querySelectorAll('.cust-card').forEach(card => {
-    card.addEventListener('click', e => {
-      if (e.target.closest('.cust-card-del')) return;
-      if (e.target.closest('.cust-card-edit')) return;
-      if (e.target.closest('.cust-card-open')) return;
-      if (e.target.closest('.cust-card-work-del')) return;
-      // 작업 카드면 폴더로 열기, 고객 카드면 전화번호로 열기
-      if (card.classList.contains('cust-card-work')) {
-        openWorkByFolder(card.dataset.folder, card.dataset.apt, card.dataset.date);
-      } else {
-        const aptFilter = card.dataset.aptFilter || '';
-        const workId = card.dataset.workid || '';
-        openWorkForCustomer(card.dataset.phone, aptFilter, workId);
-      }
-    });
-  });
+  // ★ 카드 자체 클릭 비활성화 - 버튼으로만 동작
+  // (실수 클릭 방지 + 명확한 액션 의도 표현)
 
   // ★ 고객 카드 "열기" 버튼
   body.querySelectorAll('.cust-card-open').forEach(btn => {
@@ -483,6 +469,14 @@ async function renderCustomerList() {
       const aptFilter = btn.dataset.aptFilter || '';
       const workId = btn.dataset.workid || '';
       openWorkForCustomer(phone, aptFilter, workId);
+    });
+  });
+
+  // ★ 작업 카드 "열기" 버튼 (전화번호 없는 작업)
+  body.querySelectorAll('.cust-card-work-open').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openWorkByFolder(btn.dataset.folder, btn.dataset.apt, btn.dataset.date);
     });
   });
 
@@ -808,8 +802,32 @@ async function confirmBeforeLoad() {
 }
 
 
+// 전역 동작 중 플래그 (중복 클릭 방지)
+let _appBusy = false;
+function setAppBusy(busy, msg) {
+  _appBusy = busy;
+  let block = document.getElementById('appBlock');
+  if (busy) {
+    if (!block) {
+      block = document.createElement('div');
+      block.id = 'appBlock';
+      block.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;cursor:wait;';
+      block.innerHTML = `<div style="background:var(--sf);padding:20px 28px;border-radius:14px;font-size:15px;font-weight:700;color:var(--ac);box-shadow:0 8px 30px rgba(0,0,0,.5);">${msg || '⏳ 처리 중...'}</div>`;
+      document.body.appendChild(block);
+    } else {
+      block.querySelector('div').textContent = msg || '⏳ 처리 중...';
+      block.style.display = 'flex';
+    }
+  } else {
+    if (block) block.style.display = 'none';
+  }
+}
+window.setAppBusy = setAppBusy;
+
 // 폴더명으로 작업 직접 열기
 async function openWorkByFolder(folderName, apt, date) {
+  if (_appBusy) return;  // 이미 처리 중이면 무시
+
   if (!photoFolderHandle) {
     showToast('저장 폴더가 설정되지 않았습니다', 'err');
     return;
@@ -822,28 +840,27 @@ async function openWorkByFolder(folderName, apt, date) {
     return;
   }
 
-  // ★ 1단계: 클릭 즉시 confirm (지연 없이)
+  // ★ 클릭 즉시 confirm (지연 없음)
   const aptName = apt || folderName;
   const dateStr = date || '';
   const msg = `📂 작업 불러오기\n\n${aptName}${dateStr ? ' · ' + dateStr : ''}\n\n이 작업을 불러올까요?`;
   if (!confirm(msg)) return;
 
-  // ★ 2단계: 확인 후 모달 닫고 오버레이
+  // ★ 확인 후 - 모든 입력 차단
+  setAppBusy(true, '📂 불러오는 중...');
   closeCustomerModal();
-  showOverlay('📂 불러오는 중...');
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-  // ★ 3단계: 변경사항 체크는 확인 후에 (백그라운드)
   try {
-    const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
-    const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
-    if (hasChanges && typeof saveToFolder === 'function') {
-      await saveToFolder({ auto: true, force: true, silent: true });
-    }
-  } catch(e) { console.warn('자동저장 실패:', e); }
+    // 변경사항 있으면 먼저 저장 (백그라운드)
+    try {
+      const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
+      const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
+      if (hasChanges && typeof saveToFolder === 'function') {
+        await saveToFolder({ auto: true, force: true, silent: true });
+      }
+    } catch(e) { console.warn('자동저장 실패:', e); }
 
-  // 폴더 읽기 + 불러오기
-  try {
+    // 폴더 읽기 + 불러오기
     const dirHandle = await photoFolderHandle.getDirectoryHandle(folderName);
     const sf = await dirHandle.getFileHandle('_session.json');
     const f = await sf.getFile();
@@ -856,8 +873,9 @@ async function openWorkByFolder(folderName, apt, date) {
       ]);
     }
   } catch(e) {
-    hideOverlay();
     showToast('불러오기 실패: ' + e.message, 'err');
+  } finally {
+    setAppBusy(false);
   }
 }
 
@@ -939,10 +957,11 @@ function renderWorkCard(w) {
   const titleLine = `${escHtmlSafe(w.apt || '작업')} · ${unitText ? escHtmlSafe(unitText) : `${w.units.length}호수`}`;
 
   return `
-    <div class="cust-card cust-card-work" data-folder="${escHtmlSafe(w.folderName)}" data-apt="${escHtmlSafe(w.apt || '')}" data-date="${escHtmlSafe(w.date || '')}" title="클릭하여 작업 열기">
+    <div class="cust-card cust-card-work" data-folder="${escHtmlSafe(w.folderName)}" data-apt="${escHtmlSafe(w.apt || '')}" data-date="${escHtmlSafe(w.date || '')}">
       <div class="cust-card-head">
         <div class="cust-card-name">${titleLine}</div>
         <div class="cust-card-actions">
+          <button class="cust-card-btn cust-card-work-open" data-folder="${escHtmlSafe(w.folderName)}" data-apt="${escHtmlSafe(w.apt || '')}" data-date="${escHtmlSafe(w.date || '')}" title="작업 열기"><span class="btn-ic">📂</span><span class="btn-tx">열기</span></button>
           <button class="cust-card-btn cust-card-work-del" data-folder="${escHtmlSafe(w.folderName)}" title="삭제"><span class="btn-ic">🗑️</span><span class="btn-tx">삭제</span></button>
         </div>
       </div>
@@ -1236,6 +1255,8 @@ function showVisitSelector(customer, visits) {
 
 // visit으로 실제 작업 불러오기
 async function loadWorkByVisit(visit) {
+  if (_appBusy) return;
+
   if (!photoFolderHandle) {
     showToast('저장 폴더가 설정되어 있어야 작업을 열 수 있습니다', 'err');
     return;
@@ -1263,21 +1284,20 @@ async function loadWorkByVisit(visit) {
   const msg = `📂 작업 불러오기\n\n${aptName}${dateStr ? ' · ' + dateStr : ''}\n\n이 작업을 불러올까요?`;
   if (!confirm(msg)) return;
 
-  // 모달 닫고 단일 오버레이
+  // 입력 차단
+  setAppBusy(true, '📂 불러오는 중...');
   closeCustomerModal();
-  showOverlay('📂 불러오는 중...');
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-  // 변경사항 있으면 먼저 저장 (백그라운드)
-  try {
-    const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
-    const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
-    if (hasChanges && photoFolderHandle && typeof saveToFolder === 'function') {
-      await saveToFolder({ auto: true, force: true, silent: true });
-    }
-  } catch(e) { console.warn('자동저장 실패:', e); }
 
   try {
+    // 변경사항 있으면 먼저 저장 (백그라운드)
+    try {
+      const currentSnap = (typeof quickSnapshot === 'function') ? quickSnapshot() : '';
+      const hasChanges = (currentSnap !== _lastSaveSnapshot) && units && units.length > 0;
+      if (hasChanges && photoFolderHandle && typeof saveToFolder === 'function') {
+        await saveToFolder({ auto: true, force: true, silent: true });
+      }
+    } catch(e) { console.warn('자동저장 실패:', e); }
+
     let matchedFolder = null;
     let matchedSession = null;
 
@@ -1338,6 +1358,8 @@ async function loadWorkByVisit(visit) {
     hideOverlay();
     console.error(e);
     showToast('불러오기 실패: ' + e.message, 'err');
+  } finally {
+    setAppBusy(false);
   }
 }
 

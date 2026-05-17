@@ -408,7 +408,7 @@ function makePhoto(dataUrl) {
 }
 
 // 1x1 투명 placeholder
-const PHOTO_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><rect width="60" height="60" fill="%23333"/><text x="30" y="33" text-anchor="middle" fill="%23888" font-size="11">📷</text></svg>';
+const PHOTO_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='%23333'/><text x='30' y='33' text-anchor='middle' fill='%23888' font-size='11'>📷</text></svg>";
 
 // 사진의 dataUrl 추출 (객체든 문자열이든) - lazy 로딩 지원
 function photoUrl(p) {

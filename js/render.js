@@ -126,7 +126,8 @@ function renderAll() {
           <button class="del-btn" data-id="${u.id}">삭제</button>
         </div>
       </div>
-      <div class="u-body ${u.open?'open':''}">
+      ${u.open ? `
+      <div class="u-body open">
         <div class="ph-cols">
           <div>
             <div class="ph-lbl lbl-b">🔴 작업 전 (${u.before.length}장)</div>
@@ -169,7 +170,7 @@ function renderAll() {
             <textarea class="cust-memo" rows="2" placeholder="💬 메모 (요청사항, 결제 방법, 추천인 등)" data-uid="${u.id}" data-field="memo">${escH(u.customer?.memo || '')}</textarea>
           </div>
         </div>`}
-      </div>
+      </div>` : ''}
     </div>`;
   }).join('');
 

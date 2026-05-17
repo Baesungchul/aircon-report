@@ -1134,29 +1134,57 @@ async function restoreFromData(data, dateDir) {
   units = [];
   nid = 1;
 
-  // ★ customers DB에서 이 작업의 고객 정보 미리 로드 (호수별 역조회용 - 가정용 모드만)
+  // ★ 모든 호수의 workDir 핸들을 병렬로 미리 가져오기 (큰 속도 향상)
+  let workDirMap = new Map();  // ui index → workDir handle
+  if (restorePhotos && dateDir) {
+    const dirPromises = (data.units || []).map(async (u, ui) => {
+      const beforeCnt = u.beforeCount || 0;
+      const afterCnt = u.afterCount || 0;
+      const specialCnt = (u.specials || []).reduce((s, sp) => s + (sp.photoCount || 0), 0);
+      if (beforeCnt + afterCnt + specialCnt === 0) return null;  // 사진 없으면 스킵
+
+      try {
+        const workNum = String(u.workNum || (ui+1)).padStart(2,'0');
+        const handle = await dateDir.getDirectoryHandle(`work${workNum}`);
+        return { ui, handle };
+      } catch(e) { return null; }
+    });
+    const dirs = await Promise.all(dirPromises);
+    dirs.forEach(d => { if (d) workDirMap.set(d.ui, d.handle); });
+  }
+
+  // ★ customers DB 역조회는 호수 중 phone 없는 게 있을 때만 (대부분 스킵)
   let customersByUnit = new Map();
   if (currentWorkType !== 'facility') {
-    try {
-      if (typeof customerListAll === 'function') {
-        const allCustomers = await customerListAll();
-        const apt = data.apt || '';
-        allCustomers.forEach(c => {
-          (c.visits || []).forEach(v => {
-            if (v.apt === apt && v.unit) {
-              const key = `${apt}::${v.unit}`;
-              const existing = customersByUnit.get(key);
-              if (!existing || (c.lastVisit || '') > (existing.lastVisit || '')) {
-                customersByUnit.set(key, c);
+    const needsLookup = (data.units || []).some(u => {
+      const phone = (u.customer?.phone || '').trim();
+      return !phone;  // phone 비어있는 호수가 하나라도 있으면 조회 필요
+    });
+
+    if (needsLookup) {
+      try {
+        if (typeof customerListAll === 'function') {
+          const allCustomers = await customerListAll();
+          const apt = data.apt || '';
+          allCustomers.forEach(c => {
+            (c.visits || []).forEach(v => {
+              if (v.apt === apt && v.unit) {
+                const key = `${apt}::${v.unit}`;
+                const existing = customersByUnit.get(key);
+                if (!existing || (c.lastVisit || '') > (existing.lastVisit || '')) {
+                  customersByUnit.set(key, c);
+                }
               }
-            }
+            });
           });
-        });
-        if (customersByUnit.size > 0) {
-          console.log(`[Load] customers DB에서 ${customersByUnit.size}개 호수 매칭`);
+          if (customersByUnit.size > 0) {
+            console.log(`[Load] customers DB에서 ${customersByUnit.size}개 호수 매칭`);
+          }
         }
-      }
-    } catch(e) { console.warn('customers 역조회 실패:', e); }
+      } catch(e) { console.warn('customers 역조회 실패:', e); }
+    } else {
+      console.log('[Load] 모든 호수에 phone 있음 → customers DB 조회 스킵');
+    }
   }
 
   for (let ui = 0; ui < data.units.length; ui++) {
@@ -1210,12 +1238,8 @@ async function restoreFromData(data, dateDir) {
                        (u.specials || []).some(s => s.photosMeta));
 
       if (hasMeta) {
-        // 폴더 핸들만 lazy 참조용으로 가져옴 (스캔 안 함)
-        let workDir = null;
-        try {
-          const workNum = String(u.workNum || (ui+1)).padStart(2,'0');
-          workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
-        } catch(e) { /* 폴더 없으면 원본 lazy 로딩 못 함 (썸네일은 가능) */ }
+        // ★ 미리 가져온 workDir 핸들 사용 (await 없음)
+        const workDir = workDirMap.get(ui) || null;
 
         // 메타에서 사진 객체 생성 (썸네일은 즉시 사용 + 원본은 lazy)
         const buildFromMeta = (meta) => {
@@ -1248,21 +1272,20 @@ async function restoreFromData(data, dateDir) {
 
       // ★ 구버전 호환: 메타데이터 없으면 기존처럼 폴더 스캔
       try {
-        // ★ 저장된 workNum 우선 사용, 없으면 인덱스+1 (구버전 호환)
-        const workNum = String(u.workNum || (ui+1)).padStart(2,'0');
-        let workDir;
-        try {
-          workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
-        } catch(e) {
-          // ★ workNum 폴더 못 찾으면 폴더명 패턴 폴백 시도
-          // (호수명 직접 매칭, 같은 인덱스 재시도 등)
-          console.warn(`work${workNum} 폴더 없음 - 폴백 시도`);
-          // 인덱스 기반으로 다시 시도
-          if (u.workNum && u.workNum !== ui+1) {
-            try {
-              workDir = await dateDir.getDirectoryHandle(`work${String(ui+1).padStart(2,'0')}`);
-            } catch(e2) { throw e; }
-          } else { throw e; }
+        // 미리 가져온 핸들 우선 사용, 없으면 다시 시도
+        let workDir = workDirMap.get(ui);
+        if (!workDir) {
+          const workNum = String(u.workNum || (ui+1)).padStart(2,'0');
+          try {
+            workDir = await dateDir.getDirectoryHandle(`work${workNum}`);
+          } catch(e) {
+            console.warn(`work${workNum} 폴더 없음 - 폴백 시도`);
+            if (u.workNum && u.workNum !== ui+1) {
+              try {
+                workDir = await dateDir.getDirectoryHandle(`work${String(ui+1).padStart(2,'0')}`);
+              } catch(e2) { throw e; }
+            } else { throw e; }
+          }
         }
 
         // ★ 폴더의 실제 파일들을 모두 스캔 (A/B/S 패턴별로 분류)

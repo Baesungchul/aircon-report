@@ -516,7 +516,7 @@ async function buildAndPreview(){
   }
 
   // ★ 확인 다이얼로그 즉시 (지연 없이)
-  if (!confirm(`📄 보고서 생성\n\n${units.length}개 호수의 보고서를 만들까요?\n\n사진이 많으면 로딩에 시간이 걸려요.`)) return;
+  if (!confirm(`📄 보고서 생성\n\n${units.length}개 호수의 보고서를 만들까요?`)) return;
 
   // 입력 차단
   if (typeof setAppBusy === 'function') setAppBusy(true, '📄 보고서 생성 중...');
@@ -568,26 +568,35 @@ async function buildAndPreview(){
 }
 
 async function exportPDF(){
+  if (typeof _appBusy !== 'undefined' && _appBusy) return;
+
   const pages=document.getElementById('rpWrap').querySelectorAll('.rpage');
   if(!pages.length){showToast('먼저 미리보기를 눌러 보고서를 생성해주세요','err');return;}
 
-  // 자동저장 폴더 + 작업 자동저장 처리 (실패해도 PDF는 생성)
-  const folderInfo = await ensureWorkSavedToFolder();
+  // ★ 확인 다이얼로그
+  if (!confirm(`⬇️ PDF 저장\n\n${pages.length}페이지 PDF를 만들어 저장합니다.\n완료될 때까지 기다려주세요.`)) return;
 
-  showOverlay('PDF 생성 중...');
-  const{jsPDF}=window.jspdf;
-  const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  for(let i=0;i<pages.length;i++){
-    setProg((i/pages.length)*100,`${i+1} / ${pages.length} 페이지`);
-    const c=await html2canvas(pages[i],{
-      scale:2,
-      useCORS:true,
-      allowTaint:true,
-      width:794,
-      height:1123,
-      windowWidth:794,
-      windowHeight:1123,
-      backgroundColor:'#ffffff',
+  // 입력 차단
+  if (typeof setAppBusy === 'function') setAppBusy(true, '⬇️ PDF 생성 중... (페이지별 처리)');
+
+  try {
+    // 자동저장 폴더 + 작업 자동저장 처리 (실패해도 PDF는 생성)
+    const folderInfo = await ensureWorkSavedToFolder();
+
+    const{jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    for(let i=0;i<pages.length;i++){
+      // 진행 상황 차단막 메시지 갱신
+      if (typeof setAppBusy === 'function') setAppBusy(true, `⬇️ PDF 생성 중... ${i+1}/${pages.length} 페이지`);
+      const c=await html2canvas(pages[i],{
+        scale:2,
+        useCORS:true,
+        allowTaint:true,
+        width:794,
+        height:1123,
+        windowWidth:794,
+        windowHeight:1123,
+        backgroundColor:'#ffffff',
       logging:false,
       imageTimeout:0
     });
@@ -652,21 +661,37 @@ async function exportPDF(){
     }
   }
 
-  if (!savedToFolder) {
-    pdf.save(fileName);
-  }
+    if (!savedToFolder) {
+      pdf.save(fileName);
+    }
 
-  hideOverlay();
-  showToast(savedToFolder ? `✓ PDF 저장됨 (${folderInfo.folderName} 폴더)` : '✓ PDF 다운로드 완료', 'ok');
+    showToast(savedToFolder ? `✓ PDF 저장됨 (${folderInfo.folderName} 폴더)` : '✓ PDF 다운로드 완료', 'ok');
+  } catch(e) {
+    console.error('[PDF] 생성 실패:', e);
+    showToast('PDF 생성 실패: ' + (e.message || e), 'err');
+  } finally {
+    hideOverlay?.();
+    if (typeof setAppBusy === 'function') setAppBusy(false);
+  }
 }
 
 async function exportJPG(){
+  if (typeof _appBusy !== 'undefined' && _appBusy) return;
+
   const pages=document.getElementById('rpWrap').querySelectorAll('.rpage');
   if(!pages.length){showToast('먼저 미리보기를 눌러 보고서를 생성해주세요','err');return;}
-  const{apt,dateStr}=getInfo();
 
-  // 자동저장 폴더 + 작업 자동저장 처리
-  const folderInfo = await ensureWorkSavedToFolder();
+  // ★ 확인 다이얼로그
+  if (!confirm(`🖼️ JPG 저장\n\n${pages.length}장의 JPG 이미지를 만들어 저장합니다.\n완료될 때까지 기다려주세요.`)) return;
+
+  // 입력 차단
+  if (typeof setAppBusy === 'function') setAppBusy(true, '🖼️ JPG 생성 중...');
+
+  try {
+    const{apt,dateStr}=getInfo();
+
+    // 자동저장 폴더 + 작업 자동저장 처리
+    const folderInfo = await ensureWorkSavedToFolder();
 
   // ✨ 기존 JPG 확인 → 덮어쓰기/새로 저장 선택
   const dateClean = dateStr.replace(/\./g,'-');
@@ -714,6 +739,7 @@ async function exportJPG(){
   const blobs = [];
   for(let i=0;i<pages.length;i++){
     setProg((i/pages.length)*100,`${i+1} / ${pages.length} 변환 중`);
+    if (typeof setAppBusy === 'function') setAppBusy(true, `🖼️ JPG 생성 중... ${i+1}/${pages.length} 페이지`);
     const c=await html2canvas(pages[i],{
       scale:2,
       useCORS:true,
@@ -774,7 +800,14 @@ async function exportJPG(){
     }
   }
 
-  showToast(savedToFolder ? `✓ JPG ${blobs.length}장 저장됨 (${folderInfo.folderName} 폴더)` : `✓ JPG ${blobs.length}장 다운로드 완료`, 'ok');
+    showToast(savedToFolder ? `✓ JPG ${blobs.length}장 저장됨 (${folderInfo.folderName} 폴더)` : `✓ JPG ${blobs.length}장 다운로드 완료`, 'ok');
+  } catch(e) {
+    console.error('[JPG] 생성 실패:', e);
+    showToast('JPG 생성 실패: ' + (e.message || e), 'err');
+  } finally {
+    hideOverlay?.();
+    if (typeof setAppBusy === 'function') setAppBusy(false);
+  }
 }
 
 // 보고서 생성 전 폴더 핸들 반환 (자료 유실 방지 최소 저장만)

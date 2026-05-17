@@ -1,5 +1,5 @@
-// 서비스워커 v124 - 1.170: 카드 클릭 비활성화 + 버튼만 + 전역 busy 차단막 (이중 클릭 방지)
-const CACHE = 'ac1004-v124';
+// 서비스워커 v126 - 1.172: 보고서/PDF/JPG 안내문에서 과장된 시간 표현 제거
+const CACHE = 'ac1004-v126';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -1,5 +1,5 @@
-// 서비스워커 v130 - 1.176: 불러오기 속도 - customerListAll 조건부 + workDir 병렬 + lazy DOM
-const CACHE = 'ac1004-v130';
+// 서비스워커 v131 - 1.177: PHOTO_PLACEHOLDER 따옴표 충돌 수정 (사진 영역 깨짐 해결)
+const CACHE = 'ac1004-v131';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

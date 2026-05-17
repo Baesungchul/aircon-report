@@ -1,5 +1,5 @@
-// 서비스워커 v129 - 1.175: 속도 종합 개선 (sleep 제거 + 병렬 스캔 + preload + throttle 등)
-const CACHE = 'ac1004-v129';
+// 서비스워커 v130 - 1.176: 불러오기 속도 - customerListAll 조건부 + workDir 병렬 + lazy DOM
+const CACHE = 'ac1004-v130';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

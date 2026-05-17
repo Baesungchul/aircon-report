@@ -22,6 +22,15 @@ async function sessionAutoSaveNow() {
     const coTel = document.getElementById('coTel')?.value || '';
     const coDesc = document.getElementById('coDesc')?.value || '';
 
+    // ★ 빈 새 작업이면 저장 스킵 (apt/units 모두 비어있음)
+    const isEmptyNew = (!units || units.length === 0)
+                    && !apt.trim()
+                    && !currentWorkId
+                    && !currentFolderName;
+    if (isEmptyNew) {
+      return;  // 저장할 게 없음
+    }
+
     const obj = {
       saveId:      'session_data',
       label:       '[세션]',
@@ -629,7 +638,7 @@ async function flushPendingSaves() {
       if (lastErr.name === 'InvalidStateError') firstErrorIsInvalidState = true;
     }
 
-    await sleep(50);  // ★ 각 저장 사이 쿨다운
+    if (i % 5 === 4) await sleep(0);  // 5장마다 yield
   }
 
   pendingSaves = remaining;
@@ -1045,20 +1054,20 @@ async function savePhotosToFolder() {
         setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
         try { await savePhoto(u.before[i], u.name, '전', i+1); }
         catch(e) { errors.push(`${u.name} 전${i+1}: ${e.message}`); }
-        await sleep(50);
+        if (i % 5 === 4) await sleep(0);
       }
       for (let i = 0; i < u.after.length; i++) {
         setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
         try { await savePhoto(u.after[i], u.name, '후', i+1); }
         catch(e) { errors.push(`${u.name} 후${i+1}: ${e.message}`); }
-        await sleep(50);
+        if (i % 5 === 4) await sleep(0);
       }
       for (let si = 0; si < u.specials.length; si++) {
         for (let pi = 0; pi < u.specials[si].photos.length; pi++) {
           setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
           try { await savePhoto(u.specials[si].photos[pi], u.name, `특이${si+1}_`, pi+1); }
           catch(e) { errors.push(`${u.name} 특이${si+1}_${pi+1}: ${e.message}`); }
-          await sleep(50);
+          if (pi % 5 === 4) await sleep(0);
         }
       }
     }

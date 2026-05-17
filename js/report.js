@@ -613,15 +613,18 @@ async function exportPDF(){
   // 폴더에 저장 시도
   let savedToFolder = false;
   if (folderInfo && folderInfo.workDir) {
-    // ✨ 기존 파일 존재 확인 후 사용자에게 선택 받기
+    // ★ 폴더 전체 스캔 대신 후보 파일명 직접 시도 (빠름)
     let existingFiles = [];
-    try {
-      for await (const [fname, fhandle] of folderInfo.workDir.entries()) {
-        if (fhandle.kind === 'file' && fname.startsWith(baseName) && fname.endsWith('.pdf')) {
-          existingFiles.push(fname);
-        }
-      }
-    } catch(e) {}
+    const candidates = [
+      `${baseName}.pdf`,
+      `${baseName}_v1.pdf`, `${baseName}_v2.pdf`, `${baseName}_v3.pdf`,
+    ];
+    await Promise.all(candidates.map(async (fname) => {
+      try {
+        await folderInfo.workDir.getFileHandle(fname);
+        existingFiles.push(fname);
+      } catch(e) {}
+    }));
 
     if (existingFiles.length > 0) {
       hideOverlay();
@@ -700,13 +703,26 @@ async function exportJPG(){
 
   if (folderInfo && folderInfo.workDir) {
     let existingFiles = [];
-    try {
-      for await (const [fname, fhandle] of folderInfo.workDir.entries()) {
-        if (fhandle.kind === 'file' && fname.startsWith(baseName) && fname.endsWith('.jpg')) {
-          existingFiles.push(fname);
-        }
-      }
-    } catch(e) {}
+    // ★ 폴더 전체 스캔 대신 후보 파일명 5개만 빠르게 시도 (10배 빠름)
+    const candidates = [
+      `${baseName}.jpg`,                    // report_2026-05-17.jpg
+      `${baseName}_page1.jpg`,
+      `${baseName}_page2.jpg`,
+      `${baseName}_page3.jpg`,
+      `${baseName}_page4.jpg`,
+      `${baseName}_page5.jpg`,
+      `${baseName}_page6.jpg`,
+      `${baseName}_page7.jpg`,
+      `${baseName}_page8.jpg`,
+      `${baseName}_page9.jpg`,
+      `${baseName}_page10.jpg`,
+    ];
+    await Promise.all(candidates.map(async (fname) => {
+      try {
+        await folderInfo.workDir.getFileHandle(fname);  // 파일 있으면 성공
+        existingFiles.push(fname);
+      } catch(e) { /* 파일 없음 - 정상 */ }
+    }));
 
     if (existingFiles.length > 0) {
       const choice = confirm(

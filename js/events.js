@@ -240,7 +240,14 @@ function bindAll() {
     const top = t.closest('.u-top');
     if (top && !t.closest('.u-name-row') && !t.closest('.del-btn') && !t.closest('.bdg') && !t.closest('.sp-del') && !t.closest('.add-sp-btn')) {
       const id = +top.dataset.id;
-      const u = findU(id); if(u){ u.open=!u.open; renderAll(); } return;
+      const u = findU(id);
+      if(u){
+        u.open=!u.open;
+        renderAll();
+        // ★ 펼쳤으면 이 호수의 원본 사진들 백그라운드 preload
+        if (u.open) preloadUnitPhotos(u);
+      }
+      return;
     }
     // 이름 수정
     if (t.closest('.edit-ic')) {
@@ -497,6 +504,42 @@ function findPhotoById(pid) {
     }
   }
   return null;
+}
+
+// ★ 호수 펼침 시 사진 preload (백그라운드 - 사용자가 클릭 전에 미리 로드)
+const _preloadedUnits = new Set();
+async function preloadUnitPhotos(u) {
+  if (!u || _preloadedUnits.has(u.id)) return;
+  _preloadedUnits.add(u.id);
+
+  const targets = [];
+  (u.before || []).forEach(p => {
+    if (p && !p._originalDataUrl && (p.fileHandle || (p._workDir && p.fileName))) targets.push(p);
+  });
+  (u.after || []).forEach(p => {
+    if (p && !p._originalDataUrl && (p.fileHandle || (p._workDir && p.fileName))) targets.push(p);
+  });
+  if (targets.length === 0) return;
+
+  // 백그라운드 - 3장씩 (부담 최소화)
+  const BATCH = 3;
+  for (let i = 0; i < targets.length; i += BATCH) {
+    const batch = targets.slice(i, i + BATCH);
+    await Promise.all(batch.map(async p => {
+      try {
+        let fh = p.fileHandle;
+        if (!fh && p._workDir && p.fileName) {
+          fh = await p._workDir.getFileHandle(p.fileName);
+          p.fileHandle = fh;
+        }
+        if (!fh) return;
+        const file = await fh.getFile();
+        p._originalDataUrl = await blobToDataURL(file);
+      } catch(e) {}
+    }));
+    // 부담 분산
+    await new Promise(r => setTimeout(r, 50));
+  }
 }
 // 배열을 객체 배열로 정규화 (문자열은 객체로 변환)
 function normalizePhotos(arr) {

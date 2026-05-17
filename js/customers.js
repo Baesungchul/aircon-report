@@ -173,15 +173,20 @@ async function loadCombinedRecords() {
 
       // 각 그룹마다 카드 생성
       visitsByGroup.forEach((groupVisits, groupKey) => {
-        const sortedVisits = [...groupVisits].sort((a, b) =>
-          (b.date || '').localeCompare(a.date || ''));
+        // ★ savedAt 우선 (시간까지 포함), 없으면 date
+        const sortedVisits = [...groupVisits].sort((a, b) => {
+          const aKey = a.savedAt || a.date || '';
+          const bKey = b.savedAt || b.date || '';
+          return bKey.localeCompare(aKey);
+        });
         const lastVisit = sortedVisits[0]?.date || '';
+        const lastSortKey = sortedVisits[0]?.savedAt || lastVisit;
         const apt = sortedVisits[0]?.apt || '';
         const workId = sortedVisits[0]?.workId || '';
 
         items.push({
           type: 'customer',
-          sortDate: lastVisit,
+          sortDate: lastSortKey,  // savedAt 또는 date
           data: {
             ...c,
             visits: groupVisits,
@@ -260,13 +265,17 @@ async function loadCombinedRecords() {
 
         items.push({
           type: 'work',
-          sortDate: date,
+          // ★ savedAt(ISO) 우선 → 같은 날짜 내 시간순 정렬
+          // 없으면 폴더명 (2026-05-17_14-30-15 형식) → 시간 포함
+          // 모두 없으면 date만
+          sortDate: data.savedAt || entry.name || date,
           data: {
             folderName: entry.name,
             dirHandle: entry,
             workId: workId,
             apt: apt,
             date: date,
+            savedAt: data.savedAt || '',
             worker: data.worker || '',
             units: data.units,
             totalUnits: data.units.length,
@@ -804,8 +813,25 @@ async function confirmBeforeLoad() {
 
 // 전역 동작 중 플래그 (중복 클릭 방지)
 let _appBusy = false;
+let _busyLastUpdate = 0;
 function setAppBusy(busy, msg) {
   _appBusy = busy;
+  // ★ 메시지 갱신 throttle (100ms 이내 중복 갱신 스킵)
+  const now = Date.now();
+  if (busy && _busyLastUpdate && (now - _busyLastUpdate < 100)) {
+    // 진행 메시지 빠른 갱신은 무시 (DOM 부담 감소)
+    const block = document.getElementById('appBlock');
+    if (block && block.style.display !== 'none') {
+      // 차단막은 유지하되 텍스트만 살짝 늦게
+      requestAnimationFrame(() => {
+        const inner = block.querySelector('div');
+        if (inner && msg) inner.textContent = msg;
+      });
+      return;
+    }
+  }
+  _busyLastUpdate = now;
+
   let block = document.getElementById('appBlock');
   if (busy) {
     if (!block) {
@@ -1301,44 +1327,47 @@ async function loadWorkByVisit(visit) {
     let matchedFolder = null;
     let matchedSession = null;
 
+    // ★ 모든 폴더 목록 한 번에 수집 후 병렬 _session.json 읽기
+    const dateDirs = [];
+    for await (const entry of photoFolderHandle.values()) {
+      if (entry.kind !== 'directory') continue;
+      if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+      // 2차 매칭용 - 날짜로 사전 필터
+      if (!visit.workId && visit.date && !entry.name.startsWith(visit.date)) continue;
+      dateDirs.push(entry);
+    }
+
+    // 병렬로 _session.json 모두 읽기
+    const results = await Promise.all(dateDirs.map(async (entry) => {
+      try {
+        const sessionFile = await entry.getFileHandle('_session.json');
+        const file = await sessionFile.getFile();
+        const data = JSON.parse(await file.text());
+        return { entry, data };
+      } catch(e) { return null; }
+    }));
+
     // ★ 1차: workId로 검색 (가장 정확)
     if (visit.workId) {
-      for await (const entry of photoFolderHandle.values()) {
-        if (entry.kind !== 'directory') continue;
-        if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
-        try {
-          const sessionFile = await entry.getFileHandle('_session.json');
-          const file = await sessionFile.getFile();
-          const data = JSON.parse(await file.text());
-          if (data.workId && data.workId === visit.workId) {
-            matchedFolder = entry;
-            matchedSession = data;
-            break;
-          }
-        } catch(e) {}
+      for (const r of results) {
+        if (!r) continue;
+        if (r.data.workId === visit.workId) {
+          matchedFolder = r.entry;
+          matchedSession = r.data;
+          break;
+        }
       }
     }
 
     // 2차: apt + date로 검색 (legacy)
     if (!matchedFolder && visit.apt && visit.date) {
-      const targetDate = visit.date;
-      const targetApt = visit.apt;
-
-      for await (const entry of photoFolderHandle.values()) {
-        if (entry.kind !== 'directory') continue;
-        if (!entry.name.startsWith(targetDate)) continue;
-
-        try {
-          const sessionFile = await entry.getFileHandle('_session.json');
-          const file = await sessionFile.getFile();
-          const data = JSON.parse(await file.text());
-
-          if (data.apt === targetApt) {
-            matchedFolder = entry;
-            matchedSession = data;
-            break;
-          }
-        } catch(e) {}
+      for (const r of results) {
+        if (!r) continue;
+        if (r.data.apt === visit.apt && r.entry.name.startsWith(visit.date)) {
+          matchedFolder = r.entry;
+          matchedSession = r.data;
+          break;
+        }
       }
     }
 

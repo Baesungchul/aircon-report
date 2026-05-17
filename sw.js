@@ -1,5 +1,5 @@
-// 서비스워커 v123 - 1.169: 고객 visits 매칭 null 안전 + _metaCache 방어 + 에러 로깅
-const CACHE = 'ac1004-v123';
+// 서비스워커 v124 - 1.170: 카드 클릭 비활성화 + 버튼만 + 전역 busy 차단막 (이중 클릭 방지)
+const CACHE = 'ac1004-v124';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -1,5 +1,5 @@
-// 서비스워커 v126 - 1.172: 보고서/PDF/JPG 안내문에서 과장된 시간 표현 제거
-const CACHE = 'ac1004-v126';
+// 서비스워커 v129 - 1.175: 속도 종합 개선 (sleep 제거 + 병렬 스캔 + preload + throttle 등)
+const CACHE = 'ac1004-v129';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -6,6 +6,7 @@ node_modules/
 keystore/
 *.jks
 *.keystore
+android/keystore.properties
 
 # 예외 하나: 테스트 APK 전용 디버그 키.
 # 비밀번호가 안드로이드 표준 기본값(android)이라 비밀이 아니고,

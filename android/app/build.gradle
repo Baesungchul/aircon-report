@@ -16,12 +16,32 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    /* ☠️ 이 서명은 '테스트 APK 전용'이다. Play 스토어 출시용 키가 아니다.
+          왜 필요한가: GitHub Actions 는 매 실행마다 새 서버에서 빌드하는데,
+          안드로이드 기본 디버그 키(~/.android/debug.keystore)가 없으면 그때그때
+          '새 키'를 만들어 서명한다. 그러면 빌드마다 서명이 달라져서,
+          이미 깔린 테스트 앱 위에 덮어쓸 수 없고 '앱이 설치되지 않았습니다' 가 뜬다.
+          (업데이트할 때마다 앱을 지워야 하고, 지우면 EXTERNAL 저장소의 사진이 함께 사라진다
+           — 2026-08 사진 1,059장 유실과 같은 경로)
+          그래서 고정 키를 저장소에 넣어 서명이 항상 같게 만든다.
+          비밀번호가 안드로이드 표준 기본값(android)이라 공개돼도 무방하다 —
+          이 키로는 Play 스토어에 올릴 수 없다. */
+    signingConfigs {
+        debug {
+            storeFile file('../debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
         debug {
+            signingConfig signingConfigs.debug
             /* ★ 2026-08-30 테스트 APK 를 '별도 앱'으로 깔기 위한 접미사.
                ☠️ 이게 없으면 서명이 달라 기존 앱을 지워야 설치된다.
                   그런데 앱을 지우면 EXTERNAL 저장소의 사진이 함께 사라진다

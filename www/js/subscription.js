@@ -178,7 +178,7 @@
     } catch (e) {}
   }
   document.addEventListener('cloud-auth-changed', function (e) {
-    if (e && e.detail && e.detail.user) { pullCloud(); setTimeout(function () { if (loggedIn()) pullCloud(); }, 1500); }
+    if (e && e.detail && e.detail.user) { pullCloud(); setTimeout(function () { if (loggedIn()) pullCloud(); }, 1500); _resumeAfterLogin(); }   // ★ 2026-08-30 하려던 작업 이어서
     else { load(); S.plan = 'free'; S.admin = false; renderSettings(); }
   });
 
@@ -316,18 +316,56 @@
     return { ok: false, msg: msg };
   };
   // UI 게이트: 안 되면 안내창 띄우고 false
-  Subs.gateAI = function (kind) {
+  Subs.gateAI = function (kind, retry) {
     var r = Subs.canUseAI(kind);
     if (r.ok) return true;
     toast(r.msg, r.needLogin ? 'ok' : 'err');
     // ★ 2026-08-24 지급 전이면 요금제가 아니라 로그인 창을 연다
-    if (r.needLogin) { setTimeout(function () { Subs.openLoginForFree(); }, 400); return false; }
+    /* ★ 2026-08-30 retry = 로그인하고 나면 이어서 할 일.
+         버튼 id(문자열) 또는 함수. 안 넘겨도 예전처럼 동작한다. */
+    if (r.needLogin) { setTimeout(function () { Subs.openLoginForFree(retry, kind); }, 400); return false; }
     setTimeout(function () { Subs.openPlans(kind); }, 400);
     return false;
   };
   /* 로그인 창 열기 — 온보딩의 _obOpenLogin 과 같은 경로(cloudModal)를 쓴다.
      ⚠️ 모달이 다른 오버레이 밑에 깔리는 경우가 있어 body 끝으로 옮긴 뒤 연다. */
-  Subs.openLoginForFree = function () {
+  /* ★ 2026-08-30 '로그인하고 나면 이어서 할 일'.
+       그 전에는 "로그인하면 무료 5회 드려요" 를 보고 로그인해도 아무 일이 없어서,
+       하려던 작업(글작성·일정등록·견적서) 버튼을 사용자가 다시 눌러야 했다.
+       backup.js 의 서버복구와 같은 얼개다. */
+  var _afterLogin = null, _afterLoginKind = null, _afterLoginAt = 0;
+  var AFTER_LOGIN_TTL = 3 * 60 * 1000;   // 3분. 넘으면 버린다 — 한참 뒤 딴 이유로 로그인했을 때 놀라지 않게.
+  function _runResume(fn) {
+    try {
+      if (typeof fn === 'function') { fn(); return; }
+      /* 문자열이면 버튼 id — 다시 누른다. 그 창이 이미 닫혔으면 아무 일도 일어나지 않는다(의도한 것).
+         ⭐ 입력값을 따로 복제하지 않아도 되는 게 이 방식의 장점이다.
+            로그인창은 작성 중이던 창 '위에' 떴을 뿐이라 그 밑에 그대로 살아 있다. */
+      var el = document.getElementById(fn);
+      if (el) el.click();
+    } catch (e) {}
+  }
+  function _resumeAfterLogin() {
+    var fn = _afterLogin, kind = _afterLoginKind, at = _afterLoginAt;
+    _afterLogin = null; _afterLoginKind = null; _afterLoginAt = 0;
+    if (!fn || Date.now() - at > AFTER_LOGIN_TTL) return;
+    /* ⚠️ 곧바로 다시 누르면 안 된다. 무료 횟수는 pullCloud() 가 서버에서 받아와야 생기는데
+         그게 아직 안 끝났으면 '횟수 없음'으로 판정돼 엉뚱하게 요금제 창이 뜬다.
+         그래서 잔량이 실제로 들어올 때까지 짧게 기다린다(최대 약 3.6초). */
+    var tries = 0;
+    (function wait() {
+      tries++;
+      var ok = false;
+      try { ok = !!Subs.canUseAI(kind).ok; } catch (e) {}
+      if (ok || tries > 12) { _runResume(fn); return; }
+      setTimeout(wait, 300);
+    })();
+  }
+  Subs.openLoginForFree = function (retry, kind) {
+    if (retry) { _afterLogin = retry; _afterLoginKind = kind || null; _afterLoginAt = Date.now(); }
+    /* ⚠️ 이미 로그인돼 있으면 로그인창을 열지 않는다. 지급 동기화가 늦어 여기까지 온 경우인데,
+         창을 또 띄우면 '로그인했는데 왜 또?' 가 된다. */
+    if (window.Cloud && Cloud.user) { _resumeAfterLogin(); return; }
     try {
       if (window.Cloud && Cloud.openModal) Cloud.openModal();
       var cm = document.getElementById('cloudModal');

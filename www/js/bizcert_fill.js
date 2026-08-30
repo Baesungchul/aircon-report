@@ -72,7 +72,8 @@
     if (!file) return null;
     if (!(window.ClaudeAI && ClaudeAI.analyzeBizCert)) { toast('AI 모듈을 불러오지 못했습니다', 'err'); return null; }
     // 구독 게이트 — 견적서 쪽과 동일하게 일정등록 사용량에서 차감
-    try { if (window.Subs && Subs.gateAI && !Subs.gateAI('sched')) return null; } catch (e) {}
+    /* ★ 2026-08-30 로그인 후엔 고른 파일 그대로 분석을 이어간다 (다시 고르게 하지 않는다) */
+    try { if (window.Subs && Subs.gateAI && !Subs.gateAI('sched', function () { BizFill.analyze(file); })) return null; } catch (e) {}
 
     if (typeof showOverlay === 'function') showOverlay('📄 사업자등록증 읽는 중...');
     var r = null;

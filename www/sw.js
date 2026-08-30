@@ -1,6 +1,7 @@
-// 서비스워커 v602 (앱 v3.2.2 · 2026-08-30) — 빌드 대기
+// 서비스워커 v603 (앱 v3.2.2 · 2026-08-30) — 빌드 대기
 //   ★ v601: 로그인 성공 시 로그인 창이 자동으로 닫힘 (온보딩에서 '다음' 버튼이 가려지던 문제)
 //   ★ v602: 서버 복구 — 로그인 후 복구가 이어서 진행됨
+//   ★ v603: AI 무료횟수 로그인 유도도 마찬가지 — 하려던 작업이 이어서 진행됨
 //   ★ v600 담긴 것: AI 프록시 인증(ai.js 가 Firebase ID 토큰을 보냄)
 //     — 깃허브 공개 저장소에 PROXY_URL 이 그대로 있어 누구나 호출 가능하던 것을 막았다.
 //     ⚠️ 앱만 올리면 안 된다. vercel-proxy 를 먼저 배포해야 순서가 맞는다.
@@ -14,7 +15,7 @@
 //           v597 페이스북 올리기 버튼(채널 키 'fb'→'facebook') / v598 달력 보기 전환(▦격자 ↔ ☰목록)
 //           v599 인앱 별점(review.js) + 설정 Play 리뷰 링크 + 격자에서도 위로 밀어 접기
 //   site/ 쪽: post.html 사진 ZIP 내려받기 + 새 파일 site/jszip.min.js → `firebase deploy --only hosting` 필요
-const CACHE = 'ac1004-v602';
+const CACHE = 'ac1004-v603';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

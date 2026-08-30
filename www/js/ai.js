@@ -803,7 +803,7 @@
     document.getElementById('aiSmsGo').onclick = async function () {
       var txt = document.getElementById('aiSmsText').value.trim();
       if (!txt && !imgs.length) { toast('문자 내용을 입력하거나 이미지를 첨부해주세요', 'err'); return; }
-      if (window.Subs && !Subs.gateAI('sched')) return;  // ★ 구독: 사용량 확인
+      if (window.Subs && !Subs.gateAI('sched', 'aiSmsGo')) return;  // ★ 구독: 사용량 확인 (로그인 후엔 이 버튼을 다시 누른다)
       if (typeof showOverlay === 'function') showOverlay('분석 중...');
       try {
         var j = await extractSchedule({ text: txt, images: imgs });
@@ -1167,7 +1167,7 @@
     document.getElementById('aiBlogGuide').onclick = function () { openChannelGuideline(chId); };
     document.getElementById('aiBlogGo').onclick = async function () {
       if (!hasWork) { toast('작업탭에서 작업을 먼저 열어주세요', 'err'); return; }
-      if (window.Subs && !Subs.gateAI('blog')) return;  // ★ 구독: 사용량 확인
+      if (window.Subs && !Subs.gateAI('blog', 'aiBlogGo')) return;  // ★ 구독: 사용량 확인 (로그인 후엔 이 버튼을 다시 누른다)
       var memo = document.getElementById('aiBlogMemo').value.trim();
       // ★ 참고메모 기억: 다음 글작성(다른 채널)에서 자동으로 다시 채워짐
       try { workPostMemo = memo; if (typeof sessionAutoSave === 'function') sessionAutoSave(); } catch (e) {}
@@ -1270,7 +1270,7 @@
       var useEl = document.getElementById('aiQuoteUseWork');
       var useWork = !!(useEl && useEl.checked);
       if (!req && !imgs.length && !useWork) { toast('고객 요청 내용을 입력하거나 캡처를 첨부해주세요', 'err'); return; }
-      if (window.Subs && !Subs.gateAI('sched')) return;  // ★ 구독: 견적서(문자용)은 일정등록 횟수 차감
+      if (window.Subs && !Subs.gateAI('sched', 'aiQuoteGo')) return;  // ★ 구독: 견적서(문자용)은 일정등록 횟수 차감 (로그인 후엔 이 버튼을 다시 누른다)
       if (typeof showOverlay === 'function') showOverlay('견적서 생성 중...');
       try {
         // 캡처가 있으면 먼저 글자만 정확히 전사(OCR) 후 요청 텍스트에 합침

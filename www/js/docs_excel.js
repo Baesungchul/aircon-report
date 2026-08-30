@@ -389,11 +389,10 @@
     // 사업자등록증 분석
     var ocrFile = ov.querySelector('#dxOcrFile');
     ov.querySelector('#dxOcr').onclick = function () { ocrFile.click(); };
-    ocrFile.onchange = async function () {
-      var f = ocrFile.files && ocrFile.files[0]; ocrFile.value = '';
-      if (!f) return;
-      if (!(window.ClaudeAI && ClaudeAI.analyzeBizCert)) { toast('AI 모듈 로드 안됨', 'err'); return; }
-      if (window.Subs && Subs.gateAI && !Subs.gateAI('sched')) return;  // ★ 구독: 사업자등록증 분석도 일정등록 차감
+    /* ★ 2026-08-30 게이트 뒤의 본체를 함수로 떼어냈다.
+         로그인 유도로 막혔을 때 로그인 후 '고른 파일 그대로' 이어서 분석하기 위해서다.
+         ⚠️ input 은 value 를 바로 비우므로, 여기서 f 를 붙들지 않으면 사용자가 파일을 다시 골라야 한다. */
+    async function _runBizOcr(f) {
       var stat = ov.querySelector('#dxOcrStat'); stat.style.display = ''; stat.textContent = '⏳ 사업자등록증 분석 중…';
       try {
         var img = await ClaudeAI.fileToResizedBase64(f, 1600, 0.85);
@@ -408,6 +407,14 @@
         if (r.tel) ov.querySelector('#dxBizTel').value = r.tel;
         stat.textContent = '✅ 분석 완료 — 내용을 확인/수정하세요';
       } catch (e) { stat.textContent = '❌ 분석 실패: ' + (e.message || e); }
+    }
+    ocrFile.onchange = async function () {
+      var f = ocrFile.files && ocrFile.files[0]; ocrFile.value = '';
+      if (!f) return;
+      if (!(window.ClaudeAI && ClaudeAI.analyzeBizCert)) { toast('AI 모듈 로드 안됨', 'err'); return; }
+      // ★ 구독: 사업자등록증 분석도 일정등록 차감 / 로그인 후엔 고른 파일로 이어서
+      if (window.Subs && Subs.gateAI && !Subs.gateAI('sched', function () { _runBizOcr(f); })) return;
+      _runBizOcr(f);
     };
 
     // 항목

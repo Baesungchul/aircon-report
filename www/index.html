@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390,initial-scale=1,maximum-scale=1,user-scalable=no" id="metaViewport">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="에어컨보고서">
+<meta name="application-name" content="에어컨보고서">
+<meta name="theme-color" content="#3d8ef0">
+<title>현장 매니저</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233d8ef0'/%3E%3Cstop offset='100%25' stop-color='%2300c9a7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='90' fill='url(%23g)'/%3E%3Ctext x='50%25' y='50%25' font-size='300' text-anchor='middle' dominant-baseline='central' fill='%23fff'%3E%E2%9D%84%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233d8ef0'/%3E%3Cstop offset='100%25' stop-color='%2300c9a7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='90' fill='url(%23g)'/%3E%3Ctext x='50%25' y='50%25' font-size='300' text-anchor='middle' dominant-baseline='central' fill='%23fff'%3E%E2%9D%84%3C/text%3E%3C/svg%3E">
+
+<!-- 외부 라이브러리 (2026-08-24 cdnjs → 로컬)
+     왜 옮겼나: 이 셋은 <head> 안이라 렌더를 막는데, cdnjs 에서 받아오므로
+       ① 서비스워커가 크로스 오리진을 일부러 안 건드려 앱 캐시 대상이 아니었고
+       ② 신호 없는 현장(지하주차장·기계실)에서 PDF·JPG 보고서와 엑셀이 통째로 실패했다.
+     버전은 쓰던 것과 동일(html2canvas 1.4.1 / jsPDF 2.5.1 / SheetJS 0.18.5), npm 공식 패키지의 dist 파일.
+     defer: 셋 다 최상위에서 쓰이는 곳이 없고(전부 함수 안) DOMContentLoaded 전에 실행되므로 안전하다.
+     노출 전역: html2canvas / window.jspdf.jsPDF / XLSX -->
+<script defer src="./js/vendor/html2canvas.min.js"></script>
+<script defer src="./js/vendor/jspdf.umd.min.js"></script>
+<script defer src="./js/vendor/xlsx.full.min.js"></script>
+
+<!-- 스타일 -->
+
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="logo" id="workTitleBar">
+  <div class="logo-tx">🏠 <span class="logo-tx-1">작업</span></div>
+  <div class="save-status" id="saveStatus">저장됨</div>
+  <!-- ★ 2026-08-16: 이 작업의 업종. 최상단 우측 끝(저장 버튼 줄 위)에 붙인다.
+       눌러서 업종을 바꾼다. 공유받은 작업이면 흐리게 표시되고 눌러도 안 바뀐다. -->
+  <button type="button" class="work-ind-chip" id="workIndChip" title="업종 바꾸기"></button>
+</div>
+<div class="hdr">
+  <!-- ★ 버튼 영역: 항상 표시 (작업 흐름: 새작업 → 유형 선택 → 호수 추가) -->
+  <div class="hdr-btns" id="hdrBtns">
+    <button class="btn b-blue" id="btnNew" data-i18n="btn.newWork"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg> 새작업</button>
+    <button class="btn b-ghost" id="btnSave" data-i18n="btn.save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg> 저장</button>
+    <button class="btn b-blue" id="btnGen" hidden style="display:none;" disabled data-i18n="btn.report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg> 보고서</button>
+  </div>
+  <div class="hdr-collapsible" id="hdrCollapsible">
+    <div class="hdr-fields">
+      <div class="hf"><label data-i18n="main.workName">작업명</label><input id="aptName" data-i18n-placeholder="main.placeholder.workName" placeholder="작업명을 입력하세요"></div>
+      <div class="hf"><label data-i18n="main.workDate">작업일자</label><input id="workDate" type="date"></div>
+      <div class="hf"><label data-i18n="main.worker">담당자</label><input id="workerName" data-i18n-placeholder="main.placeholder.workerName" placeholder="성함" list="workerNameList" autocomplete="off"><datalist id="workerNameList"></datalist></div>
+    </div>
+    <div style="font-size:11px;color:var(--mu);margin:2px 2px 0;">담당자와 호수(1개 이상)를 입력해야 저장돼요</div>
+
+    <!-- 작업 유형 -->
+    <div class="work-type-row">
+      <label class="work-type-opt">
+        <input type="radio" name="workType" value="household" id="workTypeHousehold" checked>
+        <span class="work-type-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/></svg>가정용</span>
+        <span class="work-type-desc">호수별 다른 고객</span>
+      </label>
+      <label class="work-type-opt">
+        <input type="radio" name="workType" value="facility" id="workTypeFacility">
+        <span class="work-type-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V4a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v17M16 21V9h3a1 1 0 0 1 1 1v11M9 7h2M9 11h2M9 15h2"/></svg>공용시설</span>
+        <span class="work-type-desc">전체가 한 고객</span>
+      </label>
+    </div>
+
+    <!-- 시설 고객 정보 (공용시설 모드에서만) -->
+    <div class="facility-cust-sec" id="facilityCustSec" style="display:none;">
+      <div class="facility-cust-row" id="facilityCustToggleRow">
+        <span class="facility-cust-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V4a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v17M16 21V9h3a1 1 0 0 1 1 1v11M9 7h2M9 11h2M9 15h2"/></svg></span>
+        <input class="cust-inp facility-cust-main" type="text" inputmode="tel"
+          placeholder="시설 연락처 (예: 010-1234-5678)" id="facilityPhone" style="flex:1;">
+        <button class="btn b-ghost facility-cust-more-btn" id="facilityCustMoreBtn" style="flex-shrink:0;font-size:11px;padding:4px 8px;">
+          더보기 ▼
+        </button>
+      </div>
+      <div class="facility-cust-detail" id="facilityCustDetail" style="display:none;">
+        <label class="cust-fld-lb">담당자</label>
+        <input class="cust-inp" type="text" id="facilityContact">
+        <label class="cust-fld-lb">주소</label>
+        <input class="cust-inp" type="text" id="facilityAddress">
+        <label class="cust-fld-lb">작업대상</label>
+        <input class="cust-inp" type="text" placeholder="예: 시스템에어컨 5대" id="facilityWorkTarget">
+        <label class="cust-fld-lb">메모</label>
+        <textarea class="cust-memo" rows="2" id="facilityMemo"></textarea>
+        <label class="cust-fld-lb">가격 (원)</label>
+        <input class="cust-inp" type="text" inputmode="numeric" id="facilityPrice">
+        <label class="cust-fld-lb">작업시간</label>
+        <div class="cust-time-row">
+          <input class="cust-inp cust-time" type="time" id="facilityStartTime">
+          <span class="cust-pt-tilde">~</span>
+          <input class="cust-inp cust-time" type="time" id="facilityEndTime">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- 회사 정보 (모달에서 관리 - 이 섹션은 표시 안 됨) -->
+  <div class="cmp-sec" style="display:none!important;"></div>
+
+  <!-- 총 호수: 검색바 옆 칩으로 표시 -->
+
+  <div class="add-row">
+    <input class="add-inp" id="newName" data-i18n-placeholder="unit.placeholder" placeholder="동호수 입력 (예: 101동 201호)">
+    <button class="btn b-blue" id="btnAdd" data-i18n="unit.add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> 추가</button>
+  </div>
+
+  <!-- 폴더 관리는 설정 모달에서만 - 코드 호환용 숨긴 요소 -->
+  <div id="folderBar" hidden style="display:none!important;visibility:hidden;position:absolute;left:-9999px;width:0;height:0;overflow:hidden;pointer-events:none;">
+    <span id="folderStatusText"></span>
+    <span id="folderPathText"></span>
+    <span id="pendingSaveBar"><span id="pendingSaveCount">0</span></span>
+    <button id="btnSetFolder"></button>
+    <button id="btnClearFolder"></button>
+    <button id="btnResumeFolder"></button>
+    <button id="btnFlushNow"></button>
+    <button id="btnResetSaved"></button>
+  </div>
+
+  <div class="unit-list" id="uList"></div>
+</div>
+
+<!-- 설정 모달 -->
+<div class="co-modal" id="settingsModal">
+  <div class="co-box" style="max-width:500px;">
+    <div class="co-head">
+      <div class="co-head-title">⚙️ 설정</div>
+      <button class="btn b-ghost b-xs" id="settingsClose">✕</button>
+    </div>
+    <div class="co-body" style="padding:16px;">
+
+      <!-- 구독 / 사용량 / 쿠폰 -->
+      <div class="set-sec">
+        <div class="set-sec-title">⭐ 구독</div>
+        <div id="subsSecBody"></div>
+      </div>
+
+      <!-- 업체정보 -->
+      <div class="set-sec">
+        <div class="set-sec-title" data-i18n="set.company">🏢 업체정보</div>
+        <div id="setCoSummary" style="font-size:12px;color:var(--mu);background:var(--sf2);border-radius:8px;padding:10px 12px;margin-bottom:8px;line-height:1.6;display:none;"></div>
+        <button class="btn b-blue" id="setOpenCoInfo" style="width:100%;justify-content:center;" data-i18n="set.company.edit">업체정보 편집</button>
+        <button class="btn b-ghost" id="setReplayOnboarding" onclick="window.replayOnboarding && window.replayOnboarding()" style="width:100%;justify-content:center;margin-top:6px;font-size:12px;">📋 초기 설정 다시 하기</button>
+
+      </div>
+
+      <!-- 📋 내 업종 — ★ 2026-08-17 독립 소타이틀.
+           업체정보 편집 모달 안에 있던 것을 꺼냈고(진입 4단계→2단계),
+           이번에 '기본 정보' 그룹의 소타이틀 하나로 분리했다.
+           ⚠️ 그리는 것은 ProfilesUI.renderSettingsIndustries() — openSettings 에서 부른다. -->
+      <div class="set-sec">
+        <div class="set-sec-title">📋 내 업종</div>
+        <div id="setIndustryBox"></div>
+      </div>
+
+      <!-- ☁️ 로그인 (인라인: 중간 모달 없이 바로 표시) -->
+      <div class="set-sec">
+        <div class="set-sec-title">☁️ 로그인</div>
+        <div id="cloudInlineHost"></div>
+      </div>
+
+      <!-- 👥 공유 설정 — ★ 2026-08-17 로그인과 분리.
+           내용(#cloudShareArea · #cloudTeamArea)은 cloud.js 가 #cloudAcctBox 안에 만든다.
+           openSettings 에서 이 자리로 옮겨 온다(id 로 찾으므로 옮겨도 동작한다). -->
+      <div class="set-sec">
+        <div class="set-sec-title">👥 공유 설정 <span id="shareCountBadge" style="font-size:12px;font-weight:600;color:var(--ac);">(공유 0명)</span></div>
+        <div id="shareInlineHost"></div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">로그인 후 상대 이메일로 일정·사진을 공유할 수 있어요. (유료 구독 기능)</div>
+      </div>
+
+      <!-- 데이터 백업 / 복원 (2026-08-09 단순화: 상태 카드 + 버튼 2개 + 고급 접기) -->
+      <div class="set-sec">
+        <div class="set-sec-title">💾 데이터 백업 / 복원</div>
+
+        <!-- 지금 상태 한눈에 -->
+        <div id="autoBackupStatus" style="font-size:12px;line-height:1.6;background:var(--sf2,rgba(255,255,255,.05));border-radius:10px;padding:11px 12px;margin-bottom:8px;"></div>
+
+        <div style="display:flex;gap:6px;">
+          <button class="btn b-blue" id="btnAutoBackupFolder" style="flex:1;justify-content:center;">📁 백업 폴더 지정</button>
+          <button class="btn b-ghost" id="btnRestoreOpen" style="flex:1;justify-content:center;">♻️ 복원하기</button>
+        </div>
+
+        <div style="font-size:11px;color:var(--mu);margin-top:8px;line-height:1.6;">
+          앱을 벗어날 때마다 바뀐 것만 자동으로 복사합니다. 사진을 한 번 더 저장하므로 저장공간이 최대 2배로 필요해요.
+        </div>
+
+        <!-- 고급 (평소엔 접힘) -->
+        <details style="margin-top:10px;">
+          <summary style="font-size:12px;color:var(--mu);cursor:pointer;padding:6px 0;">고급 설정</summary>
+          <div style="padding-top:6px;">
+            <div style="display:flex;gap:6px;margin-bottom:6px;">
+              <button class="btn b-ghost" id="btnAutoBackupToggle" style="flex:1;justify-content:center;font-size:12px;">▶️ 자동백업 켜기</button>
+              <button class="btn b-ghost" id="btnBackupExport" style="flex:1;justify-content:center;font-size:12px;">📦 지금 백업 만들기</button>
+            </div>
+            <div style="font-size:11px;color:var(--mu);margin-top:8px;line-height:1.6;">
+              업체정보 · AI 글쓰기 지침 · 학습기록 · 알림 설정도 함께 백업되고, 복원할 때 같이 되살아납니다.
+            </div>
+          </div>
+        </details>
+
+        <!-- 실제 복원 버튼들 (복원하기 팝업이 대신 눌러줌) -->
+        <div style="display:none;">
+          <button id="btnRestorePicker"></button>
+          <button id="btnRestoreZip"></button>
+          <button id="btnRestoreServer"></button>
+        </div>
+      </div>
+
+      <!-- 고객 데이터 (엑셀 보기/내보내기) -->
+      <div class="set-sec">
+        <div class="set-sec-title">📊 고객 데이터</div>
+        <div style="font-size:12px;color:var(--mu);margin-bottom:8px;line-height:1.6;">
+          저장된 고객 정보를 앱에서 표로 보거나, 엑셀 파일로 공유·다운로드할 수 있습니다.
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <button class="btn b-ghost" id="setOpenXlsx" style="flex:1;justify-content:center;">📊 표로 보기</button>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn b-blue" id="setShareXlsx" style="flex:1;justify-content:center;">📤 공유</button>
+          <button class="btn b-green" id="setDownloadXlsx" style="flex:1;justify-content:center;">📥 다운로드</button>
+        </div>
+      </div>
+
+      <!-- 네이버 캘린더 가져오기 -->
+      <div class="set-sec">
+        <div class="set-sec-title">📅 네이버 캘린더 가져오기</div>
+        <div style="font-size:12px;color:var(--mu);margin-bottom:8px;line-height:1.6;">
+          네이버 캘린더 웹(캘린더 &gt; 설정 &gt; 일정설정 &gt; 내보내기)에서 받은 .ics 파일을 불러와 이 앱의 달력에 일정으로 추가합니다.<br>
+          Claude AI가 제목·설명·장소를 분석해 동호수·전화번호·주소·작업대상·가격을 자동으로 채웁니다. 분석에 실패하면 제목을 동호수에, 나머지는 메모에 넣습니다. 등록 후에도 ✏️ 수정에서 언제든 고칠 수 있어요.
+        </div>
+        <button class="btn b-blue" id="btnNaverImport" style="width:100%;justify-content:center;">📥 .ics 파일 선택해서 가져오기</button>
+        <input type="file" id="naverImportFile" accept=".ics,text/calendar" style="display:none;">
+      </div>
+
+      <!-- 앱 테마 (선택 버튼) -->
+      <div class="set-sec">
+        <div class="set-sec-title" data-i18n="set.theme">🎨 앱 테마</div>
+        <button class="btn b-ghost" id="btnPickAppTheme" style="width:100%;justify-content:space-between;">
+          <span id="curAppThemeLabel">기본 (다크 블루)</span>
+          <span style="opacity:.6;">▶</span>
+        </button>
+      </div>
+
+      <!-- 보고서 테마 (선택 버튼) -->
+      <div class="set-sec">
+        <div class="set-sec-title" data-i18n="set.reportTheme">📄 보고서 테마</div>
+        <button class="btn b-ghost" id="btnPickReportTheme" style="width:100%;justify-content:space-between;">
+          <span id="curReportThemeLabel">기본</span>
+          <span style="opacity:.6;">▶</span>
+        </button>
+      </div>
+
+      <!-- 글자 크기 -->
+      <div class="set-sec">
+        <div class="set-sec-title" data-i18n="set.fontSize">🔤 글자 크기</div>
+        <div class="fs-control">
+          <button class="btn b-ghost" id="fsDown" style="min-width:48px;font-size:18px;">－</button>
+          <div class="fs-preview" id="fsPreview">가나다 ABC</div>
+          <button class="btn b-ghost" id="fsUp" style="min-width:48px;font-size:18px;">＋</button>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;text-align:center;">
+          현재: <span id="fsLabel">보통</span>
+        </div>
+      </div>
+
+      <!-- 카메라 해상도 -->
+      <!-- 사진 해상도는 카메라 화면(📐 버튼)에서 직접 선택 (설정에서 제거) -->
+
+      <!-- 보고서 출력 해상도 -->
+      <div class="set-sec">
+        <div class="set-sec-title">📄 보고서 해상도</div>
+        <select class="co-input" id="reportResSelect">
+          <option value="low">저화질 (HD급 · 905×1280)</option>
+          <option value="normal">일반화질 (FHD급 · 1358×1920)</option>
+          <option value="high">고화질 (2K급 · 1810×2560)</option>
+        </select>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">
+          숫자가 클수록 보고서가 더 선명합니다. 다만 <b>해상도가 높을수록 보고서를 만드는 데 시간이 더 걸립니다.</b> 다음에 생성하는 보고서부터 적용돼요.
+        </div>
+      </div>
+
+      <!-- 일정 알림 -->
+      <div class="set-sec">
+        <div class="set-sec-title">🔔 일정 알림</div>
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;">
+          <span style="font-size:13px;font-weight:600;">작업 시작 알림 받기</span>
+          <input type="checkbox" id="notifyEnabledChk" style="width:22px;height:22px;">
+        </label>
+        <div id="notifyLeadWrap" style="margin-top:12px;">
+          <label style="font-size:12px;color:var(--mu);font-weight:700;">알림 시간</label>
+          <select class="co-input" id="notifyLeadSelect" style="margin-top:4px;">
+            <option value="0">작업 시작 정시</option>
+            <option value="10">10분 전</option>
+            <option value="30">30분 전</option>
+            <option value="60">1시간 전</option>
+            <option value="120">2시간 전</option>
+            <option value="1440">하루 전</option>
+          </select>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">
+          시작시간이 입력된 일정에 대해, 설정한 시간에 맞춰 휴대폰 알림을 보냅니다. (안드로이드 앱에서만 동작)
+        </div>
+        <!-- 2026-08-27 · 정확한 시간 알림 (SCHEDULE_EXACT_ALARM)
+             권한이 없으면 절전 중에 알림이 수십 분 밀린다. 상태는 settings.js 가 채운다. -->
+        <div id="notifyExactWrap" style="display:none;margin-top:12px;border:1.5px solid var(--wn);background:rgba(240,180,41,.12);border-radius:10px;padding:10px 12px;">
+          <div style="font-size:12px;font-weight:800;color:var(--tx);">⏰ 알림이 늦게 오나요?</div>
+          <div style="font-size:11px;color:var(--mu);line-height:1.6;margin-top:4px;">
+            휴대폰 절전 기능 때문에 알림이 수십 분 늦게 울릴 수 있습니다.
+            아래 버튼을 눌러 <b>알람 및 리마인더</b>를 허용하면 설정한 시간에 정확히 옵니다.
+          </div>
+          <button class="btn b-blue" id="notifyExactBtn" style="width:100%;justify-content:center;margin-top:8px;">정확한 시간에 알림 받기</button>
+        </div>
+        <div id="notifyExactOk" style="display:none;font-size:11px;color:var(--ac2);font-weight:700;margin-top:8px;line-height:1.5;">
+          ✅ 정확한 시간에 알림이 옵니다.
+          <span style="color:var(--mu);font-weight:400;">그래도 늦게 온다면 휴대폰 설정 ▸ 배터리 ▸ 앱 절전(절전 최적화)에서 <b>현장 매니저</b>를 제외해 주세요.</span>
+        </div>
+      </div>
+
+      <!-- 공유 · 채팅 알림 -->
+      <div class="set-sec">
+        <div class="set-sec-title">📨 공유 · 채팅 알림</div>
+        <div class="notif-rows">
+          <label class="notif-row"><span>💬 채팅 메시지</span><input type="checkbox" id="notifChatChk"></label>
+          <label class="notif-row"><span>📷 공유 사진 도착</span><input type="checkbox" id="notifSharedChk"></label>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-top:4px;line-height:1.5;">공유 사진 알림은 상대가 올린 사진·내 작업에 보탠 사진·만료 원본 재요청을 모두 포함합니다.</div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">
+          공유·채팅 알림은 로그인 상태에서 동작합니다. 끄면 해당 종류의 알림을 받지 않아요.
+        </div>
+      </div>
+
+      <!-- 현장매니저 소개 -->
+      <div class="set-sec">
+        <div class="set-sec-title">ℹ️ 현장매니저 소개</div>
+        <button class="btn b-ghost" style="width:100%;justify-content:center;" onclick="window.openIntro && window.openIntro()">소개 페이지 보기</button>
+        <button class="btn b-ghost" style="width:100%;justify-content:center;margin-top:8px;" onclick="window.shareIntro && window.shareIntro()">📤 지인에게 소개 보내기</button>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">
+          앱이 어떤 앱인지 한 장으로 정리한 페이지입니다. 링크를 복사해 카톡으로 보낼 수 있어요.
+        </div>
+      </div>
+
+      <!-- 사용자 오픈채팅방 (2026-08-17) — 주소는 js/legal.js 의 OPENCHAT_URL 한 줄 -->
+      <div class="set-sec">
+        <div class="set-sec-title">💬 사용자 오픈채팅방</div>
+        <button class="btn b-blue" style="width:100%;justify-content:center;" onclick="window.openChatRoom && window.openChatRoom()">카카오톡 오픈채팅방 들어가기</button>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.6;">
+          이 앱을 쓰는 현장 작업자들이 모여 있는 카카오톡 방입니다.<br>
+          <b>사용법 질문 · 안 되는 것 제보 · 이런 기능 있었으면 하는 요청</b>을 남겨주시면
+          만든 사람이 직접 봅니다. 업데이트 소식도 여기에 먼저 올라갑니다.
+        </div>
+      </div>
+
+      <!-- 별점 (2026-08-27) — 인앱 리뷰 API 가 아니라 Play 리뷰 화면을 연다.
+           ⚠️ 여기서 Review.maybeAsk() 를 부르면 안 된다: 쿼터에 걸리면 눌러도 아무 일이 없어
+              고장난 것처럼 보인다(구글 문서 권고). 자동 카드는 js/review.js 가 따로 띄운다. -->
+      <div class="set-sec">
+        <div class="set-sec-title">⭐ 별점 남기기</div>
+        <button class="btn b-ghost" style="width:100%;justify-content:center;" onclick="window.openStoreReview && window.openStoreReview()">Play 스토어에서 별점 남기기</button>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.6;">
+          쓰시면서 괜찮았다면 별점이 큰 힘이 됩니다. 잘 안 되는 점이나 아쉬운 점은
+          위 <b>오픈채팅방</b>에 남겨주시면 만든 사람이 직접 봅니다.
+        </div>
+      </div>
+
+      <!-- 약관 -->
+      <div class="set-sec">
+        <div class="set-sec-title">📄 약관</div>
+        <button class="btn b-ghost" style="width:100%;justify-content:center;" onclick="window.openTerms && window.openTerms()">이용약관 보기</button>
+      </div>
+
+      <!-- 개인정보 -->
+      <div class="set-sec">
+        <div class="set-sec-title">🔒 개인정보</div>
+        <button class="btn b-ghost" style="width:100%;justify-content:center;" onclick="window.openPrivacy && window.openPrivacy()">개인정보 처리방침 보기</button>
+      </div>
+
+      <div class="set-app-footer" style="text-align:center;padding:22px 0 8px;border-top:1px solid var(--bd);margin-top:4px;">
+        <img class="logo-ic" id="appLogoIconSched" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDggMTA4Ij48cmVjdCB3aWR0aD0iMTA4IiBoZWlnaHQ9IjEwOCIgcng9IjI0IiBmaWxsPSJ1cmwoI2JnKSIvPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM1YWEyZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZjZmZTYiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9InBlbiIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMyZjZmZTYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxZjU3Y2MiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9InNwayIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmZmUwOGEiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmZmMwNDMiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9InNoZWVuIiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwLjIyIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMC41NSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICAgIDwhLS0gY2FsZW5kYXIgc2hhZG93LWZyZWUsIGNyaXNwIC0tPgogICAgPGc+CiAgICAgIDwhLS0gcmluZ3MgLS0+CiAgICAgIDxyZWN0IHg9IjQxIiB5PSIyOSIgd2lkdGg9IjUuNSIgaGVpZ2h0PSIxMSIgcng9IjIuNyIgZmlsbD0iI2ZmZmZmZiIvPgogICAgICA8cmVjdCB4PSI2MS41IiB5PSIyOSIgd2lkdGg9IjUuNSIgaGVpZ2h0PSIxMSIgcng9IjIuNyIgZmlsbD0iI2ZmZmZmZiIvPgogICAgICA8IS0tIGJvZHkgLS0+CiAgICAgIDxyZWN0IHg9IjMxIiB5PSIzNSIgd2lkdGg9IjQ2IiBoZWlnaHQ9IjQ1IiByeD0iNyIgZmlsbD0iI2ZmZmZmZiIvPgogICAgICA8IS0tIGhlYWRlciBiYW5kIC0tPgogICAgICA8cGF0aCBkPSJNMzEgNDIgYTcgNyAwIDAgMSA3IC03IGgzMiBhNyA3IDAgMCAxIDcgNyB2NiBoLTQ2IFoiIGZpbGw9IiNlNmVmZmYiLz4KICAgICAgPCEtLSBkYXkgZG90cyAtLT4KICAgICAgPGNpcmNsZSBjeD0iNDIiIGN5PSI1OCIgcj0iMy4xIiBmaWxsPSIjYzNkOGZmIi8+CiAgICAgIDxjaXJjbGUgY3g9IjU0IiBjeT0iNTgiIHI9IjMuMSIgZmlsbD0iI2MzZDhmZiIvPgogICAgICA8Y2lyY2xlIGN4PSI2NiIgY3k9IjU4IiByPSIzLjEiIGZpbGw9IiMyZjZmZTYiLz4KICAgICAgPGNpcmNsZSBjeD0iNDIiIGN5PSI3MCIgcj0iMy4xIiBmaWxsPSIjYzNkOGZmIi8+CiAgICAgIDxjaXJjbGUgY3g9IjU0IiBjeT0iNzAiIHI9IjMuMSIgZmlsbD0iI2MzZDhmZiIvPgogICAgICA8IS0tIHBlbiwgd3JpdGluZyBhbmdsZSAtLT4KICAgICAgPGcgdHJhbnNmb3JtPSJyb3RhdGUoNDEgNzAgNjgpIj4KICAgICAgICA8cmVjdCB4PSI2My41IiB5PSI0MCIgd2lkdGg9IjEzIiBoZWlnaHQ9IjQyIiByeD0iNCIgZmlsbD0idXJsKCNwZW4pIi8+CiAgICAgICAgPHJlY3QgeD0iNjMuNSIgeT0iNDAiIHdpZHRoPSIxMyIgaGVpZ2h0PSIxMyIgcng9IjQiIGZpbGw9IiMxNTQ5OWYiLz4KICAgICAgICA8cGF0aCBkPSJNNjMuNSA4MiBMNzAgOTUgTDc2LjUgODIgWiIgZmlsbD0iI2ZmY2U2YSIvPgogICAgICAgIDxwYXRoIGQ9Ik02NyA4OSBMNzAgOTUgTDczIDg5IFoiIGZpbGw9IiMyYTJmMzgiLz4KICAgICAgPC9nPgogICAgICA8cGF0aCBkPSJNMzIgMjIgTDM0LjQgMzAgTDQyIDMyLjQgTDM0LjQgMzQuOCBMMzIgNDIuOCBMMjkuNiAzNC44IEwyMiAzMi40IEwyOS42IDMwIFoiIGZpbGw9InVybCgjc3BrKSIvPgogICAgICA8cGF0aCBkPSJNMjMgNDIgTDI0LjMgNDYgTDI4IDQ3LjMgTDI0LjMgNDguNiBMMjMgNTIuNiBMMjEuNyA0OC42IEwxOCA0Ny4zIEwyMS43IDQ2IFoiIGZpbGw9IiNmZmUwOGEiLz4KICAgIDwvZz48L3N2Zz4=" alt="현장매니저" style="width:52px;height:52px;border-radius:13px;margin:0 auto 10px;display:block;">
+        <div class="logo-tx" style="font-size:16px;"><span class="logo-tx-1">현장</span> <span class="logo-tx-2">매니저</span></div>
+        <div class="logo-ver" id="appVersion" style="margin-top:3px;">v2.0.0</div>
+      </div>
+
+    </div>
+    <div class="co-foot">
+      <button class="btn b-blue" id="settingsCloseBtn" style="width:100%;justify-content:center;">완료</button>
+    </div>
+  </div>
+</div>
+
+<!-- 업체 정보 설정 모달 -->
+<div class="co-modal" id="coModal">
+  <div class="co-box">
+    <div class="co-head">
+      <div class="co-head-title">🏢 업체 정보 설정</div>
+      <button class="btn b-ghost b-xs" id="coModalClose">✕</button>
+    </div>
+    <div class="co-body">
+
+      <!-- 아이콘/로고 선택 -->
+      <div class="co-field">
+        <label>업체 아이콘 / 로고 <span class="co-tag">표지 표시</span></label>
+        <div class="co-icon-preview-row">
+          <div class="co-icon-preview" id="coIconPreview">❄</div>
+          <div class="co-icon-info">
+            <div class="co-icon-info-tx" id="coIconInfo">기본 아이콘</div>
+            <button class="btn b-ghost b-xs" id="coIconClear" style="display:none;">↻ 기본으로</button>
+          </div>
+        </div>
+        <div class="co-icon-grid">
+          <button class="co-icon-pick" data-ic="❄">❄</button>
+          <button class="co-icon-pick" data-ic="❄️">❄️</button>
+          <button class="co-icon-pick" data-ic="🌬️">🌬️</button>
+          <button class="co-icon-pick" data-ic="🧊">🧊</button>
+          <button class="co-icon-pick" data-ic="💧">💧</button>
+          <button class="co-icon-pick" data-ic="🛠️">🛠️</button>
+          <button class="co-icon-pick" data-ic="🔧">🔧</button>
+          <button class="co-icon-pick" data-ic="⚙️">⚙️</button>
+          <button class="co-icon-pick" data-ic="🏠">🏠</button>
+          <button class="co-icon-pick" data-ic="🏢">🏢</button>
+          <button class="co-icon-pick" data-ic="✨">✨</button>
+          <button class="co-icon-pick" data-ic="⭐">⭐</button>
+          <label class="co-icon-pick co-icon-upload">
+            📷
+            <input type="file" id="coIconFile" accept="image/*" style="display:none;">
+          </label>
+        </div>
+      </div>
+
+      <div class="co-field" style="margin-bottom:4px;">
+        <button type="button" class="btn b-ghost" id="coBizFill" style="width:100%;justify-content:center;">📄 사업자등록증으로 자동입력</button>
+        <input type="file" id="coBizFillFile" accept="image/*" style="display:none;">
+        <div style="font-size:11px;color:var(--mu);margin-top:5px;line-height:1.5;">사업자등록증을 찍으면 상호·등록번호·대표자·주소를 자동으로 채웁니다. 결과는 확인 후 반영돼요.</div>
+      </div>
+
+      <div class="co-field">
+        <label>업체명 (상호) <span class="co-tag">표지 큰 글씨</span></label>
+        <input class="co-input" id="coName" placeholder="예: 평택에어컨1004">
+      </div>
+
+      <div class="co-field">
+        <label>법인명 / 부제 <span class="co-tag">표지 작은 글씨</span></label>
+        <input class="co-input" id="coBrand" placeholder="예: 주식회사 미래에스엠 / 에어컨 전문">
+      </div>
+
+      <div class="co-row">
+        <div class="co-field">
+          <label>대표 연락처</label>
+          <input class="co-input" id="coTel" placeholder="010-0000-0000 (자동 하이픈)" type="text" inputmode="tel">
+        </div>
+        <div class="co-field">
+          <label>사업자 번호</label>
+          <input class="co-input" id="coBiz" placeholder="000-00-00000">
+        </div>
+      </div>
+
+      <div class="co-field">
+        <label>주소</label>
+        <input class="co-input" id="coAddr" placeholder="예: 경기도 평택시 OO동 OOO">
+      </div>
+
+      <div class="co-row">
+        <div class="co-field">
+          <label>이메일</label>
+          <input class="co-input" id="coEmail" placeholder="example@email.com" type="email">
+        </div>
+        <div class="co-field">
+          <label>홈페이지 / SNS</label>
+          <input class="co-input" id="coWeb" placeholder="https://...">
+        </div>
+      </div>
+
+      <div class="co-row">
+        <div class="co-field">
+          <label>대표자 성명 <span class="co-tag">견적/명세서</span></label>
+          <input class="co-input" id="coCeo" placeholder="예: 홍길동">
+        </div>
+        <div class="co-field">
+          <label>입금계좌 <span class="co-tag">거래명세서</span></label>
+          <input class="co-input" id="coBank" placeholder="예: 국민 123456-01-234567">
+        </div>
+      </div>
+
+      <div class="co-field">
+        <label>업체 소개 / 슬로건 <span class="co-tag">표지에 박스로 표시</span></label>
+        <textarea class="co-textarea" id="coDesc" rows="4" placeholder="예시:&#10;에어컨 청소·설치·이전 전문&#10;평택·오산·수원·화성·안성 출장 서비스&#10;10년 이상 경력 전문가 직접 시공&#10;100% 만족 보장"></textarea>
+        <div style="font-size:10px;color:var(--mu);margin-top:4px;">💡 줄바꿈하면 보고서에 그대로 줄바꿈되어 표시됩니다</div>
+      </div>
+
+      <hr class="co-divider">
+
+      <!-- 내 업종 (2026-08-16 단순화)
+           예전: 대분류 select → 소분류 select → 보고서제목·호칭 3칸 직접 입력 → "내 업종으로 저장"
+           지금: 등록된 업종을 칩으로 보여주고 [관리]에서 탭 한 번으로 추가/전환.
+                 보고서 제목·호칭은 업종을 고르면 자동으로 채워지고, 고치고 싶을 때만 ✏️ 로 들어간다.
+           ⚠️ 아래 hidden input 5개는 지우지 말 것 — state.js CO_FIELDS, dialogs.js 저장 경로,
+              report.js 가 아직 이 값들을 읽는다. 현재 업종의 값이 여기에 그대로 반영된다. -->
+      <div id="coIndustryBox" style="background:rgba(77,208,225,.08);border:1px solid rgba(77,208,225,.25);border-radius:10px;padding:12px;margin-bottom:14px;"></div>
+      <input type="hidden" id="coIndustryMajor">
+      <input type="hidden" id="coIndustryMinor">
+      <input type="hidden" id="coReportTitle">
+      <input type="hidden" id="coUnitLabel">
+      <input type="hidden" id="coStageLabel">
+
+      <hr class="co-divider">
+
+      <div>
+        <div class="co-preview-label">📄 보고서 표지 미리보기</div>
+        <div class="co-preview" id="coPreview">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <div class="co-preview-ic" id="pvIc" style="width:42px;height:42px;background:linear-gradient(135deg,#3d8ef0,#00c9a7);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0;">❄</div>
+            <div style="min-width:0;flex:1;">
+              <div class="co-preview-name" id="pvName">업체명 입력 전</div>
+              <div class="co-preview-brand" id="pvBrand" style="font-size:11px;opacity:.85;color:#a8d4ff;font-weight:600;display:none;"></div>
+            </div>
+          </div>
+          <div class="co-preview-desc" id="pvDesc" style="display:none;background:rgba(255,255,255,.08);border-left:2px solid #4dd0e1;padding:8px 11px;border-radius:5px;font-size:10px;line-height:1.6;margin-bottom:9px;color:rgba(255,255,255,.92);"></div>
+          <div class="co-preview-tel" id="pvTel" style="display:none;background:linear-gradient(135deg,rgba(77,208,225,.25),rgba(0,201,167,.15));border:1px solid rgba(77,208,225,.4);border-radius:7px;padding:8px 11px;display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-size:18px;">📞</span>
+            <div style="flex:1;">
+              <div style="font-size:8px;color:#80deea;font-weight:700;letter-spacing:.1em;">대표 연락처</div>
+              <div id="pvTelNum" style="font-size:15px;font-weight:900;color:#fff;font-family:'DM Mono',monospace;line-height:1;"></div>
+            </div>
+          </div>
+          <div class="co-preview-sub" id="pvSub" style="font-size:9px;opacity:.7;">사업자번호 등 부가정보</div>
+        </div>
+      </div>
+
+    </div>
+    <div class="co-foot">
+      <button class="btn b-ghost" id="coModalCancel">취소</button>
+      <button class="btn b-green" id="coModalSave">✅ 저장하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 저장 이름 다이얼로그 -->
+<div class="dlg-backdrop" id="saveDlg">
+  <div class="dlg-box">
+    <div class="dlg-head">
+      <div class="dlg-title">💾 저장 이름 입력</div>
+      <button class="btn b-ghost b-xs" id="saveDlgClose">✕</button>
+    </div>
+    <div class="dlg-body">
+      <div class="dlg-label">저장 이름</div>
+      <input class="dlg-input" id="saveNameInp" placeholder="예: OO아파트 1차 작업">
+      <div class="dlg-hint" id="saveHint"></div>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn b-ghost" id="saveDlgCancel">취소</button>
+      <button class="btn b-gold" id="saveDlgOk">💾 저장하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 불러오기 목록 -->
+<div class="sl-modal" id="slModal">
+  <div class="sl-box">
+    <div class="sl-head">
+      <div class="sl-title">📂 저장된 작업 목록</div>
+      <button class="btn b-ghost b-xs" id="btnSlClose">✕ 닫기</button>
+    </div>
+    <div class="sl-body" id="slBody"></div>
+  </div>
+</div>
+
+<!-- 사진 순서 편집 모달 (전체화면) -->
+<!-- 사진 순서 편집 모달 (전체화면) -->
+<!-- 테마 선택 팝업 -->
+<div class="co-modal" id="themePickerModal">
+  <div class="co-box" style="max-width:480px;">
+    <div class="co-head">
+      <div class="co-head-title" id="themePickerTitle">🎨 테마 선택</div>
+      <button class="btn b-ghost b-xs" id="themePickerClose">✕</button>
+    </div>
+    <div class="co-body" id="themePickerBody" style="padding:14px;"></div>
+  </div>
+</div>
+
+<!-- 고객 목록 (전체화면 모달) -->
+<div class="rd-modal open" id="customerModal">
+  <div class="rd-box">
+    <div class="rd-head">
+      <div class="rd-title" id="customerTitle">📅 스케줄</div>
+      <button class="rd-close-btn" id="customerRefresh" title="사진 개수 검사" style="background:var(--sf);font-size:15px;margin-right:6px;">📷🔍</button>
+      <button class="rd-close-btn" id="customerClose">✕</button>
+    </div>
+    <div class="rd-body" id="customerBody"><div style="text-align:center;color:var(--mu);padding:48px 16px;font-size:14px;">📅 불러오는 중…</div></div>
+  </div>
+</div>
+
+<!-- 채팅 (전체화면 탭) -->
+<div class="rd-modal" id="chatTabModal">
+  <div class="rd-box">
+    <div class="rd-head">
+      <div class="rd-title">💬 채팅</div>
+    </div>
+    <div class="rd-body" id="chatTabBody"></div>
+  </div>
+</div>
+
+<!-- 온보딩 (첫 실행 가이드) -->
+<div class="ob-modal" id="onboardingModal">
+  <div class="ob-box">
+    <div class="ob-progress">
+      <div class="ob-progress-bar" id="obProgressBar"></div>
+    </div>
+    <div class="ob-step-counter" id="obStepCounter">1 / 5</div>
+    <button class="ob-skip" id="obSkip">건너뛰기 ✕</button>
+
+    <div class="ob-content" id="obContent">
+      <!-- 단계별 콘텐츠가 동적으로 들어감 -->
+    </div>
+
+    <div class="ob-footer">
+      <button class="btn b-ghost" id="obPrev" style="display:none;">← 이전</button>
+      <button class="btn b-blue" id="obNext" style="margin-left:auto;">다음 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- 미리보기 -->
+<div class="pv-modal" id="pvModal">
+  <div class="pv-bar">
+    <div class="pv-title">📄 보고서</div>
+    <div class="pv-btns">
+      <select id="pvResSelect" class="co-input" style="width:auto;min-width:104px;padding:6px 8px;font-size:12px;height:auto;flex:0 0 auto;">
+        <option value="low">저화질(HD)</option>
+        <option value="normal">일반화질(FHD)</option>
+        <option value="high">고화질(2K)</option>
+      </select>
+      <button class="btn b-green" id="btnPDF2">⬇️ PDF</button>
+      <button class="btn b-orange" id="btnJPG2">🖼️ JPG</button>
+      <button class="btn b-ghost" id="btnPvClose">✕ 닫기</button>
+    </div>
+  </div>
+  <div class="pv-scroll" id="pvScroll"></div>
+</div>
+
+<!-- 이미지 모달 -->
+<div class="img-modal" id="imgModal">
+  <div class="img-x" id="imgX">✕</div>
+  <div class="img-nav img-prev" id="imgPrev">‹</div>
+  <div class="img-nav img-next" id="imgNext">›</div>
+  <div class="img-count" id="imgCount"></div>
+  <img id="modalImg" src="" alt="">
+</div>
+
+<!-- 프로그레스 오버레이 -->
+<div class="overlay" id="overlay">
+  <div class="ov-box">
+    <div class="ov-title" id="ovTitle">처리 중...</div>
+    <div class="prog-tr"><div class="prog-fl" id="progFl"></div></div>
+    <div class="prog-lb" id="progLb"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="rpWrap" style="position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;"></div>
+
+<!-- FAB: 새작업 버튼 (기록 탭에서 표시) -->
+<button class="fab-new" id="fabNewWork" title="새 작업">＋</button>
+<button class="fab-new" id="fabWriteWork" title="글작성">＋</button>
+
+
+<!-- 스크립트 (순서 중요) -->
+<script src="./js/version.js"></script>
+<script src="./js/i18n.js"></script>
+<script src="./js/industries.js"></script>
+<!-- ★ 2026-08-16: 사업자/업종 프로필. state.js init() 이 ac_co_v2 를 읽기 전에
+     그릇을 만들어야 하므로 반드시 state.js 보다 먼저 로드할 것 -->
+<script src="./js/profiles.js"></script>
+<script src="./js/profiles_ui.js"></script>
+<script src="./js/state.js"></script>
+<script src="./js/db.js"></script>
+<script src="./js/image.js"></script>
+<script src="./js/render.js"></script>
+<script src="./js/events.js"></script>
+<script src="./js/camera.js"></script>
+<script src="./js/dialogs.js"></script>
+<script src="./js/native-fs.js"></script>
+<script src="./js/gallery.js"></script>
+<script src="./js/report.js"></script>
+<script src="./js/folder.js"></script>
+<script src="./js/settings.js"></script>
+<script src="./js/customer_storage.js"></script>
+<script src="./js/customer_storage_v2.js"></script>
+<script src="./js/work_index.js"></script>
+<script src="./js/customers.js"></script>
+<script src="./js/records_cache.js"></script>
+<script src="./js/migration.js"></script>
+<script src="./js/jszip.min.js"></script>
+<script src="./js/backup.js"></script>
+<script src="./js/auto_backup.js"></script>
+<script src="./js/reminders.js"></script>
+<script src="./js/calendar.js"></script>
+<script src="./js/naver_import.js"></script>
+<script src="./js/onboarding.js"></script>
+<script src="./js/app.js"></script>
+<script src="./js/vendor/firebase-app-compat.js"></script>
+<script src="./js/vendor/firebase-auth-compat.js"></script>
+<script src="./js/vendor/firebase-firestore-compat.js"></script>
+<script src="./js/vendor/firebase-storage-compat.js"></script>
+<script src="./js/firebase_config.js"></script>
+<script src="./js/cloud.js"></script>
+<script src="./js/version_gate.js"></script>
+<script src="./js/whatsnew.js"></script>
+<script src="./js/cloud_sync.js"></script>
+<script src="./js/cloud_share.js"></script>
+<script src="./js/subscription.js"></script>
+<script src="./js/billing.js"></script>
+<script src="./js/admin_stats.js"></script>
+<script src="./js/cloud_photo_sync.js"></script>
+<script src="./js/cloud_backup.js"></script>
+<script src="./js/cloud_chat.js"></script>
+<script src="./js/teams.js"></script>
+<script src="./js/push.js"></script>
+
+<!-- ★ 하단 탭바 -->
+<nav class="tabbar" id="tabbar">
+  <button class="tab-item active" data-tab="records" type="button"><span class="tab-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="tab-lb">스케줄</span></button>
+  <button class="tab-item" data-tab="work" type="button"><span class="tab-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5"/><path d="M6 9.7V20h12V9.7"/></svg></span><span class="tab-lb">작업</span></button>
+  <button class="tab-item" data-tab="chat" id="chatTabBtn" type="button" style="display:none;"><span class="tab-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.6a8 8 0 0 1-11.7 7.1L4 20l1.3-4.6A8 8 0 1 1 20.5 11.6Z"/></svg></span><span class="tab-lb">채팅</span></button>
+  <button class="tab-item" data-tab="report" type="button"><span class="tab-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/></svg></span><span class="tab-lb">보고서</span></button>
+  <button class="tab-item" data-tab="settings" type="button"><span class="tab-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></span><span class="tab-lb">설정</span></button>
+</nav>
+<script src="./js/sns_share.js"></script>
+<script src="./js/ai.js"></script>
+<script src="./js/docs_template.js"></script>
+<script src="./js/docs_excel.js"></script>
+<script src="./js/worker_combo.js"></script>
+<script src="./js/link_actions.js"></script>
+<script src="./js/legal.js"></script>
+<script src="./js/cloud_ai_learn.js"></script>
+<script src="./js/tabbar.js"></script>
+<script src="./js/notify.js"></script>
+<script src="./js/bizcert_fill.js"></script>
+<script src="./js/appdata_backup.js"></script>
+<script src="./js/photo_audit.js"></script>
+<script src="./js/review.js"></script>
+
+</body>
+</html>

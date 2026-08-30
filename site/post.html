@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>블로그에 붙여넣기 — 현장 매니저</title>
+<!--
+  post.html — 글+사진을 한 페이지로 보여주고, 통째로 복사해 네이버 블로그에 붙여넣게 한다.
+  ★ 2026-08-26 신규.
+  왜: 모바일 공유 시트는 사진만 넘길 수 있어 글은 따로 붙여넣어야 했다.
+      PC 스마트에디터는 붙여넣은 HTML 의 외부 이미지 URL 을 자기 서버로 재업로드해 준다
+      → 글과 사진을 한 번의 Ctrl+V 로 넣을 수 있다.
+  ☠️ 이미지는 반드시 실제 https URL 이어야 한다. base64(data:) 로 심으면 네이버가 걸러낸다.
+  · Firestore REST 로 문서 하나만 읽는다(SDK 미사용 — 페이지를 가볍게).
+  · 링크는 24시간 뒤 만료. 만료 검사는 여기서, 실제 삭제는 functions/cleanupSnsPosts 가 한다.
+-->
+<style>
+  :root{ --bg:#F4F6F8; --sf:#fff; --bd:#E6EAEE; --tx:#111820; --mu:#7A868F; --ac:#0F5F6B; --wn:#C4453A; }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0F141A; --sf:#171E26; --bd:#2C3742; --tx:#E7ECF1; --mu:#8B97A3; --ac:#2FB3AD; --wn:#E0B54A; }
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--tx); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","맑은 고딕",sans-serif; line-height:1.7; }
+  .wrap{ max-width:760px; margin:0 auto; padding:24px 16px 64px; }
+  .card{ background:var(--sf); border:1px solid var(--bd); border-radius:14px; padding:20px; margin-bottom:16px; }
+  h1{ font-size:19px; margin:0 0 6px; }
+  .sub{ font-size:13px; color:var(--mu); margin:0; }
+  .btn{ display:inline-flex; align-items:center; justify-content:center; gap:6px; border:0; border-radius:10px;
+        background:var(--ac); color:#fff; font-size:15px; font-weight:700; padding:13px 18px; cursor:pointer;
+        font-family:inherit; width:100%; }
+  .btn:active{ opacity:.85; }
+  .btn.ghost{ background:transparent; color:var(--ac); border:1.5px solid var(--ac); margin-top:8px; }
+  ol{ margin:12px 0 0 18px; padding:0; font-size:13.5px; color:var(--tx); }
+  ol li{ margin-bottom:4px; }
+  .warn{ border:1.5px solid var(--wn); border-radius:10px; padding:10px 12px; font-size:13px; color:var(--wn); font-weight:700; }
+  .exp{ font-size:12px; color:var(--mu); margin-top:10px; }
+  .tip{ font-size:12.5px; color:var(--mu); line-height:1.7; margin-top:12px; padding-top:12px; border-top:1px dashed var(--bd); }
+  .btn[disabled]{ opacity:.6; cursor:default; }
+  /* ── 복사 대상 ── 여기 안의 것만 클립보드로 간다. 스타일을 최소로 둬야 에디터에서 깨지지 않는다 */
+  #post{ font-size:15px; line-height:1.9; }
+  #post p{ margin:0 0 14px; white-space:pre-wrap; }
+  #post img{ display:block; width:100%; height:auto; margin:0 0 16px; border-radius:6px; }
+  .ph{ text-align:center; color:var(--mu); padding:40px 0; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>📋 블로그에 붙여넣기</h1>
+    <p class="sub">아래 버튼을 누르면 <b>글과 사진이 함께</b> 복사됩니다. 네이버 블로그 글쓰기 화면에서 붙여넣기(Ctrl+V) 하세요.</p>
+    <div id="ctl" style="margin-top:14px;"></div>
+    <ol>
+      <li>아래 <b>글+사진 전체 복사</b>를 누릅니다</li>
+      <li>네이버 블로그 → <b>글쓰기</b>를 엽니다</li>
+      <li>본문 칸을 클릭하고 <b>Ctrl+V</b> (Mac 은 ⌘V)</li>
+      <li>사진은 네이버가 자동으로 받아 옮깁니다 — 잠깐 기다리면 됩니다</li>
+    </ol>
+    <div class="tip" id="zipTip" style="display:none;">
+      <b>원본 화질로 직접 첨부하고 싶다면</b> — <b>사진 전체 내려받기</b>로 ZIP 을 받아 압축을 푼 뒤,
+      블로그 글쓰기의 <b>[사진]</b> 버튼으로 번호 순서대로 첨부하고 글은 <b>글만 복사</b>로 붙여넣으세요.
+    </div>
+    <div class="exp" id="exp"></div>
+  </div>
+
+  <div class="card">
+    <div id="post"><div class="ph">불러오는 중…</div></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var PROJECT = 'work-report-826ec';
+  var API_KEY = 'AIzaSyB0qA_QXtQOYPpnJNHX3SMk9hIpNA40NMk';  // 공개 식별자 — 보안은 Firestore 규칙이 담당
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fail(msg, sub) {
+    $('post').innerHTML = '<div class="ph"><b style="font-size:16px;color:var(--wn);">' + esc(msg) + '</b>' +
+      (sub ? '<br><span style="font-size:13px;">' + esc(sub) + '</span>' : '') + '</div>';
+    $('ctl').innerHTML = '';
+    $('exp').textContent = '';
+  }
+
+  var id = (location.search.match(/[?&]id=([A-Za-z0-9_-]+)/) || [])[1];
+  if (!id) { fail('주소가 올바르지 않습니다', '앱에서 링크를 다시 만들어 주세요'); return; }
+
+  /* Firestore REST — 문서 하나만 읽는다 */
+  var url = 'https://firestore.googleapis.com/v1/projects/' + PROJECT +
+            '/databases/(default)/documents/sns_posts/' + encodeURIComponent(id) + '?key=' + API_KEY;
+
+  fetch(url).then(function (r) {
+    if (r.status === 404) throw new Error('NOTFOUND');
+    if (!r.ok) throw new Error('HTTP' + r.status);
+    return r.json();
+  }).then(function (j) {
+    var f = (j && j.fields) || {};
+    var text = (f.text && f.text.stringValue) || '';
+    var photos = [], kinds = [];
+    try {
+      photos = ((f.photos && f.photos.arrayValue && f.photos.arrayValue.values) || [])
+        .map(function (v) { return v.stringValue; }).filter(Boolean);
+    } catch (e) {}
+    try {
+      kinds = ((f.kinds && f.kinds.arrayValue && f.kinds.arrayValue.values) || [])
+        .map(function (v) { return v.stringValue; });
+    } catch (e) {}
+    var expMs = 0;
+    try { expMs = Date.parse((f.expiresAt && f.expiresAt.timestampValue) || '') || 0; } catch (e) {}
+
+    if (expMs && Date.now() > expMs) {
+      fail('링크가 만료되었습니다', '이 링크는 만든 지 24시간이 지나면 사라집니다. 앱에서 새로 만들어 주세요.');
+      return;
+    }
+    if (!text && !photos.length) { fail('내용이 비어 있습니다'); return; }
+
+    render(text, photos, kinds);
+
+    if (expMs) {
+      var h = Math.max(0, Math.round((expMs - Date.now()) / 3600000));
+      $('exp').textContent = '⏳ 이 링크는 ' + (h > 0 ? ('약 ' + h + '시간 뒤') : '곧') + ' 만료됩니다 (' +
+        new Date(expMs).toLocaleString('ko-KR') + '). 붙여넣고 나면 사진은 네이버 쪽에 남으니 지워져도 괜찮습니다.';
+    }
+  }).catch(function (e) {
+    if (String(e && e.message) === 'NOTFOUND') fail('링크를 찾을 수 없습니다', '이미 만료되었거나 삭제된 링크입니다.');
+    else fail('불러오지 못했습니다', '잠시 후 다시 시도해 주세요.');
+  });
+
+  /* ── 본문 렌더 ──
+     ⭐ 2026-08-26 마커를 실제 사진으로 바꾼다. 두 가지 형식을 모두 받는다.
+        ① AI 글쓰기 지침이 쓰는 형식 — (사진: 작업 전) (사진: 작업 후) (사진)
+           → 그 자리에 해당 종류의 남은 사진을 **전부** 넣는다(전 5장이면 5장 다).
+        ② 번호 형식 — [PHOTO_2] [사진2] → 그 번호 사진 한 장만.
+        어느 마커에도 안 걸린 사진은 글 뒤에 순서대로 붙인다.
+     ⚠️ 지침을 직접 고쳐 마커 줄을 지운 사용자는 마커가 없으니 전부 뒤에 붙는다(예전 동작).
+     ⚠️ 사진으로 바뀌지 못한 마커는 지운다 — 안 그러면 블로그 글에 "(사진: 작업 전)" 이 그대로 남는다. */
+  function render(text, photos, kinds) {
+    kinds = kinds || [];
+    var used = photos.map(function () { return false; });
+
+    function takeKind(k) {                 // 그 종류의 남은 사진 전부
+      var out = [];
+      photos.forEach(function (u, i) { if (!used[i] && kinds[i] === k) { used[i] = true; out.push(u); } });
+      return out;
+    }
+    function takeOne(i) { if (photos[i] && !used[i]) { used[i] = true; return [photos[i]]; } return []; }
+    function takeAny() {
+      for (var i = 0; i < photos.length; i++) { if (!used[i]) { used[i] = true; return [photos[i]]; } }
+      return [];
+    }
+    function resolve(label) {
+      if (/후/.test(label)) return takeKind('after');
+      if (/전/.test(label)) return takeKind('before');
+      if (/특이|추가|기타/.test(label)) return takeKind('special');
+      return takeAny();
+    }
+    function imgs(list) {
+      return list.map(function (u) { return '<img src="' + esc(u) + '" alt="">'; }).join('');
+    }
+    function para(t) {
+      t = t.trim();
+      if (!t) return '';
+      return '<p>' + esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</p>';
+    }
+
+    /* 괄호형 (사진: …) 과 대괄호형 [PHOTO_1]/[사진1] 을 한 번에 훑는다 */
+    var MARK = /[\(（]\s*(?:사진|이미지)\s*[:：\-]?\s*([^)）]*)[\)）]|\[\s*(?:PHOTO_|사진\s*)(\d+)\s*\]/gi;
+
+    var lines = String(text).replace(/\r/g, '').split('\n');
+    var html = '';
+    lines.forEach(function (ln) {
+      var t = ln.replace(/^#{1,6}\s+/, '').replace(/^\s*[-*+]\s+/, '• ').replace(/^\s{0,3}>\s?/, '');
+      MARK.lastIndex = 0;
+      var last = 0, m, hit = false;
+      while ((m = MARK.exec(t)) !== null) {
+        hit = true;
+        html += para(t.slice(last, m.index));
+        html += imgs(m[2] != null ? takeOne(parseInt(m[2], 10) - 1) : resolve(m[1] || ''));
+        last = m.index + m[0].length;
+      }
+      if (hit) { html += para(t.slice(last)); return; }
+      html += para(t);
+    });
+
+    // 마커에 못 담긴 나머지는 글 뒤에
+    html += imgs(photos.filter(function (u, i) { return !used[i]; }));
+    $('post').innerHTML = html;
+
+    $('ctl').innerHTML =
+      '<button class="btn" id="copyAll">📋 글+사진 전체 복사</button>' +
+      '<button class="btn ghost" id="copyText">글만 복사</button>' +
+      '<button class="btn ghost" id="zipAll">⬇ 사진 전체 내려받기 (ZIP · ' + photos.length + '장)</button>';
+    $('copyAll').onclick = copyAll;
+    $('copyText').onclick = function () { copyPlain($('post').innerText); };
+    _zipList = photos.map(function (u, i) { return { url: u, kind: kinds[i] || 'etc' }; });
+    $('zipAll').onclick = downloadZip;
+    $('zipTip').style.display = '';
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     사진 ZIP 내려받기 — 2026-08-27
+     왜: 붙여넣기만으로도 네이버가 사진을 자기 서버(postfiles.pstatic.net)로 가져가는 것이
+         2026-08-27 실측으로 확인됐다. 그래서 이건 '안 그러면 사진이 사라져서'가 아니라
+         **원본에 가까운 화질로 직접 첨부하고 싶을 때**를 위한 길이다.
+         앱이 1280px 로 줄여 올리고 네이버가 다시 900px 로 줄이므로, 파일로 첨부하면 더 크다.
+     ⭐ CORS: Firebase Storage 의 getDownloadURL 주소는 교차출처 fetch 가 된다
+        (앱의 cloud_photo_sync.js:55 가 같은 방식으로 이미 받고 있다). 별도 버킷 CORS 설정 불필요.
+     ⚠️ JSZip 은 **누를 때 받는다** — 이 페이지는 가볍게 두는 게 원칙이라 미리 로드하지 않는다.
+     ⚠️ 파일명은 ASCII 로 둔다. 한글 항목명은 윈도우 탐색기에서 깨져 보이는 기기가 있다.
+        번호가 앞에 있어야 블로그 사진첨부 창에서 글 순서대로 정렬된다 — 빼지 말 것.
+     ═══════════════════════════════════════════════════════════ */
+  var _zipList = [];
+  var _zipBusy = false;
+
+  function loadJszip() {
+    return new Promise(function (res, rej) {
+      if (window.JSZip) { res(); return; }
+      var sc = document.createElement('script');
+      sc.src = 'jszip.min.js';
+      sc.onload = function () { window.JSZip ? res() : rej(new Error('JSZip 로드 실패')); };
+      sc.onerror = function () { rej(new Error('JSZip 로드 실패')); };
+      document.head.appendChild(sc);
+    });
+  }
+
+  function kindName(k) {
+    return k === 'before' ? 'before' : k === 'after' ? 'after' : k === 'special' ? 'special' : 'etc';
+  }
+
+  function downloadZip() {
+    if (_zipBusy || !_zipList.length) return;
+    _zipBusy = true;
+    var btn = $('zipAll'), old = btn.textContent;
+    btn.disabled = true;
+    var restore = function (msg, bad) {
+      _zipBusy = false; btn.disabled = false;
+      if (msg) { btn.textContent = msg; if (bad) btn.style.borderColor = 'var(--wn)', btn.style.color = 'var(--wn)';
+                 setTimeout(function () { btn.textContent = old; btn.style.borderColor = ''; btn.style.color = ''; }, bad ? 6000 : 3000); }
+      else btn.textContent = old;
+    };
+
+    loadJszip().then(function () {
+      var zip = new JSZip();
+      var fail = 0;
+      var chain = Promise.resolve();
+      _zipList.forEach(function (it, i) {
+        chain = chain.then(function () {
+          btn.textContent = '사진 모으는 중 ' + (i + 1) + '/' + _zipList.length + '…';
+          return fetch(it.url).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.blob();
+          }).then(function (b) {
+            if (!b || !b.size) throw new Error('빈 파일');
+            zip.file(pad2(i + 1) + '_' + kindName(it.kind) + '.jpg', b);
+          }).catch(function () { fail++; });
+        });
+      });
+      return chain.then(function () {
+        if (fail >= _zipList.length) throw new Error('ALLFAIL');
+        btn.textContent = '압축하는 중…';
+        /* 이미 JPEG 이라 다시 압축해도 안 줄어든다 — STORE 로 빠르게 묶기만 한다 */
+        return zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      }).then(function (out) {
+        var d = new Date();
+        /* ⚠️ 파일명은 ASCII 로 둔다 — 크로뮴은 download 속성에 한글이 들어가면 무시하고
+             확장자도 없는 'download' 로 저장해 버린다(2026-08-27 헤드리스 실측 확인). */
+        var name = 'blog_photos_' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '.zip';
+        var u = URL.createObjectURL(out);
+        var a = document.createElement('a');
+        a.href = u; a.download = name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) {} }, 10000);
+        restore(fail ? ('✅ 받았습니다 — ' + fail + '장은 실패') : '✅ 내려받았습니다', !!fail);
+      });
+    }).catch(function (e) {
+      if (String(e && e.message) === 'ALLFAIL') {
+        restore('사진을 받지 못했습니다 — 사진을 우클릭해 저장해 주세요', true);
+      } else {
+        restore('내려받기 실패 — 잠시 후 다시 시도해 주세요', true);
+      }
+    });
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function flash(btn, msg, bad) {
+    var old = btn.textContent;
+    btn.textContent = msg;
+    if (bad) btn.style.background = 'var(--wn)';
+    setTimeout(function () { btn.textContent = old; btn.style.background = ''; }, 1800);
+  }
+
+  /* 서식(=이미지 포함)을 살려 복사 — 선택 영역 복사만이 이미지를 함께 담는다 */
+  function copyAll() {
+    var el = $('post'), sel = window.getSelection(), ok = false;
+    try {
+      sel.removeAllRanges();
+      var r = document.createRange();
+      r.selectNodeContents(el);
+      sel.addRange(r);
+      ok = document.execCommand('copy');
+    } catch (e) { ok = false; }
+    try { sel.removeAllRanges(); } catch (e) {}
+    flash($('copyAll'), ok ? '✅ 복사했습니다 — 블로그에 붙여넣으세요' : '복사 실패 — 직접 드래그해 복사해 주세요', !ok);
+  }
+
+  function copyPlain(text) {
+    var ok = false;
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+    flash($('copyText'), ok ? '✅ 글을 복사했습니다' : '복사 실패', !ok);
+  }
+})();
+</script>
+</body>
+</html>

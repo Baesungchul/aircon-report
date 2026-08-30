@@ -1,0 +1,77 @@
+// ✅ 2026-08-26 콘솔 게시 완료 (2026-08-27 재확인)
+//    확인법: 로그인 없이 REST 로 없는 문서를 읽어 404 면 허용, 403 이면 미게시.
+//    이 파일은 게시본의 사본이다 — 고쳤다면 콘솔에 다시 붙여넣어야 한다.
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /sharedPhotos/{ownerUid}/{workId}/{fileName} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == ownerUid;
+      }
+      // ★ 팀 공유: 나와 ownerUid 가 같은 팀(users.teamIds 교집합)이면 허용
+      function isTeamMate() {
+        return request.auth != null &&
+          firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          firestore.exists(/databases/(default)/documents/users/$(ownerUid)) &&
+          ('teamIds' in firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data) &&
+          ('teamIds' in firestore.get(/databases/(default)/documents/users/$(ownerUid)).data) &&
+          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.teamIds
+            .hasAny(firestore.get(/databases/(default)/documents/users/$(ownerUid)).data.teamIds);
+      }
+      // ✅ 2026-07-20 추가: 1:1 공유(shares accepted) 상대도 허용. pairId=정렬 uid_uid 라 양방향 검사.
+      function isShared() {
+        return request.auth != null && (
+          ( firestore.exists(/databases/(default)/documents/shares/$(ownerUid + '_' + request.auth.uid)) &&
+            firestore.get(/databases/(default)/documents/shares/$(ownerUid + '_' + request.auth.uid)).data.status == 'accepted' )
+          ||
+          ( firestore.exists(/databases/(default)/documents/shares/$(request.auth.uid + '_' + ownerUid)) &&
+            firestore.get(/databases/(default)/documents/shares/$(request.auth.uid + '_' + ownerUid)).data.status == 'accepted' )
+        );
+      }
+      allow read:   if isOwner() || isTeamMate() || isShared();
+      allow write:  if (isOwner() || isTeamMate() || isShared()) && request.resource.size < 5 * 1024 * 1024;
+      allow delete: if isOwner();
+    }
+    // ★ 채팅 파일: 그 채팅방(rooms/{roomId})의 멤버만 업로드/다운로드 가능 (팀방은 teamId 로도 허용)
+    match /chat_files/{roomId}/{fileName} {
+      function isRoomMember() {
+        return request.auth != null &&
+          firestore.exists(/databases/(default)/documents/rooms/$(roomId)) &&
+          (
+            request.auth.uid in firestore.get(/databases/(default)/documents/rooms/$(roomId)).data.members ||
+            (
+              ('teamId' in firestore.get(/databases/(default)/documents/rooms/$(roomId)).data) &&
+              firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+              ('teamIds' in firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data) &&
+              (firestore.get(/databases/(default)/documents/rooms/$(roomId)).data.teamId in
+               firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.teamIds)
+            )
+          );
+      }
+      allow read: if isRoomMember();
+      allow create: if isRoomMember() &&
+        (
+          (request.resource.contentType.matches('video/.*') && request.resource.size < 100 * 1024 * 1024)
+          ||
+          (!request.resource.contentType.matches('video/.*') && request.resource.size < 30 * 1024 * 1024)
+        );
+      // delete는 클라이언트에 허용하지 않음 — 7일 자동삭제는 수명 주기 규칙(서버)이 처리
+    }
+    /* ★ 2026-08-26 신설: PC 링크 모드 사진 (글+사진 공개 페이지 site/post.html)
+         · read 를 여는 이유 = 네이버 스마트에디터가 붙여넣기 때 이 URL 로 사진을 가져가
+           자기 서버에 다시 올려주기 때문. base64 로 심으면 네이버가 걸러내므로
+           반드시 공개 https URL 이어야 한다.
+         · 경로 첫 칸이 업로더의 uid 라서 '남의 링크 폴더에 사진 끼워넣기'가 막힌다.
+         · 사진은 앱에서 1280px/q0.82 로 줄여 올린다(보통 300KB 안팎). 8MB 는 여유분.
+         ⚠️ 24시간 뒤 삭제는 functions/cleanupSnsPosts 가 한다 —
+            그 함수가 안 돌면 공개 사진이 계속 쌓인다. */
+    match /snsPosts/{uid}/{postId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.size < 8 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

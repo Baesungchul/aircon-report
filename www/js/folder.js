@@ -1,0 +1,1445 @@
+/* ═══════════════════════════════
+   세션 자동저장 (변경시 즉시)
+═══════════════════════════════ */
+let _autoSaveTimer = null;
+
+function sessionAutoSave() {
+  // 데이터 변경 표시 (saveToFolder가 변경 감지하도록)
+  if (typeof markDataDirty === 'function') markDataDirty();
+  // 변경 후 1.5초 대기 후 저장 (디바운스)
+  clearTimeout(_autoSaveTimer);
+  // ★ 2026-08-08: 상단 저장 상태 배지 제거(사용자 요청).
+  //   기존엔 입력 이벤트마다(=글자마다) showSaveStatus로 DOM을 갱신했는데,
+  //   실제 저장은 아래 1.5초 디바운스로 한 번만 일어나므로 표시만 낭비였다.
+  //   저장 동작 자체는 그대로 유지된다(세션 복원 안전성 유지).
+  if (typeof units === 'undefined' || !Array.isArray(units) || units.length === 0) return;
+  _autoSaveTimer = setTimeout(() => sessionAutoSaveNow(), 1500);
+}
+
+async function sessionAutoSaveNow(opts) {
+  clearTimeout(_autoSaveTimer);
+  // ★ 백그라운드 저장 중에는 세션 자동저장 차단 (1.234)
+  //   - newWork()가 이전 작업 데이터를 전역 변수에 일시 swap해서 백그라운드 저장
+  //   - 그 사이에 sessionAutoSaveNow가 돌면 이전 작업이 세션에 저장됨 → 앱 재실행 시 부활
+  //   - force: true면 가드 우회 (newWork 직후 빈 세션 강제 저장용)
+  const force = opts && opts.force === true;
+  if (!force && typeof window !== 'undefined' && window._isSavingInBackground) {
+    console.log('[세션저장] 백그라운드 저장 중 - 스킵');
+    return;
+  }
+  try {
+    const apt = document.getElementById('aptName')?.value || '';
+    const date = document.getElementById('workDate')?.value || kstDateStr();
+    const worker = document.getElementById('workerName')?.value || '';
+    const coName = document.getElementById('coName')?.value || '';
+    const coTel = document.getElementById('coTel')?.value || '';
+    const coDesc = document.getElementById('coDesc')?.value || '';
+
+    // ★ 빈 새 작업이면 → 빈 객체로 명시적 저장 (이전 세션 덮어쓰기 위해)
+    //   - 이전엔 return으로 스킵했지만 그러면 이전 세션이 그대로 남아 앱 재실행 시 복원됨
+    //   - 빈 객체 + isEmpty:true 마커를 저장하면 startup의 wasEmpty 체크가 정상 작동
+    const isEmptyNew = (!units || units.length === 0)
+                    && !apt.trim()
+                    && !currentWorkId
+                    && !currentFolderName;
+    if (isEmptyNew) {
+      // 명시적 빈 세션 저장
+      const emptyObj = {
+        saveId:      'session_data',
+        label:       '[세션-빈]',
+        apt: '', date: kstDateStr(), worker: '',
+        savedAt:     kstIsoString(),
+        companyName: coName,
+        companyTel:  coTel,
+        companyDesc: coDesc,
+        units:       [],
+        nid:         1,
+        workId:      '',
+        workType:    'household',
+        currentFolderName: null,
+        facilityCustomer: { phone: '', contact: '', address: '', memo: '' },
+        posts:       [],
+        endDate:     '',
+        isEmpty:     true
+      };
+      try { await dbPut(emptyObj); } catch(e) {}
+      try { localStorage.setItem('ac_session_backup', JSON.stringify(emptyObj)); } catch(e) {}
+      return;
+    }
+
+    const obj = {
+      saveId:      'session_data',
+      label:       '[세션]',
+      apt, date, worker,
+      savedAt:     kstIsoString(),
+      companyName: coName,
+      companyTel:  coTel,
+      companyDesc: coDesc,
+      units:       JSON.parse(JSON.stringify(units || [])),
+      nid:         (typeof nid !== 'undefined') ? nid : 1,
+      workId:      currentWorkId || '',
+      workType:    currentWorkType || 'household',
+      currentFolderName: currentFolderName || null,
+      // ★ 공유 작업 "빌려보기(같은 작업에 진짜 보태기)" 모드 표시 - 반드시 세션에 같이 저장해야 함.
+      //   그렇지 않으면 앱이 백그라운드에서 종료된 후(흔함) 재시작 시 units(새 사진 포함)는
+      //   복원되지만 이 표시는 사라져서, 저장할 때 원본 소유자 항목에 병합되지 않고
+      //   내 계정 밑에 완전히 새로운 작업이 만들어지는 버그가 있었음(2026-07-08 발견).
+      borrowedShare: (window._borrowedShare || null),
+      facilityCustomer: (currentWorkType === 'facility')
+        ? { ...facilityCustomer }
+        : (facilityCustomer || null),
+      /* ★ 2026-08-16 이 작업의 업종. profileSnap 을 같이 넣는 이유:
+           상대 폰엔 내 pf_id 가 없어서 id 만 보내면 해석할 수 없고,
+           나중에 업종 이름을 바꾸거나 목록에서 빼도 지난 보고서는 그대로 나와야 한다. */
+      profileId:   (function(){ try { return (window.Profiles ? Profiles.stampForCurrentWork().profileId : ''); } catch(e){ return ''; } })(),
+      profileSnap: (function(){ try { return (window.Profiles ? Profiles.stampForCurrentWork().profileSnap : null); } catch(e){ return null; } })(),
+      // ★ 글작성 저장글 (블로그/SNS/견적서) — 작업과 함께 보존
+      posts: (typeof workPosts !== 'undefined' && Array.isArray(workPosts)) ? JSON.parse(JSON.stringify(workPosts)) : [],
+      postMemo: (typeof workPostMemo !== 'undefined') ? String(workPostMemo || '') : '',  // ★ 글작성 참고메모 보존
+      endDate: (typeof currentWorkEndDate !== 'undefined' ? currentWorkEndDate : '') || '',
+      isEmpty: (!units || units.length === 0)
+    };
+
+    // 1차: IndexedDB
+    try {
+      await dbPut(obj);
+    } catch(e) {
+      console.warn('[세션저장] IndexedDB 실패:', e.message);
+    }
+
+    // 2차: localStorage 백업
+    try {
+      const backup = {
+        ...obj,
+        units: obj.units.map(u => ({
+          ...u,
+          before: (u.before || []).map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
+          after:  (u.after  || []).map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })),
+          specials: (u.specials || []).map(s => ({ desc: s.desc, photos: (s.photos || []).map(p => ({ id: p.id, savedToFolder: p.savedToFolder || false })) }))
+        }))
+      };
+      localStorage.setItem('ac_session_backup', JSON.stringify(backup));
+    } catch(e) {}
+  } catch(e) {
+    console.error('[sessionAutoSaveNow] 실패:', e);
+  }
+}
+
+// ★ 2026-08-08: 상단 저장 상태 배지 표시 안 함(사용자 요청).
+//   외부에서 호출해도 안전하도록 함수는 남기되 아무 것도 그리지 않는다.
+function showSaveStatus(cls, msg) {
+  const el = document.getElementById('saveStatus');
+  if (!el) return;
+  el.textContent = '';
+  el.className = 'save-status hide';
+}
+
+/* ═══════════════════════════════
+   자동저장 폴더 관리
+═══════════════════════════════ */
+
+async function initPhotoFolder() {
+  // folderBar는 display:none!important로 숨김 처리됨 - 설정 모달에서만 관리
+
+  // ★ Capacitor 네이티브(안드로이드 앱): File System Access API 없음
+  //   → IndexedDB 핸들 복원 대신 고정 폴더(Documents/work-report) 자동 연결
+  if (window.NativeFS && NativeFS.isNative()) {
+    try {
+      photoFolderHandle = await NativeFS.getRootHandle();
+      try { localStorage.setItem('lastFolderName', photoFolderHandle.name); } catch(e) {}
+      updateFolderUI(photoFolderHandle, 'granted');
+      setTimeout(() => {
+        if (typeof scheduleBackgroundBuild === 'function') scheduleBackgroundBuild();
+        if (typeof autoBuildIndexIfMissing === 'function') autoBuildIndexIfMissing();
+      }, 1500);
+      if (typeof maybeRunMigration === 'function') {
+        setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
+      }
+    } catch(e) {
+      console.warn('[네이티브폴더] 초기화 실패:', e);
+      updateFolderUI(null);
+    }
+    return;
+  }
+
+  if (!('showDirectoryPicker' in window)) {
+    return;
+  }
+
+  // ★ 저장소 영구화 요청 (앱 시작 시) - 안드로이드 storage pressure로 IndexedDB가 비워지는 것 방지
+  if (navigator.storage && navigator.storage.persist) {
+    try {
+      const alreadyPersisted = await navigator.storage.persisted();
+      if (!alreadyPersisted) {
+        const granted = await navigator.storage.persist();
+        console.log(`[저장소] 영구화 요청: ${granted ? '✅ 허용' : '⚠️ 거부 (PWA 설치 권장)'}`);
+      } else {
+        console.log('[저장소] 이미 영구화됨');
+      }
+    } catch(e) { console.warn('[저장소] persist 요청 실패:', e.message); }
+  }
+
+  try {
+    const handle = await settingsGet('photoFolderHandle');
+    if (!handle) {
+      // ★ 진단: 폴더가 풀린 시점 추적
+      const wasSet = localStorage.getItem('lastFolderName');
+      if (wasSet) {
+        console.warn(`[저장폴더] ⚠️ 폴더 핸들이 사라짐! 이전 폴더명: "${wasSet}". IndexedDB가 비워졌을 가능성 (storage pressure 또는 시크릿모드).`);
+        localStorage.setItem('folderLostAt', new Date().toISOString());
+        // 사용자에게도 알림
+        setTimeout(() => {
+          showToast?.(`⚠️ "${wasSet}" 폴더 연결이 끊어졌습니다. 다시 설정해주세요.`, 'err');
+        }, 1500);
+      }
+      updateFolderUI(null);
+      return;
+    }
+
+    // ★ 핸들 살아있음 표시 (다음 실행 때 진단용)
+    try { localStorage.setItem('lastFolderName', handle.name); } catch(e) {}
+
+    photoFolderHandle = handle;
+
+    // 1단계: 현재 권한 상태 확인
+    let perm = 'prompt';
+    try {
+      perm = await handle.queryPermission({ mode: 'readwrite' });
+    } catch(e) { perm = 'prompt'; }
+
+    // 2단계: 이미 granted면 바로 사용 (PWA + 영구권한 케이스)
+    if (perm === 'granted') {
+      updateFolderUI(handle, 'granted');
+      // ★ 권한 있음 → 작업기록 캐시 백그라운드 빌드 (3초 후)
+      setTimeout(() => {
+        if (typeof scheduleBackgroundBuild === 'function') {
+          scheduleBackgroundBuild();
+        }
+        // ★ 인덱스 없으면 자동 생성
+        autoBuildIndexIfMissing();
+      }, 3000);
+      // 첫 실행이면 마이그레이션 (조용히)
+      if (typeof maybeRunMigration === 'function') {
+        setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
+      }
+      return;
+    }
+
+    // 3단계: prompt 상태면 자동 권한 요청 시도
+    // (PWA 설치 후 영구권한 있으면 프롬프트 없이 자동 통과됨)
+    try {
+      const autoPerm = await handle.requestPermission({ mode: 'readwrite' });
+      if (autoPerm === 'granted') {
+        updateFolderUI(handle, 'granted');
+        // ★ 권한 받음 → 캐시 빌드
+        setTimeout(() => {
+          if (typeof scheduleBackgroundBuild === 'function') {
+            scheduleBackgroundBuild();
+          }
+          // ★ 인덱스 자동 생성
+          autoBuildIndexIfMissing();
+        }, 1000);
+        if (typeof maybeRunMigration === 'function') {
+          setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
+        }
+        return;
+      }
+    } catch(e) {
+      // 사용자 제스처 없이 요청하면 에러나는 게 정상 → 수동 복구 안내로 전환
+    }
+
+    // 4단계: 자동 실패 → 사용자가 버튼 눌러야 함
+    updateFolderUI(handle, 'prompt');
+
+    // ★ "첫 제스처에 자동 권한 복구" 로직 제거 (1.233):
+    //   - 사용자가 "작업기록" 버튼 누르면 첫 제스처 핸들러와 모달 자체가
+    //     동시에 requestPermission 호출 → 권한 팝업 두 번 뜸
+    //   - 폴더 사용 시점(작업기록 열기, 저장, 삭제 등)에서 각자 권한 요청하면 충분
+  } catch(e) {
+    console.warn('폴더 복원 실패:', e);
+    updateFolderUI(null);
+  }
+}
+
+// 복원된 핸들의 권한을 사용자 제스처와 함께 요청
+async function resumeFolderPermission() {
+  if (!photoFolderHandle) return;
+  try {
+    const perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      updateFolderUI(photoFolderHandle, 'granted');
+      showToast(`✅ ${photoFolderHandle.name} 폴더 권한 복구 완료`, 'ok');
+      // 권한 복구 후 대기 중인 사진 자동 저장 시도
+      if (pendingSaves.length > 0) {
+        setTimeout(() => flushPendingSaves(), 300);
+      }
+      // ★ 마이그레이션
+      if (typeof maybeRunMigration === 'function') {
+        setTimeout(() => maybeRunMigration().catch(()=>{}), 2000);
+      }
+    } else {
+      showToast('권한이 거부되었습니다', 'err');
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') showToast('권한 요청 실패: ' + e.message, 'err');
+  }
+}
+
+async function selectPhotoFolder() {
+  // ★ Capacitor 네이티브: 폴더 선택창 대신 앱 전용 고정 폴더 준비
+  if (window.NativeFS && NativeFS.isNative()) {
+    try {
+      photoFolderHandle = await NativeFS.getRootHandle();
+      try { localStorage.setItem('lastFolderName', photoFolderHandle.name); } catch(e) {}
+      updateFolderUI(photoFolderHandle, 'granted');
+      showToast('✅ 저장 폴더 준비 완료', 'ok');
+      if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache();
+      if (typeof initCustomersCache === 'function') initCustomersCache().catch(()=>{});
+      if (typeof maybeRunMigration === 'function') {
+        setTimeout(() => maybeRunMigration().catch(()=>{}), 1000);
+      }
+    } catch(e) {
+      showToast('폴더 준비 실패: ' + e.message, 'err');
+    }
+    return;
+  }
+
+  if (!('showDirectoryPicker' in window)) {
+    showToast('이 브라우저는 지원하지 않습니다. 크롬을 사용해 주세요.', 'err');
+    return;
+  }
+  try {
+    showToast('저장할 폴더를 선택해주세요', 'ok');
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    photoFolderHandle = handle;
+    await settingsPut('photoFolderHandle', handle);
+    // ★ 핸들 살아있음 표시 (진단용)
+    try { localStorage.setItem('lastFolderName', handle.name); } catch(e) {}
+    // ★ 저장소 영구화 즉시 요청 - 폴더 핸들 보호
+    if (navigator.storage && navigator.storage.persist) {
+      try {
+        const granted = await navigator.storage.persist();
+        if (granted) {
+          console.log('[저장소] ✅ 영구 저장 허용 - 폴더 핸들 안전');
+        } else {
+          console.warn('[저장소] ⚠️ 영구 저장 거부됨 - 홈 화면에 앱 설치 권장');
+        }
+      } catch(e) {}
+    }
+
+    // ★★★ 즉시 다시 읽어서 저장 검증 (안드로이드 Chrome silent fail 대응)
+    // settingsPut이 success를 반환해도 실제로는 저장 실패하는 케이스가 있음
+    let verifyOk = false;
+    try {
+      // 50ms 대기 - IDB 트랜잭션 완전 commit 보장
+      await new Promise(r => setTimeout(r, 100));
+      const readBack = await settingsGet('photoFolderHandle');
+      if (readBack && readBack.name === handle.name) {
+        verifyOk = true;
+        console.log(`[저장폴더] ✅ 저장 검증 성공: ${handle.name}`);
+      } else {
+        console.error(`[저장폴더] ❌ 저장 검증 실패! 읽어온 값:`, readBack);
+      }
+    } catch(e) {
+      console.error('[저장폴더] ❌ 저장 검증 중 오류:', e);
+    }
+
+    updateFolderUI(handle, 'granted');
+
+    if (verifyOk) {
+      showToast(`✅ 폴더 설정 완료: ${handle.name}`, 'ok');
+    } else {
+      // 저장 실패한 케이스 - 사용자에게 강하게 알림
+      showToast(`⚠️ 폴더 핸들 저장 실패! 앱을 닫으면 사라집니다`, 'err');
+      // 진단 정보 localStorage에 기록
+      try {
+        localStorage.setItem('saveFolderFailedAt', new Date().toISOString());
+        localStorage.setItem('saveFolderFailedName', handle.name);
+      } catch(e) {}
+      setTimeout(() => {
+        alert(
+          '⚠️ 저장폴더 정보를 IndexedDB에 저장하지 못했습니다.\n\n' +
+          '가능한 원인:\n' +
+          '1. 안드로이드 Chrome 일부 버전의 알려진 버그\n' +
+          '2. SD카드/외장 저장소 폴더 (제한됨)\n' +
+          '3. 시크릿모드/임시 세션\n\n' +
+          '해결 방법:\n' +
+          '• 내장 저장소 폴더로 다시 선택 (Download 등)\n' +
+          '• 시크릿 모드 끄고 일반 모드로 사용\n' +
+          '• Chrome 최신 버전 업데이트'
+        );
+      }, 500);
+    }
+    // 고객 캐시 무효화 - 새 폴더에서 다시 로드
+    if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache();
+    if (typeof initCustomersCache === 'function') initCustomersCache().catch(()=>{});
+
+    // ★ workId 마이그레이션 (필요시 자동 실행)
+    if (typeof maybeRunMigration === 'function') {
+      setTimeout(() => maybeRunMigration().catch(()=>{}), 1000);
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') showToast('폴더 선택 실패: ' + e.message, 'err');
+  }
+}
+
+async function clearPhotoFolder() {
+  if (!confirm('자동저장 폴더 설정을 해제할까요?')) return;
+  photoFolderHandle = null;
+  try { await settingsPut('photoFolderHandle', null); } catch(e) {}
+  updateFolderUI(null);
+  showToast('폴더 설정 해제됨', 'ok');
+  if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache();
+}
+
+function updateFolderUI(handle, perm) {
+  // folderBar는 숨겨져 있으므로 DOM 요소가 없을 수 있음 - 안전하게 처리
+  const statusEl   = document.getElementById('folderStatusText');
+  const pathEl     = document.getElementById('folderPathText');
+  const clearBtn   = document.getElementById('btnClearFolder');
+  const setBtn     = document.getElementById('btnSetFolder');
+  const resumeBtn  = document.getElementById('btnResumeFolder');
+  const resetBtn   = document.getElementById('btnResetSaved');
+
+  if (!statusEl && !pathEl) return;  // folderBar 완전 제거된 경우
+
+  if (handle) {
+    if (perm === 'granted') {
+      if (statusEl) { statusEl.textContent = `✅ 저장 폴더: ${handle.name}`; statusEl.style.color = 'var(--ac2)'; }
+      if (pathEl)   pathEl.textContent   = `${handle.name}/[날짜]/work01/image01.jpg`;
+      if (clearBtn) clearBtn.style.display = 'inline-flex';
+      if (setBtn)   setBtn.textContent   = '📁 폴더 변경';
+      if (resumeBtn) resumeBtn.style.display = 'none';
+      if (resetBtn)  resetBtn.style.display  = 'inline-flex';
+    } else {
+      if (statusEl) { statusEl.textContent = `🔒 ${handle.name}`; statusEl.style.color = 'var(--wn)'; }
+      if (pathEl)   pathEl.textContent   = '권한 복구가 필요합니다';
+      if (clearBtn) clearBtn.style.display = 'inline-flex';
+      if (setBtn)   setBtn.textContent   = '📁 폴더 변경';
+      if (resumeBtn) resumeBtn.style.display = 'inline-flex';
+      if (resetBtn)  resetBtn.style.display  = 'none';
+    }
+  } else {
+    if (statusEl) { statusEl.textContent = '📁 자동저장 폴더 미설정'; statusEl.style.color = 'var(--mu)'; }
+    if (pathEl)   pathEl.textContent   = '아래 버튼을 눌러 저장 위치를 설정해주세요';
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (setBtn)   setBtn.textContent   = '📁 폴더 설정';
+    if (resumeBtn) resumeBtn.style.display = 'none';
+    if (resetBtn)  resetBtn.style.display  = 'none';
+  }
+}
+
+/* ═══════════════════════════════
+   사진 폴더 저장 (버튼용)
+═══════════════════════════════ */
+
+// base64 dataURL → Blob  (동기 방식)
+function dataURLtoBlob(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string') {
+    throw new Error('dataUrl이 비어있음');
+  }
+  const i = dataUrl.indexOf(',');
+  if (i < 0) throw new Error('잘못된 dataUrl 형식');
+
+  const meta = dataUrl.slice(0, i);
+  const b64  = dataUrl.slice(i + 1);
+  const mimeMatch = meta.match(/data:([^;]+)/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+
+  const blob = new Blob([arr], { type: mime });
+  if (blob.size === 0) {
+    throw new Error(`Blob 생성 실패 — bin len: ${bin.length}, b64 len: ${b64.length}`);
+  }
+  return blob;
+}
+
+// Blob 을 파일에 쓰기 — 가장 단순한 방식 (truncate, getFile 사용 안 함)
+// truncate와 getFile은 Android Chrome에서 InvalidStateError를 일으킴
+async function writeBlobToFile(fh, blob) {
+  if (!blob || blob.size === 0) {
+    throw new Error('빈 Blob');
+  }
+
+  // 단일 시도 — Blob을 직접 write에 전달 (가장 호환성 높음)
+  // ※ truncate() 호출 안 함, getFile() 검증 안 함
+  const w = await fh.createWritable();
+  try {
+    await w.write(blob);
+    await w.close();
+  } catch(e) {
+    // 실패시 abort로 깨끗하게 정리
+    try { await w.abort(); } catch(_) {}
+    throw e;
+  }
+}
+
+// ───────── 저장 대기 큐 (사진 ID 기반 중복 방지) ─────────
+// 한 사진은 ID로 추적 → 같은 사진은 절대 중복 저장되지 않음
+let pendingSaves = [];   // { photo: {id,dataUrl,savedToFolder}, unitName, typeLabel }
+let _saveCount = 0;
+let _failCount = 0;
+
+// 저장된 사진 ID 추적 (메모리 캐시) — 같은 ID는 다시 저장 안 함
+const _savedPhotoIds = new Set();
+
+function updatePendingUI() {
+  const bar  = document.getElementById('pendingSaveBar');
+  const cnt  = document.getElementById('pendingSaveCount');
+  const btn  = document.getElementById('btnFlushNow');
+  if (!bar) return;
+  if (pendingSaves.length > 0 && photoFolderHandle) {
+    bar.style.display = 'block';
+    cnt.textContent = pendingSaves.length;
+    btn.style.display = 'inline-flex';
+  } else {
+    bar.style.display = 'none';
+    btn.style.display = 'none';
+  }
+}
+
+// 인덱스 카운터 — 디렉토리 조회 없이 메모리에서만 관리
+// 키: "folder/unit/typeLabel" → 다음 인덱스
+const _indexCounter = new Map();
+
+async function findNextFileIndex(unitDir, typeLabel) {
+  const date = document.getElementById('workDate').value || kstDateStr();
+  const apt  = document.getElementById('aptName').value  || '작업';
+  const key  = `${date}_${apt}/${unitDir.name}/${typeLabel}`;
+
+  let next;
+  if (_indexCounter.has(key)) {
+    next = _indexCounter.get(key);
+  } else {
+    // 처음 호출이면 1부터 시작 (또는 폴더에 이미 있는 파일 개수만큼 건너뜀)
+    next = 1;
+    // 안전을 위해 최대 100까지만 확인 (있으면 다음 인덱스로)
+    while (next < 100) {
+      try {
+        await unitDir.getFileHandle(`${typeLabel}${next}.jpg`, { create: false });
+        next++;
+      } catch(e) {
+        break; // NotFoundError = 빈 슬롯
+      }
+    }
+  }
+
+  _indexCounter.set(key, next + 1);
+  return next;
+}
+
+function clearDirIndexCache() {
+  _indexCounter.clear();
+}
+
+// 동시 쓰기 방지용 순차 처리 락
+let _writeLock = Promise.resolve();
+
+// 저장 시도 — Android에서는 즉시 시도하지 않고 큐에만 적재
+// (사용자 제스처 컨텍스트 밖에서 쓰기는 InvalidStateError 발생)
+async function tryAutoSave(photo, unitName, typeLabel) {
+  if (!photoFolderHandle) return;
+  if (!photo || !photo.id) return;
+  if (photo._borrowedIncoming) return;  // ★ 규칙1: 상대가 보탠 사진은 내 폴더에 저장 안 함
+
+  // 이미 저장된 사진이면 스킵
+  if (photo.savedToFolder || _savedPhotoIds.has(photo.id)) return;
+
+  // 큐에 이미 같은 ID가 있으면 스킵
+  if (pendingSaves.some(p => p.photo.id === photo.id)) return;
+
+  // ★ Android Chrome에서는 자동 시도가 InvalidStateError를 일으킴
+  // → 무조건 큐에 적재하고, 사용자가 "지금 저장" 버튼을 눌러야 처리
+  pendingSaves.push({ photo, unitName, typeLabel });
+  updatePendingUI();
+}
+
+// 호수별 번호 매핑 (1호 → work01, 2호 → work02, ...)
+// ★★ 2026-08-09 수정: 번호를 "이름"이 아니라 "유닛 객체"에 귀속시킨다 ★★
+//   기존엔 이름→순번 Map(_unitWorkNumber)이 유일한 기준이라
+//   호수명을 바꾸면 _unitWorkNumber.size+1 로 새 번호가 발급되고,
+//   디스크의 실제 workNN 폴더와 어긋나 "폴더 못 찾음" + 폴더 통째 삭제 사고가 났다.
+//   이제 u._workNum 이 단일 진실 공급원이며, 아래 Map 은 조회 폴백용으로만 둔다.
+const _unitWorkNumber = new Map();
+
+function _pad2WorkNum(n) { return String(n).padStart(2, '0'); }
+
+// 현재 units 가 이미 점유한 번호 집합 (exceptUnit 은 제외)
+function _usedWorkNums(exceptUnit) {
+  const used = new Set();
+  try {
+    if (typeof units !== 'undefined' && Array.isArray(units)) {
+      for (const x of units) {
+        if (!x || x === exceptUnit) continue;
+        const n = parseInt(x._workNum, 10);
+        if (n > 0) used.add(n);
+      }
+    }
+  } catch (e) {}
+  return used;
+}
+
+// ★ 유닛에 workNN 번호를 발급/고정 — 사진 저장 경로는 반드시 이 함수를 쓸 것
+function getWorkNumberForUnit(u) {
+  if (!u) return '01';
+  let n = parseInt(u._workNum, 10);
+  if (n > 0) {                       // 이미 고정된 번호 → 그대로 (이름 변경 무관)
+    _unitWorkNumber.set(u.name, n);
+    return _pad2WorkNum(n);
+  }
+  const used = _usedWorkNums(u);
+  const legacy = parseInt(_unitWorkNumber.get(u.name), 10);
+  if (legacy > 0 && !used.has(legacy)) {
+    n = legacy;                      // 구버전 매핑 승계 (충돌 없을 때만)
+  } else {
+    n = 1; while (used.has(n)) n++;  // 미사용 최소 번호 (충돌 방지)
+  }
+  u._workNum = n;                    // 유닛에 고정
+  _unitWorkNumber.set(u.name, n);
+  return _pad2WorkNum(n);
+}
+
+// 이름으로 찾는 구 API — units 에서 유닛을 찾아 위 함수로 위임
+function getWorkNumber(unitName) {
+  let u = null;
+  try {
+    if (typeof units !== 'undefined' && Array.isArray(units)) {
+      u = units.find(x => x && x.name === unitName) || null;
+    }
+  } catch (e) {}
+  if (u) return getWorkNumberForUnit(u);
+  const legacy = parseInt(_unitWorkNumber.get(unitName), 10);
+  if (legacy > 0) return _pad2WorkNum(legacy);
+  const used = _usedWorkNums(null);
+  let n = 1; while (used.has(n)) n++;
+  _unitWorkNumber.set(unitName, n);
+  return _pad2WorkNum(n);
+}
+
+// ★ 작업 열기 직후 호출 — 이전 작업의 이름→번호 잔재를 지우고 현재 units 로 재구성
+function rebuildWorkNumbers() {
+  _unitWorkNumber.clear();
+  try {
+    if (typeof units !== 'undefined' && Array.isArray(units)) {
+      for (const u of units) if (u) getWorkNumberForUnit(u);
+    }
+  } catch (e) {}
+}
+
+if (typeof window !== 'undefined') {
+  window.getWorkNumberForUnit = getWorkNumberForUnit;
+  window.rebuildWorkNumbers   = rebuildWorkNumbers;
+}
+
+// 실제 쓰기 (한 장) — 간결한 영문 폴더/파일명
+// 구조: [선택폴더]/[YYYY-MM-DD]/workNN/imageNN.jpg
+// 저장 시 사용할 날짜 폴더명 (saveToFolder에서 설정, doWriteOne에서 사용)
+let _currentSaveDateFolderName = null;
+
+// ★ 작업의 표준 저장 폴더명 — 한 작업당 하나로 고정 (저장 시점 초단위 타임스탬프)
+//   모든 저장 경로(메인저장/사진저장/자동저장)가 이 폴더를 재사용 → 사진 쪼개짐 방지
+function getWorkFolderName() {
+  if (typeof currentFolderName !== 'undefined' && currentFolderName) return currentFolderName;
+  const dateOnly = (document.getElementById('workDate') && document.getElementById('workDate').value)
+    || (typeof kstDateStr === 'function' ? kstDateStr() : '');
+  const d = new Date();
+  const p2 = n => String(n).padStart(2, '0');
+  const name = dateOnly + '_' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+  try { currentFolderName = name; } catch (e) {}
+  return name;
+}
+if (typeof window !== 'undefined') window.getWorkFolderName = getWorkFolderName;
+// 폴더 핸들 캐시 (같은 저장 세션 내에서만 사용)
+const _dirHandleCache = new Map();
+
+function clearDirHandleCache() { _dirHandleCache.clear(); }
+
+async function getCachedDateDir(dateFolderName) {
+  const key = `date:${dateFolderName}`;
+  if (_dirHandleCache.has(key)) return _dirHandleCache.get(key);
+  const handle = await photoFolderHandle.getDirectoryHandle(dateFolderName, { create: true });
+  _dirHandleCache.set(key, handle);
+  return handle;
+}
+
+async function getCachedWorkDir(dateFolderName, workNum) {
+  const key = `work:${dateFolderName}/work${workNum}`;
+  if (_dirHandleCache.has(key)) return _dirHandleCache.get(key);
+  const dateDir = await getCachedDateDir(dateFolderName);
+  const handle = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });
+  _dirHandleCache.set(key, handle);
+  return handle;
+}
+
+async function doWriteOne(photo, unitName, typeLabel) {
+  // ★ 규칙1: 상대가 보탠 사진(_borrowedIncoming)은 내 작업 폴더에 절대 쓰지 않음
+  //   (fileName이 위치기반 이름으로 바뀌며 내 사진으로 복사→중복 업로드되는 사고 방지 - 2026-07-11)
+  if (photo && photo._borrowedIncoming) { photo.savedToFolder = true; return; }
+  // saveToFolder가 설정한 폴더명 우선
+  // fallback도 항상 YYYY-MM-DD_HHMM 형식으로 (날짜만 들어가는 일 방지)
+  let dateFolderName = _currentSaveDateFolderName;
+  if (!dateFolderName) {
+    dateFolderName = (typeof getWorkFolderName === 'function')
+      ? getWorkFolderName()
+      : (document.getElementById('workDate').value || getLocalDateStr());
+    _currentSaveDateFolderName = dateFolderName;  // 이후 호출 일관성 유지
+    console.warn('⚠️ doWriteOne fallback - 작업 폴더 사용:', dateFolderName);
+  }
+
+  let step = 'init';
+  try {
+    step = 'Blob 변환';
+    const blob = dataURLtoBlob(photo.dataUrl);
+    if (blob.size === 0) throw new Error('Blob 크기 0');
+
+    // 인덱스 결정 - ★ 규칙3: 파일명 번호 = 현재 화면 위치 (내 사진만 셈)
+    //   (기존 카운터 방식은 일부만 다시 쓸 때 위치와 어긋나 순서 뒤섞임/덮어쓰기의 원인)
+    step = '인덱스 결정';
+    let idx = 0;
+    try {
+      const _u = (typeof units !== 'undefined' && Array.isArray(units)) ? units.find(x => x && x.name === unitName) : null;
+      if (_u) {
+        let _arr = typeLabel === '전' ? _u.before : typeLabel === '후' ? _u.after : null;
+        if (!_arr) {
+          const _m = /^특이(\d+)_?$/.exec(typeLabel);
+          if (_m && _u.specials && _u.specials[parseInt(_m[1], 10) - 1]) _arr = _u.specials[parseInt(_m[1], 10) - 1].photos;
+        }
+        if (_arr) {
+          const _own = _arr.filter(p => p && !p._borrowedIncoming);
+          const _pos = _own.indexOf(photo);
+          if (_pos >= 0) idx = _pos + 1;
+        }
+      }
+    } catch (e) {}
+    if (!idx) {
+      // 폴백: 예전 카운터 방식 (photo 객체가 units 배열에 없을 때만)
+      const idxKey = `${dateFolderName}/${unitName}/${typeLabel}`;
+      idx = _indexCounter.get(idxKey) || 1;
+      _indexCounter.set(idxKey, idx + 1);
+    }
+
+    // 호수 → workNN 번호 (★ 유닛 객체에 고정된 번호 우선 - 호수명 변경 안전)
+    const _uForNum = (typeof units !== 'undefined' && Array.isArray(units))
+      ? units.find(x => x && x.name === unitName) : null;
+    const workNum = _uForNum ? getWorkNumberForUnit(_uForNum) : getWorkNumber(unitName);
+
+    // 타입 프리픽스: B=before, A=after, S1=special1, ...
+    const typePrefix = typeLabel === '전' ? 'A'
+                     : typeLabel === '후' ? 'B'
+                     : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
+
+    // ✨ 캐시된 폴더 핸들 사용 (매번 새로 안 가져옴)
+    step = '작업폴더';
+    const workDir = await getCachedWorkDir(dateFolderName, workNum);
+
+    const fname = `${typePrefix}_image${String(idx).padStart(2, '0')}.jpg`;
+
+    // ✨ 최적화: 기존 파일이 같은 크기면 스킵 (덮어쓰기 안함)
+    step = '기존파일 확인';
+    try {
+      const existingFh = await workDir.getFileHandle(fname, { create: false });
+      const existingFile = await existingFh.getFile();
+      if (existingFile.size === blob.size) {
+        if (typeof photo === 'object') photo.savedToFolder = true;
+        return; // 빨리 끝!
+      }
+    } catch(e) {
+      // 파일이 없거나 다름 → 계속 진행
+    }
+
+    step = '파일핸들';
+    const fh = await workDir.getFileHandle(fname, { create: true });
+
+    step = 'createWritable';
+    const w = await fh.createWritable();
+
+    step = 'write';
+    await w.write(blob);
+
+    step = 'close';
+    await w.close();
+
+    if (typeof photo === 'object') {
+      photo.savedToFolder = true;
+      photo.fileName = fname;  // ★ 파일명 저장 (다음 불러올 때 매칭용)
+      // ★ 순서편집/삭제/이동으로 파일을 (다시) 썼으면 클라우드 사본이 낡음 → 재업로드 대상 표시
+      //   (파일명이 위치기반이라 순서가 바뀌면 같은 이름에 다른 사진이 들어가므로 반드시 재업로드해야 함)
+      photo._cloudUploaded = false;
+    }
+
+    // ★ 썸네일 생성 + 저장 (백그라운드, 결과는 photo 객체에 저장)
+    saveThumbnailInBackground(workDir, fname, blob, photo).catch(e => {
+      console.warn('썸네일 저장 실패 (무시):', e.message);
+    });
+
+  } catch(e) {
+    throw new Error(`[${step}] ${e.name||'Error'}: ${e.message}`);
+  }
+}
+
+// ★ 썸네일을 백그라운드에서 _thumbs 폴더에 저장 + photo 객체에 dataUrl 보관
+async function saveThumbnailInBackground(workDir, fname, originalBlob, photo) {
+  // 썸네일 비활성화 시 즉시 종료
+  if (typeof window !== 'undefined' && window.THUMBNAILS_ENABLED === false) return;
+  if (typeof createThumbnailBlob !== 'function') return;
+  try {
+    const thumbBlob = await createThumbnailBlob(originalBlob);
+
+    // ★ photo 객체에 썸네일 dataUrl 저장 (다음 저장 시 _session.json에 포함됨)
+    if (photo && typeof photo === 'object') {
+      try {
+        photo.thumbDataUrl = await blobToDataURL(thumbBlob);
+      } catch(e) {}
+    }
+
+    // _thumbs/ 폴더에도 파일로 저장 (백업 + 다른 세션에서 사용)
+    const thumbsDir = await workDir.getDirectoryHandle('_thumbs', { create: true });
+    const fh = await thumbsDir.getFileHandle(fname, { create: true });
+    const w = await fh.createWritable();
+    await w.write(thumbBlob);
+    await w.close();
+  } catch(e) {
+    throw e;
+  }
+}
+
+// 한글/유니코드 문자를 ASCII로 안전 변환
+function toShortHash(str) {
+  if (!str) return 'x';
+  const ascii = str.replace(/[^A-Za-z0-9]/g, '');
+  const hasNonAscii = /[^\x00-\x7F]/.test(str);
+  if (!hasNonAscii && ascii.length > 0) {
+    return ascii.substring(0, 20);
+  }
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  const h = Math.abs(hash).toString(36);
+  return ascii ? `${ascii.substring(0, 10)}${h}` : `u${h}`;
+}
+
+// 사용자가 "지금 저장" 버튼 클릭 시 호출 — 사용자 제스처 컨텍스트
+async function flushPendingSaves() {
+  if (pendingSaves.length === 0) return;
+  if (!photoFolderHandle) { showToast('폴더가 설정되지 않았습니다', 'err'); return; }
+
+  // ★ 핵심: 이미 granted면 requestPermission 건너뛰기 (제스처 보존)
+  let permOk = false;
+  try {
+    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (curPerm === 'granted') {
+      permOk = true;
+    } else {
+      // 권한 없을 때만 요청 (이 경우 다음 번엔 queryPermission만 쓰게 됨)
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      permOk = (newPerm === 'granted');
+    }
+  } catch(e) {
+    showToast('📁 권한 확인 실패: ' + e.message, 'err');
+    return;
+  }
+
+  if (!permOk) {
+    showToast('📁 폴더 권한이 거부됐습니다', 'err');
+    return;
+  }
+  updateFolderUI(photoFolderHandle, 'granted');
+
+  showOverlay('저장 중...');
+  const total = pendingSaves.length;
+  let ok = 0, fail = 0, skipped = 0;
+  const remaining = [];
+  const errorMessages = [];
+  let firstErrorIsInvalidState = false;
+
+  for (let i = 0; i < pendingSaves.length; i++) {
+    const item = pendingSaves[i];
+    setProg((i / total) * 100, `${i+1} / ${total} 저장 중`);
+
+    if (item.photo._borrowedIncoming) { skipped++; continue; }  // ★ 규칙1
+    if (item.photo.savedToFolder || _savedPhotoIds.has(item.photo.id)) {
+      skipped++;
+      continue;
+    }
+
+    // 최대 3번 재시도
+    let success = false;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await doWriteOne(item.photo, item.unitName, item.typeLabel);
+        item.photo.savedToFolder = true;
+        _savedPhotoIds.add(item.photo.id);
+        ok++;
+        success = true;
+        break;
+      } catch(e) {
+        lastErr = e;
+        await sleep(100 + attempt * 200);  // 재시도 전 대기
+      }
+    }
+
+    if (!success) {
+      console.warn('flush 실패:', lastErr.name, lastErr.message, item);
+      fail++;
+      remaining.push(item);
+      errorMessages.push(`[${item.unitName} ${item.typeLabel}] ${lastErr.name||'Error'}: ${lastErr.message}`);
+      if (lastErr.name === 'InvalidStateError') firstErrorIsInvalidState = true;
+    }
+
+    if (i % 5 === 4) await sleep(0);  // 5장마다 yield
+  }
+
+  pendingSaves = remaining;
+  sessionAutoSave();
+  hideOverlay();
+  updatePendingUI();
+
+  if (fail > 0) {
+    // InvalidStateError면 폴더 핸들 캐시 문제 → 폴더 다시 선택 안내
+    if (firstErrorIsInvalidState) {
+      showDebugPanel(
+        `⚠️ ${ok}장 성공, ${fail}장 실패\n\n` +
+        `🔍 원인: Android Chrome의 폴더 핸들 캐시 문제\n\n` +
+        `✅ 해결법:\n` +
+        `1. "📁 폴더 변경" 버튼을 누르세요\n` +
+        `2. 같은 폴더(작업사진)를 다시 선택하세요\n` +
+        `3. "💾 지금 저장" 버튼을 다시 누르세요\n\n` +
+        `(앱을 새로 열거나 페이지를 새로고침해도 같은 효과)\n\n` +
+        `── 상세 에러 ──\n` + errorMessages.join('\n\n')
+      );
+    } else {
+      showDebugPanel(`⚠️ ${ok}장 성공, ${fail}장 실패\n\n` + errorMessages.join('\n\n'));
+    }
+  } else {
+    let msg = `✅ ${ok}장 저장 완료`;
+    if (skipped > 0) msg += ` (${skipped}장 이미 저장됨)`;
+    showToast(msg, 'ok');
+  }
+}
+
+// 화면에 디버그 메시지를 영구 표시 (탭하면 닫힘)
+function showDebugPanel(text) {
+  let panel = document.getElementById('debugPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'debugPanel';
+    panel.style.cssText = `
+      position:fixed;top:80px;left:10px;right:10px;z-index:9999;
+      background:#fff;border:2px solid var(--dn);border-radius:10px;
+      padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.3);
+      max-height:60vh;overflow-y:auto;cursor:pointer;
+      font-size:12px;line-height:1.6;color:#333;font-family:monospace;
+      white-space:pre-wrap;word-break:break-word;
+    `;
+    panel.addEventListener('click', () => panel.remove());
+    document.body.appendChild(panel);
+  }
+  panel.textContent = '🔴 디버그 정보 (탭하면 닫힘)\n\n' + text;
+}
+
+// 큐잉 함수 (업로드 핸들러에서 호출)
+function enqueueAutoSave(photo, unitName, typeLabel) {
+  return tryAutoSave(photo, unitName, typeLabel);
+}
+
+// 저장됨 상태 초기화 — 모든 사진의 "저장됨" 표시를 지우고 재저장할 수 있게
+function resetSavedState() {
+  if (!confirm('모든 사진의 "저장됨" 표시를 초기화할까요?\n\n그 후 "모든사진저장"을 누르면 전체를 다시 저장합니다.')) return;
+
+  let count = 0;
+  for (const u of units) {
+    for (const p of u.before) {
+      if (typeof p === 'object' && p.savedToFolder) { p.savedToFolder = false; count++; }
+    }
+    for (const p of u.after) {
+      if (typeof p === 'object' && p.savedToFolder) { p.savedToFolder = false; count++; }
+    }
+    for (const sp of u.specials) {
+      for (const p of sp.photos) {
+        if (typeof p === 'object' && p.savedToFolder) { p.savedToFolder = false; count++; }
+      }
+    }
+  }
+  _savedPhotoIds.clear();
+  sessionAutoSave();
+  renderAll();
+  showToast(`↻ ${count}장의 저장 표시를 초기화했습니다`, 'ok');
+}
+
+// 진단 테스트 — 환경에서 어떤 쓰기 방식이 동작하는지 확인
+async function diagnoseWriteTest() {
+  if (!photoFolderHandle) {
+    showToast('먼저 폴더를 설정해주세요', 'err');
+    return;
+  }
+
+  const results = [];
+
+  // 권한 요청
+  try {
+    const perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      showDebugPanel('권한 거부됨');
+      return;
+    }
+  } catch(e) {
+    showDebugPanel('권한 에러: ' + e.message);
+    return;
+  }
+
+  // 테스트 데이터: 짧은 텍스트
+  const testText = 'Hello from work-report diagnostic test. ' + new Date().toISOString();
+  const testBlob = new Blob([testText], { type: 'text/plain' });
+
+  // ── 테스트 1: 텍스트 파일 쓰기 (Blob) ──
+  try {
+    const fh = await photoFolderHandle.getFileHandle('_test1_blob.txt', { create: true });
+    const w  = await fh.createWritable();
+    await w.write(testBlob);
+    await w.close();
+    const f = await fh.getFile();
+    results.push(`✅ 테스트1 (text Blob): ${f.size}바이트`);
+  } catch(e) {
+    results.push(`❌ 테스트1: [${e.name}] ${e.message}`);
+  }
+
+  // ── 테스트 6: 실제 사진 크기 더미 Blob (400KB) ──
+  try {
+    // 400KB 더미 데이터 생성
+    const size = 400 * 1024;
+    const bigArr = new Uint8Array(size);
+    for (let i = 0; i < size; i++) bigArr[i] = i & 0xFF;
+    const bigBlob = new Blob([bigArr], { type: 'image/jpeg' });
+
+    const fh = await photoFolderHandle.getFileHandle('_test6_400KB.bin', { create: true });
+    const w  = await fh.createWritable();
+    await w.write(bigBlob);
+    await w.close();
+    const f = await fh.getFile();
+    results.push(`📦 테스트6 (더미 400KB): ${f.size}바이트`);
+  } catch(e) {
+    results.push(`❌ 테스트6: [${e.name}] ${e.message}`);
+  }
+
+  // ── 테스트 7: 실제 업로드된 첫 사진을 저장 ──
+  try {
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const dataUrl = photoUrl(firstPhoto);
+      const blob = dataURLtoBlob(dataUrl);
+      const fh = await photoFolderHandle.getFileHandle('_test7_realphoto.jpg', { create: true });
+      const w  = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
+      const f = await fh.getFile();
+      results.push(`📷 테스트7 (실제 사진 ${Math.round(blob.size/1024)}KB): ${f.size}바이트 저장됨`);
+    } else {
+      results.push(`⚠️ 테스트7: 저장할 사진 없음 (1호 작업전에 사진 추가 후 다시 시도)`);
+    }
+  } catch(e) {
+    results.push(`❌ 테스트7: [${e.name}] ${e.message}`);
+  }
+
+  // ── 테스트 8: 연속 5장 저장 (실제 사진으로) ──
+  try {
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const dataUrl = photoUrl(firstPhoto);
+      const blob = dataURLtoBlob(dataUrl);
+      let okCount = 0;
+      let errMsg = '';
+      for (let i = 0; i < 5; i++) {
+        try {
+          const fh = await photoFolderHandle.getFileHandle(`_test8_seq${i+1}.jpg`, { create: true });
+          const w  = await fh.createWritable();
+          await w.write(blob);
+          await w.close();
+          const f = await fh.getFile();
+          if (f.size > 0) okCount++;
+          else { errMsg = `${i+1}번째 0바이트`; break; }
+        } catch(e) {
+          errMsg = `${i+1}번째 실패: [${e.name}] ${e.message}`;
+          break;
+        }
+      }
+      results.push(`🔁 테스트8 (연속 5장): ${okCount}/5 성공${errMsg?' — '+errMsg:''}`);
+    }
+  } catch(e) {
+    results.push(`❌ 테스트8: [${e.name}] ${e.message}`);
+  }
+
+  // ── 테스트 9: 연속 5장 저장 + 각각 50ms 쿨다운 ──
+  try {
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const dataUrl = photoUrl(firstPhoto);
+      const blob = dataURLtoBlob(dataUrl);
+      let okCount = 0;
+      let errMsg = '';
+      for (let i = 0; i < 5; i++) {
+        try {
+          const fh = await photoFolderHandle.getFileHandle(`_test9_cool${i+1}.jpg`, { create: true });
+          const w  = await fh.createWritable();
+          await w.write(blob);
+          await w.close();
+          const f = await fh.getFile();
+          if (f.size > 0) okCount++;
+          else { errMsg = `${i+1}번째 0바이트`; break; }
+          await sleep(200);  // 200ms 쿨다운
+        } catch(e) {
+          errMsg = `${i+1}번째 실패: [${e.name}] ${e.message}`;
+          break;
+        }
+      }
+      results.push(`❄️ 테스트9 (200ms 쿨다운 5장): ${okCount}/5 성공${errMsg?' — '+errMsg:''}`);
+    }
+  } catch(e) {
+    results.push(`❌ 테스트9: [${e.name}] ${e.message}`);
+  }
+
+  // ── 테스트 10: 실제 doWriteOne 함수를 직접 호출 (3번 반복) ──
+  try {
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      for (let i = 1; i <= 3; i++) {
+        try {
+          await doWriteOne(firstPhoto, units[0].name, '전');
+          results.push(`🎯 테스트10-${i} (doWriteOne): 성공`);
+        } catch(e) {
+          results.push(`❌ 테스트10-${i} (doWriteOne): ${e.message}`);
+        }
+        await sleep(100);
+      }
+    } else {
+      results.push(`⚠️ 테스트10: 사진 없음`);
+    }
+  } catch(e) {
+    results.push(`❌ 테스트10: ${e.message}`);
+  }
+
+  // ── 테스트 11: 실제 파일명으로 저장 (doWriteOne 내부와 동일 방식) ──
+  try {
+    const firstPhoto = units[0]?.before[0];
+    if (firstPhoto) {
+      const date    = document.getElementById('workDate').value || kstDateStr();
+      const apt     = document.getElementById('aptName').value  || '작업';
+      const safe    = units[0].name.replace(/[\/\\:*?"<>|]/g, '_');
+      const aptSafe = apt.replace(/[\/\\:*?"<>|]/g, '_');
+      const fname   = `${date}_${aptSafe}_${safe}_전1.jpg`;
+
+      const blob = dataURLtoBlob(firstPhoto.dataUrl);
+      const fh = await photoFolderHandle.getFileHandle(fname, { create: true });
+      const w = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
+      results.push(`🎯 테스트11 (실제파일명 직접): 성공 "${fname}"`);
+    }
+  } catch(e) {
+    results.push(`❌ 테스트11: [${e.name}] ${e.message}`);
+  }
+
+  showDebugPanel(
+    '🔍 진단 테스트 결과\n\n' +
+    results.join('\n\n') +
+    '\n\n─────────\n' +
+    `브라우저: ${navigator.userAgent.substring(0,80)}\n` +
+    '→ 폴더에서 _test1~9 파일들이 모두 제대로 생겼는지 확인해주세요'
+  );
+}
+async function saveSinglePhoto(photo, unitName, typeLabel, index) {
+  // 폴더 미설정 시 → 브라우저 다운로드 방식으로 폴백
+  if (!photoFolderHandle) {
+    const url = photoUrl(photo);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${unitName}_${typeLabel}${index}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('📥 다운로드 폴더에 저장됐습니다', 'ok');
+    return;
+  }
+
+  // 폴더 설정되어 있으면 폴더로 저장 (이미 granted면 requestPermission 생략)
+  let permOk = false;
+  try {
+    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (curPerm === 'granted') {
+      permOk = true;
+    } else {
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      permOk = (newPerm === 'granted');
+    }
+  } catch(e) {
+    showToast('권한 확인 실패', 'err');
+    return;
+  }
+
+  if (!permOk) {
+    showToast('📁 폴더 권한이 거부됐습니다', 'err');
+    return;
+  }
+
+  try {
+    await doWriteOne(photo, unitName, typeLabel);
+    if (typeof photo === 'object') {
+      photo.savedToFolder = true;
+      _savedPhotoIds.add(photo.id);
+    }
+    renderAll();
+    sessionAutoSave();
+    showToast('✅ 폴더에 저장 완료', 'ok');
+  } catch(e) {
+    console.warn('개별 저장 실패:', e);
+    showToast(`저장 실패: ${e.message}`, 'err');
+  }
+}
+
+// (구버전 호환용) 기존 코드에서 호출되는 함수명 유지
+async function autoSavePhotoToFolder(dataUrl, unitName, typeLabel, index) {
+  // dataUrl이 string이면 임시 객체로 감쌈
+  if (typeof dataUrl === 'string') {
+    return tryAutoSave(makePhoto(dataUrl), unitName, typeLabel);
+  }
+  return tryAutoSave(dataUrl, unitName, typeLabel);
+}
+
+async function savePhotosToFolder() {
+  const totalPhotos = units.reduce((s, u) =>
+    s + u.before.length + u.after.length +
+    u.specials.reduce((a, sp) => a + sp.photos.length, 0), 0);
+
+  if (totalPhotos === 0) { showToast('저장할 사진이 없습니다', 'err'); return; }
+  // ★ 폴더가 풀려있으면(백그라운드 복귀 등) 재연결 먼저 시도
+  if (!photoFolderHandle && typeof reconnectFolderIfNeeded === 'function') {
+    await reconnectFolderIfNeeded();
+  }
+  if (!photoFolderHandle) { showToast('먼저 폴더를 설정해주세요', 'err'); return; }
+
+  // ★ 이미 granted면 requestPermission 생략 (제스처 보존)
+  let permOk = false;
+  try {
+    const curPerm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+    if (curPerm === 'granted') {
+      permOk = true;
+    } else {
+      const newPerm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+      permOk = (newPerm === 'granted');
+    }
+  } catch(e) { showToast('권한 확인 실패: ' + e.message, 'err'); return; }
+
+  if (!permOk) { showToast('📁 폴더 권한이 거부됐습니다', 'err'); return; }
+  updateFolderUI(photoFolderHandle, 'granted');
+
+  // 이미 저장됐다고 표시된 사진 개수 확인
+  const alreadyMarked = units.reduce((s, u) => {
+    const count = [...u.before, ...u.after, ...u.specials.flatMap(sp => sp.photos)]
+      .filter(p => typeof p === 'object' && p.savedToFolder).length;
+    return s + count;
+  }, 0);
+
+  // 이미 저장됨으로 표시된 게 있으면 재저장 여부 묻기
+  let forceResave = false;
+  if (alreadyMarked > 0) {
+    forceResave = confirm(
+      `💡 ${alreadyMarked}장이 "이미 저장됨"으로 표시되어 있습니다.\n\n` +
+      `확인: 모든 사진을 다시 저장 (파일이 0바이트이거나 깨졌을 경우)\n` +
+      `취소: 새로 추가된 사진만 저장`
+    );
+  }
+
+  const date = document.getElementById('workDate').value || kstDateStr();
+  const apt  = document.getElementById('aptName').value || '작업';
+  const aptSafe = apt.replace(/[\/\\:*?"<>|]/g, '_');
+  // ★ 모든 저장이 같은 작업 폴더를 쓰도록 통일 (사진 쪼개짐 방지)
+  const wfn = (typeof getWorkFolderName === 'function') ? getWorkFolderName() : date;
+  _currentSaveDateFolderName = wfn;
+
+  showOverlay('사진 저장 중...');
+  let saved = 0, skipped = 0;
+  const errors = [];
+
+  // 사진 1장 저장 헬퍼
+  async function savePhoto(p, unitRef, typeLabel, idx) {
+    // forceResave가 아닐 때만 스킵 체크
+    if (!forceResave && typeof p === 'object' && (p.savedToFolder || _savedPhotoIds.has(p.id))) {
+      skipped++;
+      return;
+    }
+    // 영문 폴더/파일명 (★ 유닛 객체 기준 - 호수명을 바꿔도 폴더가 안 바뀜)
+    const workNum = (unitRef && typeof unitRef === 'object')
+      ? getWorkNumberForUnit(unitRef)
+      : getWorkNumber(unitRef);
+    const typePrefix = typeLabel === '전' ? 'A'
+                     : typeLabel === '후' ? 'B'
+                     : typeLabel.replace(/^특이(\d+)_?$/, 'S$1').replace(/[^A-Za-z0-9]/g, '');
+    const fname = `${typePrefix}_image${String(idx).padStart(2, '0')}.jpg`;
+
+    // 최대 3번 재시도
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const blob = dataURLtoBlob(photoUrl(p));
+        if (blob.size === 0) throw new Error('Blob 크기 0');
+
+        // 폴더 구조: [루트] / [날짜] / workNN / 파일명
+        const dateDir = await photoFolderHandle.getDirectoryHandle(wfn, { create: true });
+        const workDir = await dateDir.getDirectoryHandle(`work${workNum}`, { create: true });
+
+        const fh = await workDir.getFileHandle(fname, { create: true });
+        const w  = await fh.createWritable();
+        await w.write(blob);
+        await w.close();
+
+        if (typeof p === 'object') {
+          p.savedToFolder = true;
+          _savedPhotoIds.add(p.id);
+        }
+        saved++;
+        return;
+      } catch(e) {
+        lastErr = e;
+        await sleep(100 + attempt * 200);
+      }
+    }
+    throw lastErr;
+  }
+
+  try {
+    for (const u of units) {
+      // ★ 규칙1+3: 상대가 보탠 사진 제외, 파일명 번호 = 내 사진 기준 위치
+      const ownBefore = u.before.filter(p => !(p && p._borrowedIncoming));
+      const ownAfter = u.after.filter(p => !(p && p._borrowedIncoming));
+      for (let i = 0; i < ownBefore.length; i++) {
+        setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
+        try { await savePhoto(ownBefore[i], u, '전', i+1); }
+        catch(e) { errors.push(`${u.name} 전${i+1}: ${e.message}`); }
+        if (i % 5 === 4) await sleep(0);
+      }
+      for (let i = 0; i < ownAfter.length; i++) {
+        setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
+        try { await savePhoto(ownAfter[i], u, '후', i+1); }
+        catch(e) { errors.push(`${u.name} 후${i+1}: ${e.message}`); }
+        if (i % 5 === 4) await sleep(0);
+      }
+      for (let si = 0; si < u.specials.length; si++) {
+        const ownSp = u.specials[si].photos.filter(p => !(p && p._borrowedIncoming));
+        for (let pi = 0; pi < ownSp.length; pi++) {
+          setProg(((saved+skipped) / totalPhotos) * 100, `${saved+skipped+1} / ${totalPhotos}`);
+          try { await savePhoto(ownSp[pi], u, `특이${si+1}_`, pi+1); }
+          catch(e) { errors.push(`${u.name} 특이${si+1}_${pi+1}: ${e.message}`); }
+          if (pi % 5 === 4) await sleep(0);
+        }
+      }
+    }
+
+    // 매핑 정보 파일 저장 (work01 = 어느 호수인지)
+    try {
+      const lines = [
+        `작업 사진 — ${new Date().toLocaleString('ko-KR')}`,
+        `날짜: ${date}`,
+        `아파트명: ${apt}`,
+        `담당자: ${document.getElementById('workerName').value || ''}`,
+        '',
+        '── 폴더 구조 ──',
+        `${date}/workNN/[B/A/S]_imageNN.jpg`,
+        'B = 작업전 (Before)',
+        'A = 작업후 (After)',
+        'S1, S2... = 특이사항',
+        '',
+        '── 호수 매핑 ──',
+      ];
+      for (const u of units) {
+        const num = getWorkNumberForUnit(u);
+        lines.push(`work${num} = ${u.name}  (전 ${u.before.length}장 · 후 ${u.after.length}장 · 특이 ${u.specials.length}건)`);
+      }
+      const infoBlob = new Blob([lines.join('\n')], { type: 'text/plain; charset=utf-8' });
+      const dateDir = await photoFolderHandle.getDirectoryHandle(wfn, { create: true });
+      const infoFh = await dateDir.getFileHandle('_info.txt', { create: true });
+      const infoW = await infoFh.createWritable();
+      await infoW.write(infoBlob);
+      await infoW.close();
+    } catch(e) {
+      console.warn('정보 파일 저장 실패:', e);
+    }
+
+    sessionAutoSave();
+    hideOverlay();
+    renderAll();
+    if (errors.length > 0) {
+      showDebugPanel(`✅ ${saved}장 저장 완료, ⚠️ ${errors.length}장 실패\n\n첫 에러:\n` + errors.slice(0,3).join('\n'));
+    } else if (skipped > 0) {
+      showToast(`✅ ${saved}장 저장 (${skipped}장 이미 저장됨)`, 'ok');
+    } else {
+      showToast(`✅ ${saved}장 저장 완료`, 'ok');
+    }
+  } catch(e) {
+    hideOverlay();
+    if (e.name !== 'AbortError') showToast('저장 실패: ' + e.message, 'err');
+  }
+}
+
+/* UTILS */
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function showImg(src) {
+  document.getElementById('modalImg').src = src;
+  document.getElementById('imgModal').classList.add('open');
+  // ★ 브라우저 viewport 줌 차단 (자체 핀치 줌 사용)
+  if (typeof setViewportZoom === 'function') setViewportZoom(false);
+  history.pushState({ imgModal: true }, '');
+}
+function showOverlay(t){
+  document.getElementById('ovTitle').textContent=t;
+  document.getElementById('progFl').style.width='0%';
+  document.getElementById('progLb').textContent='';
+  document.getElementById('overlay').classList.add('show');
+  // ★ 뒤 화면 스크롤/터치 차단
+  document.body.classList.add('overlay-active');
+}
+function setProg(p,l){document.getElementById('progFl').style.width=p+'%';document.getElementById('progLb').textContent=l;}
+function hideOverlay(){
+  document.getElementById('overlay').classList.remove('show');
+  // ★ 잠금 해제
+  document.body.classList.remove('overlay-active');
+}
+function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast show ${type}`;clearTimeout(t._t);t._t=setTimeout(()=>t.className='toast',3500);}
+
+
+// ════════════════════════════════════════════════
+// ★ 앱 복귀 시 폴더 자동 재연결
+//   (자고 일어나거나 앱이 백그라운드에 오래 있으면 Android가 메모리를 정리하면서
+//    폴더 핸들이 사라져 "풀림" 상태가 되던 문제 방지.
+//    네이티브는 고정 폴더라 경로가 항상 같으므로, 복귀 시마다 다시 잡아주면 됨)
+// ════════════════════════════════════════════════
+async function reconnectFolderIfNeeded() {
+  if (!(window.NativeFS && NativeFS.isNative())) return;
+  try {
+    photoFolderHandle = await NativeFS.getRootHandle();
+    try { localStorage.setItem('lastFolderName', photoFolderHandle.name); } catch (e) {}
+    if (typeof updateFolderUI === 'function') updateFolderUI(photoFolderHandle, 'granted');
+    console.log('[폴더] 앱 복귀 - 자동 재연결 완료');
+  } catch (e) {
+    console.warn('[폴더] 재연결 실패:', e);
+  }
+}
+window.reconnectFolderIfNeeded = reconnectFolderIfNeeded;
+
+// 앱 화면이 다시 보일 때마다 폴더 재연결
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') reconnectFolderIfNeeded();
+});
+// Capacitor App resume 이벤트도 연결 (있으면)
+try {
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+    window.Capacitor.Plugins.App.addListener('appStateChange', (state) => {
+      if (state && state.isActive) reconnectFolderIfNeeded();
+    });
+  }
+} catch (e) {}

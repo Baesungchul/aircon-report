@@ -1,0 +1,36 @@
+# 의존성 (npm install로 재생성됨)
+node_modules/
+**/node_modules/
+
+# 절대 커밋 금지 — 앱 서명 키 (유출 시 앱 위변조 위험)
+keystore/
+*.jks
+*.keystore
+
+# 절대 커밋 금지 — 비밀값/환경변수
+.env
+.env.local
+.env.*.local
+*.env
+
+# 네이티브 빌드 산출물 (npx cap add android 로 재생성 가능)
+android/
+ios/
+*.apk
+*.aab
+
+# 백업/정리 대상 파일 (프로젝트 정리 중 생긴 임시 파일들)
+_bak/
+_bak_archive/
+_to_delete/
+*.bak
+*.bak.*
+
+# 빌드/캐시 산출물
+.firebase/
+.wrangler/
+dist/
+build/
+.DS_Store
+npm-debug.log*
+*.log

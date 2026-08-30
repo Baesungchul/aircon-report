@@ -15,7 +15,7 @@
 //           v597 페이스북 올리기 버튼(채널 키 'fb'→'facebook') / v598 달력 보기 전환(▦격자 ↔ ☰목록)
 //           v599 인앱 별점(review.js) + 설정 Play 리뷰 링크 + 격자에서도 위로 밀어 접기
 //   site/ 쪽: post.html 사진 ZIP 내려받기 + 새 파일 site/jszip.min.js → `firebase deploy --only hosting` 필요
-const CACHE = 'ac1004-v603';
+const CACHE = 'ac1004-v604';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

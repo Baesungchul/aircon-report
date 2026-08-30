@@ -29,14 +29,16 @@ jobs:
       - name: Node 준비
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # ⚠️ 22 미만이면 'The Capacitor CLI requires NodeJS >=22.0.0' 으로 죽는다.
+          #    (2026-08-30 첫 빌드가 20 으로 적어놔서 여기서 실패했다)
+          node-version: '22'
           cache: 'npm'
 
       - name: 의존성 설치
         run: npm ci
 
       - name: Java 준비 (AGP 8.13 / Gradle 8.14 → JDK 21)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'

@@ -22,6 +22,51 @@
           }
         },
         {
+          "client_id": "370264394871-savkdk0740tv0kq2hv54d3dos5pp2t92.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.baesungchul.workreport",
+            "certificate_hash": "cac599f3e29e5b95ddf70a2c23fa3153ae5f535f"
+          }
+        },
+        {
+          "client_id": "370264394871-v1ru57q8r5h9j6ubfhc1thc48mu8hdfn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.baesungchul.workreport",
+            "certificate_hash": "dea6fca70f2300069501d2217f6a12f826ee7443"
+          }
+        },
+        {
+          "client_id": "370264394871-3oba6d734etlu6qu4so98rilb2uhf2c1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2KOzBCuGnmTKAhcfoi45EAmcn8cnYQko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "370264394871-3oba6d734etlu6qu4so98rilb2uhf2c1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:370264394871:android:5d88f44369bf5da82f0a72",
+        "android_client_info": {
+          "package_name": "com.baesungchul.workreport.debug"
+        }
+      },
+      "oauth_client": [
+        {
           "client_id": "370264394871-3oba6d734etlu6qu4so98rilb2uhf2c1.apps.googleusercontent.com",
           "client_type": 3
         }

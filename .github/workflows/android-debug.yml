@@ -1,6 +1,8 @@
 # 폰에서 확인할 테스트 APK 를 자동으로 만든다.
 #   쓰는 법: main 에 push 하면 자동 실행. 수동 실행은 Actions 탭의 "Run workflow".
-#   결과물: 실행 화면 아래 Artifacts 의 test-apk (14일 보관)
+#   결과물 ① Releases 의 고정 주소 — 폰에서는 이쪽이 편하다(압축 없음·로그인 불필요)
+#            https://github.com/baesungchul/aircon-report/releases/download/test/hyeonjang-test.apk
+#   결과물 ② 실행 화면 아래 Artifacts 의 test-apk (zip, 14일 보관)
 #
 # ☠️ 이 APK 는 applicationId 가 com.baesungchul.workreport.debug 라
 #    런처에 "현장매니저 (테스트)" 로 따로 깔린다. 진짜 앱과 사진은 건드리지 않는다.
@@ -17,7 +19,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # Releases 에 APK 를 올리기 위해 필요
 
 jobs:
   build:
@@ -59,3 +61,28 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 14
           if-no-files-found: error
+
+      # ⭐ 폰에서 받기 쉽게 — Releases 에 APK 를 '그대로' 올린다.
+      #    Artifacts 는 무조건 zip 이라 폰에서 압축을 풀어야 하고 로그인도 필요하다.
+      #    Releases 는 링크 한 번이면 바로 설치된다.
+      #    태그(test)와 파일 이름을 고정하므로 주소가 늘 같다:
+      #      https://github.com/baesungchul/aircon-report/releases/download/test/hyeonjang-test.apk
+      - name: Releases 에 올리기 (주소 고정)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          cp "$APK" hyeonjang-test.apk
+          {
+            echo "폰에서 확인용 테스트 APK — push 할 때마다 아래 파일이 최신으로 덮어써집니다."
+            echo ""
+            echo "- 빌드: ${GITHUB_SHA:0:7} · $(date -u +'%Y-%m-%d %H:%M') UTC"
+            echo "- 내용: $(git log -1 --pretty=%s)"
+            echo ""
+            echo "런처에 '현장매니저 (테스트)' 로 따로 깔립니다. 진짜 앱과 사진은 그대로입니다."
+            echo "결제와 푸시 알림은 테스트 빌드에서 동작하지 않습니다(정상)."
+          } > notes.md
+          # 릴리스가 없을 때만 만든다 — 지웠다 다시 만들면 주소가 흔들린다
+          gh release view test >/dev/null 2>&1 || gh release create test --title "테스트 빌드 (자동)" --notes-file notes.md --prerelease
+          gh release upload test hyeonjang-test.apk --clobber
+          gh release edit test --notes-file notes.md

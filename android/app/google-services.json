@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "370264394871-1h7m7u5ac8vi2inofgsjb1a440sk5d27.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.baesungchul.workreport",
+            "certificate_hash": "c437fa9349193e5e8c58e76a1a6399f073ed1d81"
+          }
+        },
+        {
           "client_id": "370264394871-kiu4m916phdeadmouhqtngqm6bcs1e63.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
@@ -66,6 +74,14 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "370264394871-qorbufie7j2r8oaj5buhpvqb9uv0viig.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.baesungchul.workreport.debug",
+            "certificate_hash": "c437fa9349193e5e8c58e76a1a6399f073ed1d81"
+          }
+        },
         {
           "client_id": "370264394871-3oba6d734etlu6qu4so98rilb2uhf2c1.apps.googleusercontent.com",
           "client_type": 3

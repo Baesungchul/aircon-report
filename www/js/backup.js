@@ -561,13 +561,34 @@
         작업 기록 복구를 무료 로그인에 개방하면서 이 입구도 함께 열어야 한다 —
         ⚠️ 안 열면 cloud_backup 쪽만 열려 있고 화면에서는 여전히 막혀 '되는데 안 되는' 상태가 된다.
         사진 복구는 여전히 구독 전용이며, 그 안내는 복구 팝업 안에서 한다. */
+  /* ★ 2026-08-30 '로그인하고 나면 이어서 할 일'.
+       그 전에는 복구를 누르면 로그인창만 뜨고, 로그인해도 아무 일이 없어서
+       사용자가 복구 버튼을 다시 눌러야 했다 — 로그인한 이유가 복구인데도.
+       온보딩이 쓰는 방식(_obAfterLogin)과 같은 얼개다. */
+  var _afterLogin = null, _afterLoginAt = 0;
+  var AFTER_LOGIN_TTL = 3 * 60 * 1000;   // 3분
+  document.addEventListener('cloud-auth-changed', function (e) {
+    if (!(e && e.detail && e.detail.user)) return;   // 로그아웃은 대상 아님
+    var fn = _afterLogin, at = _afterLoginAt;
+    _afterLogin = null; _afterLoginAt = 0;
+    if (!fn) return;
+    /* ⚠️ 시간 제한이 필요하다. 로그인창을 그냥 닫아버린 뒤 한참 있다가 다른 이유로
+         로그인하면, 시키지도 않은 복구창이 튀어나온다. 그건 놀랄 일이다. */
+    if (Date.now() - at > AFTER_LOGIN_TTL) return;
+    /* ⚠️ 곧바로 부르지 않는다. 이 이벤트 시점엔 로그인창이 막 닫히는 중이고
+         CloudBackup 쪽 초기 pull 도 아직이다. 조금 기다렸다 이어간다. */
+    setTimeout(function () { try { fn(); } catch (e2) {} }, 600);
+  });
+
   function restoreFromServer() {
     if (!(window.Cloud && Cloud.user)) {
       if (typeof showToast === 'function') showToast('서버 복구는 로그인이 필요해요', 'ok');
+      _afterLogin = restoreFromServer; _afterLoginAt = Date.now();   // ★ 로그인 끝나면 여기로 되돌아온다
       if (window.Cloud && Cloud.openModal) Cloud.openModal();
       else if (typeof openCloudModal === 'function') openCloudModal();
       return;
     }
+    _afterLogin = null; _afterLoginAt = 0;           // 이어달리기 완료 — 남겨두면 다음 로그인 때 또 뜬다
     if (window.CloudBackup && CloudBackup.checkAndOfferRestore) CloudBackup.checkAndOfferRestore(true, { notify: true });
     else if (typeof showToast === 'function') showToast('복구 모듈을 찾을 수 없어요', 'err');
   }

@@ -11,7 +11,15 @@
 
   var PLANS = {
     free:   { name: '무료',   price: 0,     sched: 0,    blog: 0,   share: false, chat: false, chatMedia: false, teamCreate: false },
-    lite:   { name: '팀원',   price: 4900,  sched: 0,    blog: 0,   share: true,  chat: true,  chatMedia: false, teamCreate: false },
+    /* ★ 2026-08-30 개편 — 예전엔 4,900원을 내고도 AI 를 한 번도 못 썼다('팀 참여 전용').
+         무료(0회) 와 베이직(9,900원·100회) 사이가 비어 있어 진입 계단이 없었다.
+         베이직이 100회이므로 반값에 반건수(50회)로 둔다 — 건당 단가가 같아야
+         '더 쓰려면 베이직' 이 성립하고 베이직을 잠식하지 않는다.
+         ⭐ 새 상품을 만들지 않고 기존 lite 상품의 내용만 바꾸므로
+            Play Console·RevenueCat 에 추가로 등록할 것이 없다.
+         ⚠️ 이름을 '팀원'→'라이트' 로 바꿨다. 팀을 만들 수 있는 줄 알고 결제하는
+            사례가 있었다(2026-08-26). 아래 LITE_WARN 도 함께 고칠 것. */
+    lite:   { name: '라이트', price: 4900,  sched: 50,   blog: 0,   share: true,  chat: true,  chatMedia: false, teamCreate: false },
     basic:  { name: '베이직', price: 9900,  sched: 100,  blog: 30,  share: true,  chat: true,  chatMedia: false, teamCreate: true },
     pro:    { name: '프로',   price: 19900, sched: 300,  blog: 80,  share: true,  chat: true,  chatMedia: true,  teamCreate: true },
     master: { name: '마스터', price: 49900, sched: 1500, blog: 300, share: true,  chat: true,  chatMedia: true,  teamCreate: true, unlimited: true }
@@ -578,9 +586,9 @@
        안내 문구는 원래 있었지만 11px 회색 보조문구라 눈에 안 들어왔다 → 경고 박스로 올린다. */
   var LITE_WARN =
     '<div style="margin-top:10px;border:1.5px solid var(--wn);background:rgba(240,180,41,.12);border-radius:10px;padding:10px 12px;">' +
-      '<div style="font-size:13px;font-weight:800;color:var(--wn);line-height:1.5;">❗ 팀 만들기 ✕ · AI 기능 ✕</div>' +
+      '<div style="font-size:13px;font-weight:800;color:var(--wn);line-height:1.5;">❗ 팀 만들기 ✕ · AI 글작성 ✕</div>' +
       '<div style="font-size:12px;color:var(--tx);margin-top:5px;line-height:1.6;">' +
-        '<b>이미 만들어진 팀에 초대 코드로 참여</b>할 때만 쓰는 요금제입니다.<br>' +
+        'AI <b>일정등록만</b> 쓰거나, <b>이미 만들어진 팀에 초대 코드로 참여</b>할 때 쓰는 요금제입니다.<br>' +
         '내가 팀을 직접 만들려면 <b>베이직(월 9,900원)</b> 이상이 필요합니다.' +
       '</div>' +
     '</div>';
@@ -632,9 +640,9 @@
         var k = b.getAttribute('data-plan');
         /* ★ 2026-08-26 팀원(lite) 오구매 방지 — 결제 직전에 범위를 한 번 더 확인받는다. */
         if (!(PLANS[k] || {}).teamCreate && !confirm(
-              '「팀원」 요금제는 팀 참여 전용입니다.\n\n' +
+              '「라이트」 요금제는 팀 참여 전용입니다.\n\n' +
               '• 팀 만들기 ✕ (베이직 월 9,900원부터)\n' +
-              '• AI 일정등록 · AI 글작성 ✕\n' +
+              '• AI 일정등록 월 50회 · AI 글작성 ✕\n' +
               '• 일정공유 ✓ · 채팅 ✓\n\n' +
               '이미 만들어진 팀에 초대 코드로 들어가시는 경우에만 선택해주세요.\n계속할까요?')) return;
         close(); if (window.Billing) Billing.purchase(k);

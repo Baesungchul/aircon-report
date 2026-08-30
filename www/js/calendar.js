@@ -2949,6 +2949,7 @@
         } catch (e) {}
         if (!isFac && nu && sess.units && sess.units[0]) { sess.units[0].name = nu; if (w.units && w.units[0]) w.units[0].name = nu; }
         var oldName = w.dirHandle.name;
+        var _moveWarn = '';   // ★ 옛 폴더를 못 지웠을 때 사용자에게 알릴 말
         var dateChanged = !!(nd && nd !== (sess.date || w.date || ''));
         sess.date = nd; w.date = nd;
         sess.endDate = nEndD; w.endDate = nEndD;
@@ -2971,7 +2972,37 @@
         await wr.close();
         if (dateChanged && newName !== oldName && typeof photoFolderHandle !== 'undefined' && photoFolderHandle) {
           try { await photoFolderHandle.removeEntry(oldName, { recursive: true }); } catch (e) {}
-          try { if (typeof scheduleIndexDelete === 'function') scheduleIndexDelete(oldName); } catch (e) {}
+
+          /* ★ 2026-08-30 옛 폴더가 정말 사라졌는지 눈으로 확인한다.
+               native-fs 의 removeEntry 는 안에서 모든 오류를 삼켜서 실패해도 조용하다.
+               남아 있으면 같은 작업이 옛 날짜·새 날짜 두 곳에 보인다. */
+          var _oldGone = false;
+          try { await photoFolderHandle.getDirectoryHandle(oldName); } catch (e) { _oldGone = true; }
+          if (!_oldGone) _moveWarn = '날짜는 바뀌었지만 예전 폴더를 지우지 못했습니다. 같은 작업이 두 날짜에 보일 수 있어요';
+
+          /* ★ 열려 있는 작업이 바로 이 작업이면 폴더 이름을 새 것으로 갈아 끼운다.
+               ⚠️ 순서가 중요하다 — 아래 purge 안의 clearIfCurrent 가 옛 이름과 맞으면
+                  작업 화면을 통째로 비운다. 먼저 바꿔두면 화면이 유지되고,
+                  옛 이름으로 저장해 지운 폴더가 되살아나는 것도 막는다. */
+          try { if (typeof currentFolderName !== 'undefined' && currentFolderName === oldName) currentFolderName = newName; } catch (e) {}
+
+          /* ★★ 2026-08-30 버그수정 — '날짜를 바꿔도 옛 날짜에 그대로 남는다' 의 원인.
+               날짜 변경은 사실상 '새 폴더 생성 + 옛 폴더 삭제' 인데 뒷정리가 반쪽이었다.
+               예전엔 scheduleIndexDelete 하나만 불러서, 옛 폴더 이름이
+                 · 달력 월별 localStorage 캐시(calCache_YYYY-MM)  ← 화면에 계속 보이던 주범
+                 · 작업 인덱스(removeFromWorkIndex / invalidateWorkIndex)
+                 · 고객 캐시(invalidateCustomersCache / V2)
+                 · 자동백업 거울(안 지우면 복원 때 되살아남)
+               에 그대로 남았다.
+               [[삭제 뒷정리는 purgeWorkEverywhere 한 곳에서]] 규칙을 이 경로만 안 따르고 있었다.
+               ⚠️ cloud:false — 옮긴 것이지 버린 게 아니다. true 면 공유 상대 쪽에서 사라진다. */
+          try {
+            if (typeof window.purgeWorkEverywhere === 'function') await window.purgeWorkEverywhere(oldName, { cloud: false });
+            else if (typeof scheduleIndexDelete === 'function') scheduleIndexDelete(oldName);
+          } catch (e) {
+            try { if (typeof scheduleIndexDelete === 'function') scheduleIndexDelete(oldName); } catch (e2) {}
+          }
+
           w.dirHandle = targetDir; w.folderName = newName; item.data.folderName = newName;
         }
         try {
@@ -2985,7 +3016,7 @@
         if (typeof invalidateRecordsCache === 'function') invalidateRecordsCache();
         await loadCalendarData();
         if (typeof hideOverlay === 'function') hideOverlay();
-        if (typeof showToast === 'function') showToast('✓ 작업 정보 저장됨', 'ok');
+        if (typeof showToast === 'function') showToast(_moveWarn || '✓ 작업 정보 저장됨', _moveWarn ? 'err' : 'ok');
       } catch (e) {
         if (typeof hideOverlay === 'function') hideOverlay();
         if (typeof showToast === 'function') showToast('저장 실패: ' + (e && e.message), 'err');

@@ -430,7 +430,7 @@ function renderSlideBranch(c) {
     var _isSub = false;
     try { _isSub = !!(window.CloudBackup && CloudBackup.isSub && CloudBackup.isSub()); } catch (e) {}
     if (!_isSub) {
-      if (typeof showToast === 'function') showToast('팀원 플랜(월 4,900원)부터 팀 초대를 쓸 수 있어요', 'ok');
+      if (typeof showToast === 'function') showToast('라이트 플랜(월 4,900원)부터 팀 초대를 쓸 수 있어요', 'ok');
       if (window.Subs && Subs.openPlans) Subs.openPlans();
       return;
     }
@@ -746,7 +746,7 @@ function renderSlideInvite(c) {
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">팀 초대코드로 시작</div>
-    <div class="ob-callout" style="margin-bottom:12px;"><span class="ob-callout-num">💳</span><span class="ob-callout-txt">팀 공유는 <b>구독 기능</b>이에요.<br>초대받아 <b>참여</b>만 한다면 <b>팀원 플랜(월 4,900원)</b>이면 충분해요.</span></div>
+    <div class="ob-callout" style="margin-bottom:12px;"><span class="ob-callout-num">💳</span><span class="ob-callout-txt">팀 공유는 <b>구독 기능</b>이에요.<br>초대받아 <b>참여</b>만 한다면 <b>라이트 플랜(월 4,900원)</b>이면 충분해요.</span></div>
     <div class="ob-setup-form">
       <button type="button" class="btn ${isIn ? 'b-ghost' : 'b-blue'}" id="obInvLogin" style="width:100%;justify-content:center;margin-bottom:10px;">${isIn ? '✓ 로그인됨' : '① ☁️ 로그인'}</button>
       <label class="ob-setup-label">② 팀에 표시될 이름</label>

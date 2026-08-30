@@ -284,7 +284,7 @@
   /* ════════ 팀 만들기 / 참여 / 나가기 ════════ */
   CloudTeams.createTeam = async function (name) {
     if (!loggedIn()) { toast('먼저 로그인해주세요', 'err'); return; }
-    if (window.Subs && !Subs.gateFeature('teamCreate', '팀 만들기', '팀 만들기는 베이직 이상 플랜에서 가능합니다. 팀원 플랜은 초대 코드로 참여만 할 수 있어요.')) return;
+    if (window.Subs && !Subs.gateFeature('teamCreate', '팀 만들기', '팀 만들기는 베이직 이상 플랜에서 가능합니다. 라이트 플랜은 초대 코드로 참여만 할 수 있어요.')) return;
     name = (name || '').trim();
     if (!name) { toast('팀 이름을 입력해주세요', 'err'); return; }
     var code = genCode();
@@ -304,7 +304,7 @@
 
   CloudTeams.joinByCode = async function (code) {
     if (!loggedIn()) { toast('먼저 로그인해주세요', 'err'); return; }
-    if (window.Subs && !Subs.gateFeature('share', '팀 공유', '팀 참여는 팀원 플랜(월 4,900원)부터 가능합니다.')) return;
+    if (window.Subs && !Subs.gateFeature('share', '팀 공유', '팀 참여는 라이트 플랜(월 4,900원)부터 가능합니다.')) return;
     code = (code || '').trim().toUpperCase();
     if (!code) { toast('초대 코드를 입력해주세요', 'err'); return; }
     try {
@@ -526,7 +526,7 @@
                   : '') +
                 '<br>내가 직접 만든 업종과 지침은 그대로 남고, 업로드한 엑셀 견적 양식은 공유되지 않습니다.' +
               '</div>') +
-          (isOwner ? '<div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">초대받는 팀원은 <b>팀원 플랜(월 4,900원)</b>으로 참여할 수 있어요.</div>' : '') +
+          (isOwner ? '<div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">초대받는 팀원은 <b>라이트 플랜(월 4,900원)</b>으로 참여할 수 있어요.</div>' : '') +
         '</div>';
       });
     } else {

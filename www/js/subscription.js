@@ -594,6 +594,24 @@
     '</div>';
 
   /* ── 요금제 안내 ── */
+  /* ★ 2026-08-30 카드 안 항목을 문장 나열(·)에서 표처럼 줄마다 라벨/값으로 정렬.
+       데이터·문구는 그대로, 배치만 한눈에 비교되게 바꾼 것 — 카드 형태 자체는 유지. */
+  function _planFeatRow(ic, label, val) {
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;">' +
+      '<span style="color:var(--mu);">' + ic + ' ' + label + '</span>' +
+      '<span style="font-weight:700;text-align:right;">' + val + '</span></div>';
+  }
+  function _planFeatRows(p) {
+    var schedVal = p.unlimited ? '무제한*' : (p.sched ? ('월 ' + p.sched + '회') : '—');
+    var blogVal  = p.unlimited ? '무제한*' : (p.blog  ? ('월 ' + p.blog  + '회') : '—');
+    var chatVal  = p.chatMedia ? '사진·영상 ✓' : '텍스트/문서만';
+    var teamVal  = p.teamCreate ? '만들기 ✓ · 참여 ✓' : '참여만 가능';
+    return _planFeatRow('📩', 'AI 일정등록', schedVal) +
+           _planFeatRow('✍️', 'AI 글작성', blogVal) +
+           _planFeatRow('🤝', '일정공유', p.share ? '✓' : '—') +
+           _planFeatRow('💬', '채팅', chatVal) +
+           _planFeatRow('👥', '팀', teamVal);
+  }
   Subs.openPlans = function () {
     load();
     var billingOn = !!(window.Billing && Billing.available && Billing.available());
@@ -610,12 +628,8 @@
             (cur ? ' <span style="font-size:11px;color:var(--ac);">현재 이용중</span>' : '') + '</b>' +
           '<b style="font-size:14px;">월 ' + p.price.toLocaleString('ko-KR') + '원</b>' +
         '</div>' +
-        '<div style="font-size:12px;color:var(--mu);margin-top:6px;line-height:1.6;">' +
-          (p.unlimited ? 'AI 일정등록·글작성 무제한*'
-                       : ((p.sched || p.blog) ? ('AI 일정등록 월 ' + p.sched + '회 · 글작성 월 ' + p.blog + '회')
-                                              : 'AI 기능 미포함 (무료 제공분만 사용)')) +
-          '<br>일정공유 ✓ · 채팅 ✓' + (p.chatMedia ? ' · 채팅 사진/영상 ✓' : ' · 채팅은 텍스트/문서만') +
-          (p.teamCreate ? '<br>팀 만들기 ✓ · 팀 참여 ✓' : '') +
+        '<div style="font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);">' +
+          _planFeatRows(p) +
         '</div>' + (p.teamCreate ? '' : LITE_WARN) + buyBtn + '</div>';
     }).join('');
     var footMsg = billingOn

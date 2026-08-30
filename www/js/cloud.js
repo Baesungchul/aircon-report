@@ -10,6 +10,7 @@
   window.Cloud = window.Cloud || {};
   Cloud.ready = false;     // Firebase 초기화 성공 여부
   Cloud.user  = null;      // 로그인된 사용자 (firebase user)
+  var _prevUid = null;     // ★ 2026-08-30 '로그아웃→로그인' 전환을 가려내려고 기억한다
   Cloud.auth  = null;
   Cloud.db    = null;
 
@@ -53,9 +54,23 @@
       try { Cloud.db.enablePersistence({ synchronizeTabs: true }); } catch (e) {}
       Cloud.ready = true;
       Cloud.auth.onAuthStateChanged(function (u) {
+        var _wasOut = !_prevUid;
         Cloud.user = u || null;
+        _prevUid = u ? u.uid : null;
         if (u) ensureProfile(u);
         updateUI();
+        /* ★ 2026-08-30 로그인에 성공하면 로그인 창을 닫는다.
+             ☠️ 그 전에는 성공해도 창이 그대로 떠 있어서, 온보딩의 '다음 →' 버튼을 가렸다.
+                사용자에게는 위쪽 X 말고 나갈 길이 없어 보였다(실사용 제보).
+             ⭐ 여기 한 곳만 고치면 이 창을 여는 여섯 군데가 모두 해결된다 —
+                온보딩 4곳 · 요금제 로그인 유도(subscription) · 서버복구(backup).
+             ⚠️ '로그아웃 → 로그인' 전환일 때만 닫는다. 이미 로그인한 채로 계정 정보를
+                보려고 연 경우까지 닫아버리지 않도록. (앱 시작 시 자동 로그인도 이 가지를
+                지나지만 그땐 창이 안 열려 있어 아무 일도 일어나지 않는다)
+             ⚠️ 설정 화면은 mountInline 이라 'open' 클래스를 쓰지 않는다 — 영향 없다.
+             ⚠️ 아래 이벤트 통지보다 **먼저** 닫는다. 온보딩이 그 이벤트로 화면을 다시 그리는데,
+                창이 남아 있으면 새로 그린 '다음' 버튼이 또 가려진다. */
+        if (u && _wasOut) { try { closeModal(); } catch (e) {} }
         // 로그인 상태 변화를 다른 모듈에 알림
         document.dispatchEvent(new CustomEvent('cloud-auth-changed', { detail: { user: u } }));
       });

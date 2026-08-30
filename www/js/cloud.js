@@ -165,9 +165,17 @@
       }).then(function () {
         toast('구글 계정으로 로그인되었습니다.', 'ok');
       }).catch(function (e) {
-        // 사용자가 계정 선택창을 닫은 경우는 조용히 무시
+        /* ★ 2026-08-30 버그수정 — "로그인창은 뜨는데 이후 에러 없이 아무 반응 없음".
+             예전엔 메시지에 cancel/closed/popup/12501 이 '들어만 있어도' 통째로 무시했다.
+             그런데 SocialLogin 플러그인은 실패 사유를 전부 "Google Sign-In failed: ..." 로
+             묶어서 던지는데, 그 안에 우연히 저 단어가 섞이면(예: 팝업 관련 안내 문구) 진짜 오류도
+             조용히 삼켜져 사용자는 창만 닫히고 아무 설명도 못 봤다.
+             → 콘솔엔 항상 원본 오류를 남기고, '사용자가 취소함'은 플러그인이 주는
+                코드(USER_CANCELLED)로만 판정한다. */
+        console.warn('[Cloud] 구글 로그인 실패', (e && e.code) || '', (e && e.message) || '', e);
+        var code = (e && e.code) || '';
         var msg = (e && (e.message || e.error || '')) + '';
-        if (/cancel|closed|popup|12501|canceled/i.test(msg)) return;
+        if (code === 'USER_CANCELLED' || /cancelled by user|popup-closed-by-user|cancelled-popup-request/i.test(msg)) return;
         toast(errMsg(e), 'err'); throw e;
       });
     }

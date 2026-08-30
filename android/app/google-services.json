@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "370264394871",
+    "project_id": "work-report-826ec",
+    "storage_bucket": "work-report-826ec.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:370264394871:android:4367fbe7a76d50c52f0a72",
+        "android_client_info": {
+          "package_name": "com.baesungchul.workreport"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "370264394871-kiu4m916phdeadmouhqtngqm6bcs1e63.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.baesungchul.workreport",
+            "certificate_hash": "e15bfa3ea73a280d54c68152e1ae15381bade6e5"
+          }
+        },
+        {
+          "client_id": "370264394871-3oba6d734etlu6qu4so98rilb2uhf2c1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2KOzBCuGnmTKAhcfoi45EAmcn8cnYQko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "370264394871-3oba6d734etlu6qu4so98rilb2uhf2c1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

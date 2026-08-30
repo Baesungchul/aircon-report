@@ -21,6 +21,14 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+        debug {
+            /* ★ 2026-08-30 테스트 APK 를 '별도 앱'으로 깔기 위한 접미사.
+               ☠️ 이게 없으면 서명이 달라 기존 앱을 지워야 설치된다.
+                  그런데 앱을 지우면 EXTERNAL 저장소의 사진이 함께 사라진다
+                  (2026-08 사진 1,059장 유실과 같은 경로). 절대 빼지 말 것. */
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-test"
+        }
     }
 }
 

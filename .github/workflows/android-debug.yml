@@ -1,0 +1,59 @@
+# 폰에서 확인할 테스트 APK 를 자동으로 만든다.
+#   쓰는 법: main 에 push 하면 자동 실행. 수동 실행은 Actions 탭의 "Run workflow".
+#   결과물: 실행 화면 아래 Artifacts 의 test-apk (14일 보관)
+#
+# ☠️ 이 APK 는 applicationId 가 com.baesungchul.workreport.debug 라
+#    런처에 "현장매니저 (테스트)" 로 따로 깔린다. 진짜 앱과 사진은 건드리지 않는다.
+#    (같은 applicationId 로 만들면 기존 앱을 지워야 설치되고, 지우면 사진이 사라진다)
+#
+# ⚠️ 테스트 빌드에서 안 되는 것: 결제(RevenueCat), 푸시 알림.
+#    서명이 달라서 그렇고, 정상이다. 화면·로직 확인용이다.
+
+name: 테스트 APK 빌드
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v4
+
+      - name: Node 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: Java 준비 (AGP 8.13 / Gradle 8.14 → JDK 21)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: 웹 자산 동기화
+        run: npx cap sync android
+
+      - name: APK 빌드
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: APK 올리기
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error

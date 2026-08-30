@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- 테스트 빌드에서만 쓰이는 이름. 런처에서 진짜 앱과 구분하기 위한 것. -->
+<resources>
+    <string name="app_name">현장매니저 (테스트)</string>
+    <string name="title_activity_main">현장매니저 (테스트)</string>
+</resources>

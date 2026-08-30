@@ -37,6 +37,12 @@
     var us=unitsOf(d); for (var i=0;i<us.length;i++){ var c=us[i].customer; if (c && c[field]) return c[field]; }
     return '';
   }
+  /* ★ 2026-08-30 고객명 — 공용시설은 'contact'(담당자) 필드를 그대로 재사용,
+     가정용은 customer.name. 공유 카드 쪽에서는 둘 다 하나의 'name' 으로 합쳐 보낸다. */
+  function nameField(d){
+    if (isFac(d)) { var fc=facOf(d); return (fc && fc.contact) || ''; }
+    return firstField(d, 'name');
+  }
   function safeId(name){ return String(name||'').replace(/[\/\.\#\$\[\]]/g, '_').slice(0, 200); }
 
   function toPayload(item){
@@ -65,6 +71,7 @@
       totalUnits: d.totalUnits || (unitsOf(d)||[]).length || 0,
       totalPhotos:d.totalPhotos || 0,
       unitNames:  unitNames,
+      name:       nameField(d) || '',
       target:     firstField(d, 'workTarget') || '',
       memo:       firstField(d, 'memo') || '',
       phone:      firstField(d, 'phone') || '',

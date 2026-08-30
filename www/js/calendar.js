@@ -2646,7 +2646,7 @@
     var w = item.data;
 
     var sess = null, isFac = false, fc = {}, u0 = {};
-    var curTarget, curPhone, curAddr, curMemo, curPrice, curStart, curEnd;
+    var curName, curTarget, curPhone, curAddr, curMemo, curPrice, curStart, curEnd;
     var curDate, curWorker, curUnit, curEndDate;
     var curProfileId = '', curProfileSnap = null;
     var sharedUnits = [], multiUnit = false;
@@ -2659,6 +2659,7 @@
       isFac       = (w.workType === 'facility');
       sharedUnits = w.unitNames || [];
       multiUnit   = sharedUnits.length > 1;
+      curName     = w.name || '';
       curTarget   = w.target || '';
       curPhone    = w.phone || '';
       curAddr     = w.address || '';
@@ -2696,6 +2697,7 @@
       isFac = (sess.workType === 'facility') || w.workType === 'facility';
       fc = sess.facilityCustomer || {};
       u0 = (w.units && w.units[0] && w.units[0].customer) ? w.units[0].customer : {};
+      curName    = isFac ? (fc.contact || '')    : (u0.name || '');
       curTarget  = isFac ? (fc.workTarget || '') : (u0.workTarget || '');
       curPhone   = isFac ? (fc.phone || '')      : (u0.phone || '');
       curAddr    = isFac ? (fc.address || '')    : (u0.address || '');
@@ -2758,6 +2760,8 @@
             /* ⭐ 사본(curProfileSnap)을 같이 넘긴다 — id 는 폰마다 달라서, 이름이 같은 내 업종으로
                  맞춰 골라주려면 사본이 있어야 한다. 없으면 '(상대 업종)' 으로 잠긴다. */
             ((window.ProfilesUI && ProfilesUI.selectHtml) ? ProfilesUI.selectHtml('weProfile', curProfileId, '업종', curProfileSnap) : '') +
+            '<div><label style="font-size:12px;color:var(--mu);font-weight:700;">고객명 <span style="font-weight:400;">(선택)</span></label>' +
+              '<input class="cust-inp" id="weName" type="text" value="' + _escH(curName) + '" placeholder="예: 홍길동" style="width:100%;margin-top:4px;"></div>' +
             '<div><label style="font-size:12px;color:var(--mu);font-weight:700;">작업대상</label>' +
               '<input class="cust-inp" id="weTarget" type="text" value="' + _escH(curTarget) + '" placeholder="예: 벽걸이 2대" style="width:100%;margin-top:4px;"></div>' +
             '<div><label style="font-size:12px;color:var(--mu);font-weight:700;">전화번호</label>' +
@@ -2809,6 +2813,7 @@
         apt: gv('weApt'),
         unit: (isShared && multiUnit) ? '' : gv('weUnit'),
         worker: gv('weWorker'),
+        name: gv('weName'),
         target: gv('weTarget'),
         phone: gv('wePhone'),
         address: gv('weAddr'),
@@ -2828,6 +2833,7 @@
       }
     });
     document.getElementById('weSave').addEventListener('click', async function () {
+      var nm = document.getElementById('weName').value.trim();
       var t  = document.getElementById('weTarget').value.trim();
       var ph = document.getElementById('wePhone').value.trim();
       var ad = document.getElementById('weAddr').value.trim();
@@ -2860,6 +2866,7 @@
         var fields = {
           apt: ap,
           worker: nw,
+          name: nm,
           target: t,
           phone: ph,
           address: ad,
@@ -2936,6 +2943,7 @@
         else { if (!sess.units) sess.units = []; if (!sess.units[0]) sess.units[0] = {}; sess.units[0].customer = sess.units[0].customer || {}; tc = sess.units[0].customer; }
         tc.workTarget = t; tc.phone = ph; tc.address = ad; tc.memo = mm;
         tc.price = pr; tc.startTime = st; tc.endTime = et;
+        if (isFac) tc.contact = nm; else tc.name = nm;   // ★ 2026-08-30 고객명(공용시설은 담당자 필드 재사용)
         if (ap) { sess.apt = ap; w.apt = ap; }
         sess.worker = nw;
         /* ★ 2026-08-16 업종을 _session.json 에 새긴다. 스냅샷도 같이 —
@@ -3322,6 +3330,8 @@
                 '<input class="cust-inp" id="qwUnit" type="text" placeholder="예: 101동 502호" style="width:100%;margin-top:4px;"></div>' +
             '</div>' +
             '<div style="font-size:11px;color:var(--mu);margin-top:-4px;"><span style="color:#e74c3c;">*</span> 필수 항목 · 작업명 또는 호수 중 하나는 꼭 입력</div>' +
+            '<div><label style="font-size:12px;color:var(--mu);font-weight:700;">고객명 <span style="font-weight:400;">(선택)</span></label>' +
+              '<input class="cust-inp" id="qwName" type="text" placeholder="예: 홍길동" style="width:100%;margin-top:4px;"></div>' +
             /* ★ 2026-08-16 업종 — 고른 업종에 따라 보고서 제목·호칭·글쓰기 지침·견적서 양식이 달라진다 */
             ((window.ProfilesUI && ProfilesUI.selectHtml)
                ? ProfilesUI.selectHtml('qwProfile', (prefill && prefill.profileId) || '', '업종') : '') +
@@ -3356,6 +3366,7 @@
     try { if (window.ProfilesUI && ProfilesUI.bindSelect) ProfilesUI.bindSelect('qwProfile'); } catch (e) {}
     if (prefill) {
       var _setv = function (id, v) { var el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
+      _setv('qwName', prefill.name);
       _setv('qwApt', prefill.apt); _setv('qwUnit', prefill.unit); _setv('qwWorker', prefill.worker);
       _setv('qwTarget', prefill.target); _setv('qwPhone', prefill.phone); _setv('qwAddr', prefill.address);
       _setv('qwPrice', (prefill.price ? String(prefill.price) : '')); _setv('qwStart', prefill.startTime); _setv('qwEnd', prefill.endTime);
@@ -3382,6 +3393,7 @@
        (없어진 '사진 작업추가' 메뉴가 하던 일). */
     var _qwSave = async function (openAfter) {
       var date   = document.getElementById('qwDate').value || theDate;
+      var custName = document.getElementById('qwName').value.trim();
       var apt    = document.getElementById('qwApt').value.trim();
       var unit   = document.getElementById('qwUnit').value.trim();
       var worker = document.getElementById('qwWorker').value.trim();
@@ -3449,7 +3461,7 @@
             beforeMeta: [],
             afterMeta: [],
             specials: [],
-            customer: { phone: phone, address: addr, memo: memo, workTarget: target, price: price, startTime: st, endTime: et }
+            customer: { name: custName, phone: phone, address: addr, memo: memo, workTarget: target, price: price, startTime: st, endTime: et }
           }]
         };
         var jsonText = JSON.stringify(sessionData, null, 2);
@@ -3538,14 +3550,14 @@
     (w.units || []).forEach(function (u) {
       parts.push(u.name || '');
       var c = u.customer || {};
-      parts.push(c.workTarget || '', c.phone || '', c.address || '', c.memo || '', String(c.price || ''), c.startTime || '', c.endTime || '');
+      parts.push(c.name || '', c.workTarget || '', c.phone || '', c.address || '', c.memo || '', String(c.price || ''), c.startTime || '', c.endTime || '');
     });
     return parts.join(' ').toLowerCase();
   }
 
   // 공유(shared) 일정용 검색 텍스트 (로컬 작업과 데이터 구조가 다름)
   function _searchTextShared(d) {
-    var parts = [d.apt || '', d.date || '', d.target || '', d.memo || '', d.phone || '', d.address || '', d.partnerName || ''];
+    var parts = [d.apt || '', d.date || '', d.name || '', d.target || '', d.memo || '', d.phone || '', d.address || '', d.partnerName || ''];
     (d.unitNames || []).forEach(function (n) { parts.push(n || ''); });
     return parts.join(' ').toLowerCase();
   }
@@ -3841,6 +3853,7 @@
           sess.profileSnap = _snap;
         }
       }
+      if (f.name !== undefined)      { if (isFac) tc.contact = f.name; else tc.name = f.name; }
       if (f.target !== undefined)    tc.workTarget = f.target;
       if (f.phone !== undefined)     tc.phone = f.phone;
       if (f.address !== undefined)   tc.address = f.address;

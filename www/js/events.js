@@ -2449,8 +2449,10 @@ async function saveCustomerForUnit(u) {
       throw new Error('customerSave 함수 없음 - customer_storage.js 로드 실패?');
     }
 
+    const nameEl = document.querySelector(`.cust-inp[data-uid="${u.id}"][data-field="name"]`);
     const addrEl = document.querySelector(`.cust-inp[data-uid="${u.id}"][data-field="address"]`);
     const memoEl = document.querySelector(`.cust-memo[data-uid="${u.id}"]`);
+    const name = (nameEl?.value || u.customer.name || '').trim();
     const address = (addrEl?.value || u.customer.address || '').trim();
     const memo = (memoEl?.value || u.customer.memo || '').trim();
 
@@ -2466,6 +2468,7 @@ async function saveCustomerForUnit(u) {
 
     const result = await customerSave({
       phone: norm,
+      name: name || undefined,   // 비어 있으면 기존 이름 보존(신규는 호수명 폴백)
       address: address,
       memo: memo,
       visit: {
@@ -2492,6 +2495,10 @@ async function saveCustomerForUnit(u) {
       showToast(`🔔 재의뢰 고객! ${existing.name || norm} (${existing.visitCount}회)`, 'ok');
       u._lastShownExisting = norm;
 
+      if (nameEl && !nameEl.value && existing.name) {
+        nameEl.value = existing.name;
+        u.customer.name = existing.name;
+      }
       if (addrEl && !addrEl.value && existing.address) {
         addrEl.value = existing.address;
         u.customer.address = existing.address;

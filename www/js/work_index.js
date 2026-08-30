@@ -200,6 +200,8 @@ function sessionToIndexEntry(folderName, sessionData) {
     units: sessionData.units.map(u => ({
       name: u.name,
       customer: {
+        name: u.customer?.name || '',
+        workTarget: u.customer?.workTarget || '',
         phone: u.customer?.phone || '',
         address: u.customer?.address || '',
         memo: u.customer?.memo || '',

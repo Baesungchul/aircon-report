@@ -191,7 +191,7 @@
         date: d.date, apt: d.apt || '', workType: d.workType || 'home',
         price: d.price || 0, startTime: d.startTime || '', endTime: d.endTime || '',
         totalUnits: d.totalUnits || 0, totalPhotos: d.totalPhotos || 0,
-        unitNames: d.unitNames || [], target: d.target || '', memo: d.memo || '',
+        unitNames: d.unitNames || [], name: d.name || '', target: d.target || '', memo: d.memo || '',
         phone: d.phone || '', address: d.address || '',
         workId: d.workId || docId, manual: !!d.manual, claimedBy: d.claimedBy || null,
         worker: d.worker || '',
@@ -790,6 +790,7 @@
         var _wid = d.workId || doc.id;
         var _ov = {
           apt: d.apt, price: d.price, startTime: d.startTime, endTime: d.endTime,
+          name: d.name,   // ★ 2026-08-30 고객명 전파
           target: d.target, memo: d.memo, phone: d.phone, address: d.address,
           worker: d.worker, date: d.date, endDate: d.endDate,   // ★ 2026-08-13 담당자·일정변경 전파
           workType: d.workType                                  // ★ 2026-08-13 가정용/공용시설 전파
@@ -867,7 +868,7 @@
        ⚠️ 클라우드 표기는 'facility' / 'home', 로컬(_session.json)은 'facility' / 'household' 로 다르다. */
     /* ★ 2026-08-16 업종(profileId/Icon/Name) 추가 — 상대가 상세창에서 업종을 바꾸면 전파된다.
        ⚠️ 아이콘·이름을 같이 보내야 한다. 상대 폰엔 내 프로필 목록이 없어 id 만으로는 못 그린다. */
-    ['apt','target','phone','address','price','startTime','endTime','memo','worker','date','endDate','workType',
+    ['apt','name','target','phone','address','price','startTime','endTime','memo','worker','date','endDate','workType',
      'profileId','profileIcon','profileName','profileSnap'].forEach(function(k){ if (fields[k] !== undefined) patch[k]=fields[k]; });
     if (fields.unit !== undefined) { patch.unitNames = fields.unit ? [fields.unit] : []; patch.totalUnits = fields.unit ? 1 : 0; }
     patch.editedBy = myUid();

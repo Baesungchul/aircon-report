@@ -245,7 +245,7 @@ function renderAll() {
           <div class="cust-toggle rowlink" data-uid="${u.id}">
             <span class="rowlink-lead">${ICO.phone}</span>
             <span class="cust-toggle-title">고객 정보</span>
-            ${u.customer?.phone ? `<span class="cust-toggle-info">${escH(u.customer.phone)}${u.customer.address?' · '+escH(u.customer.address):''}</span>` : '<span class="cust-toggle-empty">미입력</span>'}
+            ${u.customer?.name || u.customer?.phone ? `<span class="cust-toggle-info">${u.customer?.name?escH(u.customer.name)+' · ':''}${escH(u.customer?.phone||'')}${u.customer?.address?' · '+escH(u.customer.address):''}</span>` : '<span class="cust-toggle-empty">미입력</span>'}
             <span class="cust-toggle-arrow">${u.customerOpen ? ICO.chevD : ICO.chevR}</span>
           </div>
           <div class="cust-content" style="${u.customerOpen ? '' : 'display:none;'}">
@@ -256,6 +256,8 @@ function renderAll() {
 
             ${renderCustomerCopyButtons(u)}
 
+            <label class="cust-fld-lb">고객명 <span style="font-weight:400;color:var(--mu);">(선택)</span></label>
+            <input class="cust-inp" type="text" placeholder="예: 홍길동" data-uid="${u.id}" data-field="name" value="${escH(u.customer?.name || '')}">
             <label class="cust-fld-lb">전화번호</label>
             <input class="cust-inp" type="text" inputmode="tel" placeholder="010-1234-5678" data-uid="${u.id}" data-field="phone" value="${escH(u.customer?.phone || '')}">
             <label class="cust-fld-lb">주소</label>

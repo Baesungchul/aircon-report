@@ -83,7 +83,7 @@ function quickSnapshot() {
       const bIds = (u.before || []).filter(p => !p._borrowedIncoming).map(p => p.id || p.name || '').join('|');
       const aIds = (u.after || []).filter(p => !p._borrowedIncoming).map(p => p.id || p.name || '').join('|');
       const sp = (u.specials || []).map(s => (s.desc||'') + ':' + (s.photos||[]).filter(p=>!p._borrowedIncoming).length).join(';');
-      const cust = u.customer ? `${u.customer.phone||''}|${u.customer.address||''}|${u.customer.memo||''}` : '';
+      const cust = u.customer ? `${u.customer.name||''}|${u.customer.phone||''}|${u.customer.address||''}|${u.customer.memo||''}` : '';
       return `${u.name||''}::${bIds}::${aIds}::${sp}::${cust}`;
     }).join('@@');
     return `${apt}|${date}|${worker}|${wt}|${pid}|${fc}|${unitsKey}`;
@@ -710,7 +710,9 @@ async function doSave() {
         try {
           await customerSave({
             phone: norm,
-            // name 미전달 - 기존 이름 보존, 신규 시 visit.unit 사용
+            // ★ 2026-08-30 고객명 입력칸이 생겨 명시 전달. 비어 있으면 기존 이름 보존,
+            //   신규 고객이면 customerSave 내부 폴백(visit.unit=호수명)이 그대로 적용된다.
+            name: u.customer.name || undefined,
             address: u.customer.address || '',
             memo: u.customer.memo || '',
             visit: {

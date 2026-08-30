@@ -13,8 +13,29 @@ keystore/
 .env.*.local
 *.env
 
-# 네이티브 빌드 산출물 (npx cap add android 로 재생성 가능)
-android/
+# 네이티브 — 산출물은 제외하되, '손으로 고친 것'만 추적한다 (2026-08-30)
+#   왜: android/ 를 통째로 빼두면 매니페스트 권한·앱이름·직접 만든 플러그인 자바가
+#       저장소 어디에도 없어서, PC 가 잘못되면 복구할 방법이 없다.
+#   ⚠️ 'android/' 처럼 폴더째 제외하면 git 이 그 안으로 들어가지 않아
+#      아래 ! 예외가 전부 무효가 된다. 반드시 단계별로 열어야 한다.
+android/*
+!android/build.gradle
+!android/variables.gradle
+!android/app/
+android/app/*
+!android/app/build.gradle
+!android/app/src/
+android/app/src/*
+!android/app/src/main/
+android/app/src/main/*
+!android/app/src/main/AndroidManifest.xml
+!android/app/src/main/java/
+!android/app/src/main/res/
+#   ⛔ 공개 저장소이므로 넣지 않는다
+android/app/google-services.json
+#   캡시터가 만들어 주는 것은 추적 불필요
+android/app/src/main/java/com/getcapacitor/
+
 ios/
 *.apk
 *.aab

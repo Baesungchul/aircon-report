@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <!-- 2026-08-23 · targetSdk 36 대응
+             Android 16 부터 화면 최소너비 600dp 이상(태블릿·펼친 폴더블)에서는
+             screenOrientation / resizableActivity / minAspectRatio 가 전부 무시된다.
+             이 앱은 세로 고정이고 내장 카메라가 가로 4:3 고정을 전제로 하므로
+             당분간 기존 동작을 유지한다.
+             ⚠️ 이 속성은 임시 조치이며 API 37 에서 제거될 예정 → 그전에 가로 레이아웃 대응 또는 태블릿 미지원 선언 필요 -->
+        <property
+            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+            android:value="true" />
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:screenOrientation="portrait"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 13+ 알림 권한 (채팅 푸시알림) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 2026-08-27 · 정확한 시간 알림
+         실측: '30분 전' 으로 예약한 작업 알림이 7분 전에 왔다(23분 지연).
+         원인은 예약이 아니라 전달이다 — @capacitor/local-notifications 의
+         LocalNotificationManager.setExactIfPossible() 은 Android 12(S) 이상에서
+         canScheduleExactAlarms() 가 false 면 setExactAndAllowWhileIdle 대신
+         부정확한 setAndAllowWhileIdle 로 폴백한다. 절전(Doze) 중에는 안드로이드가
+         이런 알람을 몰아서 처리하므로 수 분~수십 분 밀린다.
+         ⚠️ USE_EXACT_ALARM 이 아니라 SCHEDULE_EXACT_ALARM 이다 — 이쪽은 Play 심사 소명서가 필요 없다.
+         ⚠️ targetSdk 33+ 는 이 권한이 자동 허용되지 않는다. 사용자가 시스템 설정에서 켜야 하고,
+            설정 ▸ 🔔 일정 알림 의 '정확한 시간에 알림 받기' 버튼이 그 화면을 연다(notify.js requestExact). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- In-app camera (getUserMedia) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Gallery save: only needed on Android 9 (API 28) and below. API 29+ uses MediaStore (no permission). -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+</manifest>

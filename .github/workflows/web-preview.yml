@@ -1,0 +1,50 @@
+# www/ 를 Firebase Hosting 미리보기 채널에 자동으로 올린다.
+#   목적: 폰에서 바로 확인. push 하면 저장해둔 주소의 내용이 갱신된다(주소는 그대로).
+#   주소 확인: PC 에서 `firebase hosting:channel:list`
+#              또는 이 워크플로 실행 로그의 'Channel URL' 줄
+#
+# ⚠️ 운영(소개페이지)에는 영향 없다 — firebase.json 이 아니라 firebase.www.json 을 쓰고,
+#    라이브 채널이 아니라 'app-test' 미리보기 채널에만 올린다.
+#
+# 🔑 준비 (한 번만): 저장소 Settings → Secrets and variables → Actions 에
+#    FIREBASE_SERVICE_ACCOUNT 라는 이름으로 서비스 계정 JSON 을 통째로 붙여넣을 것.
+#    ⛔ 이 JSON 은 '진짜 비밀'이다. 저장소에 파일로 넣지 말 것.
+
+name: 웹 미리보기 배포
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v4
+
+      - name: Node 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 미리보기 채널에 배포
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA_JSON" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT 시크릿이 없습니다. 저장소 Settings → Secrets and variables → Actions 에서 등록해 주세요."
+            exit 1
+          fi
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx --yes firebase-tools@latest hosting:channel:deploy app-test \
+            --config firebase.www.json \
+            --project work-report-826ec \
+            --expires 30d \
+            --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"

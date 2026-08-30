@@ -1,4 +1,9 @@
-// 서비스워커 v599 (앱 v3.2.2 · versionCode 23 · 2026-08-27) — 빌드 대기
+// 서비스워커 v600 (앱 v3.2.2 · 2026-08-30) — 빌드 대기
+//   ★ v600 담긴 것: AI 프록시 인증(ai.js 가 Firebase ID 토큰을 보냄)
+//     — 깃허브 공개 저장소에 PROXY_URL 이 그대로 있어 누구나 호출 가능하던 것을 막았다.
+//     ⚠️ 앱만 올리면 안 된다. vercel-proxy 를 먼저 배포해야 순서가 맞는다.
+//        (프록시 먼저 → 구버전 앱이 401 로 죽는다 / 앱 먼저 → 잠깐 열려 있을 뿐, 이쪽이 안전)
+//   v599 (2026-08-27, versionCode 23 로 업로드됨) 이하 이력:
 //   ⚠️ 이 줄의 v번호는 아래 CACHE 와 **반드시 같아야 한다.** 2026-08-26 에도 어긋나 있었다(주석 v584 / CACHE v586).
 //   ⚠️ 3.2.1 의 whatsnew 를 안 띄웠으므로 NOTES['3.2.2'] 에는 3.2.1 내용도 같이 담을 것.
 //   ⚠️ 이번 빌드는 `npx cap sync android` — 새 네이티브 플러그인(in-app-review)이 있어 cap copy 로는 부족하다.
@@ -7,7 +12,7 @@
 //           v597 페이스북 올리기 버튼(채널 키 'fb'→'facebook') / v598 달력 보기 전환(▦격자 ↔ ☰목록)
 //           v599 인앱 별점(review.js) + 설정 Play 리뷰 링크 + 격자에서도 위로 밀어 접기
 //   site/ 쪽: post.html 사진 ZIP 내려받기 + 새 파일 site/jszip.min.js → `firebase deploy --only hosting` 필요
-const CACHE = 'ac1004-v599';
+const CACHE = 'ac1004-v600';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

@@ -363,6 +363,17 @@
               var all = await loadCombinedRecords({ allDates: true });
               if (myGen !== _loadGen) return;
               _idxItems = (all || []).filter(function (it) {
+                /* ★ 2026-08-30 버그수정 — 달력 목록에 '작업명' 대신 전화번호가 나오던 원인.
+                   loadCombinedRecords 는 달력용이 아니라 기록·고객 목록용이라
+                   type:'work' 과 함께 **type:'customer'(고객 카드)** 도 돌려준다.
+                   그걸 그대로 _calItems 에 넣으니 아젠다 줄이 고객 카드로 그려졌고,
+                   _itemTitle 의 customer 분기가 `d.name || d.phone` 이라
+                   이름이 빈 고객은 제목 자리에 전화번호가 찍혔다.
+                   ⚠️ 더 나쁜 건 길이 판정이었다 — 고객 카드만 들어와도 _idxItems.length 가 참이 되어
+                      '복구 성공'으로 보고 멀쩡한 캐시를 고객 카드로 덮어썼다.
+                      작업만 남기면 이 경우 0건이 되어 아래 '캐시 유지' 가지로 제대로 떨어진다.
+                   (폴더 스캔이 일시 실패했을 때만 지나는 길이라 재실행하면 저절로 사라졌다) */
+                if (!it || it.type !== 'work') return false;
                 var d = (it.data && it.data.date) || (it.sortDate || '');
                 return String(d).slice(0, 7) === _month;
               });

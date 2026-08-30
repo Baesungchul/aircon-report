@@ -129,6 +129,23 @@
     try { if (window.Subs && Subs.addAiUsage) Subs.addAiUsage(usd, it, ot); } catch (e) {}
   }
 
+  /* ★ 2026-08-30 프록시 인증
+       저장소가 공개라 PROXY_URL 이 그대로 보인다 → 프록시가 로그인한 사용자만 통과시킨다.
+       여기서 Firebase ID 토큰을 붙여 보낸다. (getIdToken 은 만료 시 알아서 갱신한다)
+       ⚠️ 비로그인 AI 사용은 2026-08-24 부터 0회라(subscription.js INSTALL_TASTER)
+          이 헤더가 없어서 막히는 정상 사용자는 없다. */
+  async function _proxyHeaders() {
+    var h = { 'content-type': 'application/json' };
+    try {
+      var u = window.Cloud && Cloud.user;
+      if (u && u.getIdToken) {
+        var t = await u.getIdToken();
+        if (t) h['authorization'] = 'Bearer ' + t;
+      }
+    } catch (e) {}
+    return h;
+  }
+
   async function callClaude(opts) {
     var body = {
       model: opts.model || getModel(),
@@ -140,7 +157,7 @@
     try {
       res = await fetch(PROXY_URL, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: await _proxyHeaders(),
         body: JSON.stringify(body)
       });
     } catch (e) {
@@ -148,6 +165,12 @@
     }
     var data = null;
     try { data = await res.json(); } catch (e) {}
+    if (res.status === 401) {
+      throw new Error('AI 기능은 로그인 후 사용할 수 있습니다. 설정에서 로그인해 주세요.');
+    }
+    if (res.status === 503) {
+      throw new Error('인증 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
     if (!res.ok) {
       var msg = (data && data.error && (data.error.message || data.error)) || ('HTTP ' + res.status);
       throw new Error('AI 서버 오류: ' + String(msg).slice(0, 180));

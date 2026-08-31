@@ -859,6 +859,17 @@
       function onCancel() {
         if (mode === 2) snapBack();
         if (mode === 4) _setExpanded(_expanded, true);
+        /* ★ 2026-08-31 수정: 접기 드래그(mode 5) 도중 touchcancel(전화 수신,
+           OS 뒤로가기 제스처, 알림창 당김 등)이 발생하면 grid 가 줄어들던
+           중간 높이·중간 투명도에 transition:none 상태로 멈춰버려
+           "펼침 화면이 위쪽 절반만 보이거나 펼쳐지다 만 모습"으로 고정되는
+           버그가 있었다. onEnd 의 '문턱을 못 넘었을 때' 복구와 같은 방식으로
+           펼친 높이/투명도를 되돌린다. */
+        if (mode === 5) {
+          grid.style.transition = 'height .18s ease-out, opacity .18s ease-out';
+          grid.style.opacity    = '1';
+          grid.style.height     = (v5Base || _expandedHeight()) + 'px';
+        }
         mode = 0;
       }
 

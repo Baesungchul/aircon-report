@@ -14,6 +14,16 @@
   Cloud.auth  = null;
   Cloud.db    = null;
 
+  /* ★ 2026-08-31 로그인 세션 "복원 완료" 신호 — AI 글쓰기 등에서 Cloud.user 를 읽기 전에
+       기다리는 용도. 앱을 막 연 직후엔 Firebase 가 저장된 로그인 세션을 아직 복원 중일 수
+       있어서, 그 사이 Cloud.user 는 실제로는 로그인된 사용자인데도 null 이다. 이 시점에
+       AI 요청을 보내면 인증 헤더가 빠져서 서버가 401(로그인 필요)로 거부한다 — 실사용자가
+       "로그인했는데 로그인 오류가 뜬다"고 보고한 원인 중 하나. onAuthStateChanged 가 처음
+       호출되는 순간(로그인 여부와 무관하게) 또는 Firebase 초기화 자체가 실패하는 순간
+       한 번만 풀린다. */
+  var _authReadyResolve;
+  Cloud.authReadyPromise = new Promise(function (resolve) { _authReadyResolve = resolve; });
+
   // ── 토스트(있으면 사용, 없으면 alert) ──────────────
   function toast(msg, type) {
     if (typeof showToast === 'function') showToast(msg, type || 'ok');
@@ -36,10 +46,12 @@
   function initFirebase() {
     if (typeof firebase === 'undefined' || !firebase.initializeApp) {
       console.warn('[Cloud] Firebase SDK 미로드 - 클라우드 기능 비활성');
+      _authReadyResolve();   // ★ 기다리는 쪽이 무한 대기하지 않도록
       return false;
     }
     if (!configValid()) {
       console.warn('[Cloud] firebase_config.js 미설정 - 클라우드 기능 비활성');
+      _authReadyResolve();
       return false;
     }
     try {
@@ -54,6 +66,7 @@
       try { Cloud.db.enablePersistence({ synchronizeTabs: true }); } catch (e) {}
       Cloud.ready = true;
       Cloud.auth.onAuthStateChanged(function (u) {
+        _authReadyResolve();   // ★ 세션 복원 완료(로그인 여부와 무관하게 신호만) — 여러 번 불러도 무해
         var _wasOut = !_prevUid;
         Cloud.user = u || null;
         _prevUid = u ? u.uid : null;
@@ -71,8 +84,9 @@
              ⚠️ 아래 이벤트 통지보다 **먼저** 닫는다. 온보딩이 그 이벤트로 화면을 다시 그리는데,
                 창이 남아 있으면 새로 그린 '다음' 버튼이 또 가려진다. */
         if (u && _wasOut) { try { closeModal(); } catch (e) {} }
-        // 로그인 상태 변화를 다른 모듈에 알림
-        document.dispatchEvent(new CustomEvent('cloud-auth-changed', { detail: { user: u } }));
+        // 로그인 상태 변화를 다른 모듈에 알림 (단, 다른 계정 로그인 감지 시엔 자동 동기화를 건너뛴다)
+        if (u) { _checkLocalOwner(u); }
+        else { document.dispatchEvent(new CustomEvent('cloud-auth-changed', { detail: { user: null } })); }
       });
       console.log('[Cloud] 초기화 완료');
       return true;
@@ -191,9 +205,150 @@
       });
   };
 
+  /* ★ 2026-08-31 로그아웃 시 안내 — 로컬 데이터는 지워지지 않고 남는다는 것과,
+       다른 계정으로 로그인했을 때 실제로 일어나는 일을 미리 알려준다.
+       ⚠️ '자동 삭제'라고는 적지 않는다 — 로그아웃 자체는 삭제를 하지 않기 때문에,
+          사실과 다른 경고문은 오히려 신뢰를 깎는다. 실제 삭제는 '다른 계정으로 로그인한
+          순간'(아래 _checkLocalOwner)에 사용자가 원할 때만 그 자리에서 이뤄진다. */
+  function _hasLocalData() {
+    return (async function () {
+      try {
+        if (typeof window.getWorkIndex === 'function') {
+          var idx = await window.getWorkIndex();
+          if (idx && Array.isArray(idx.works) && idx.works.length) return true;
+        }
+      } catch (e) {}
+      try { if (JSON.parse(localStorage.getItem('ac_reminders_v1') || '[]').length) return true; } catch (e) {}
+      return false;
+    })();
+  }
+  async function _warnBeforeSignOut() {
+    try {
+      if (await _hasLocalData()) {
+        alert('ℹ️ 로그아웃해도 이 기기에 저장된 일정·고객 데이터는 지워지지 않고 그대로 남습니다.\n\n' +
+              '나중에 다른 계정으로 로그인하면, 이 데이터가 그 계정 것이 아니라는 걸 감지해서 자동 동기화를 건너뛰고, 그 자리에서 삭제할지 남겨둘지 물어봅니다.\n\n' +
+              '다른 사람이 이 기기를 쓸 예정이라면, 다음 로그인 때 뜨는 안내에서 "이전 데이터 삭제"를 선택하면 됩니다.');
+      }
+    } catch (e) {}
+  }
+
+  /* ★ 2026-08-31 다른 계정 로그인 시 로컬 데이터(사진·일정) 유출 방지
+       문제: 로그아웃은 Firebase 세션만 끊고 로컬 데이터(폰에 저장된 작업기록)는 그대로 둔다.
+       그 상태에서 '다른' 계정으로 로그인하면, cloud_sync.js 가 로그인 1.5초 뒤 자동으로
+       로컬 데이터를 그 계정 서버로 올려버린다 — 이전 사용자의 고객정보가 다른 계정에 섞여 들어간다.
+       또한 화면(작업 목록·달력)에도 이전 사용자의 데이터가 그대로 보인다.
+       대응: 이 기기의 로컬 데이터가 '누구 것'인지(ac_local_owner_uid) 기억해두고,
+       로그인한 계정이 그 사람과 다르면:
+         1) 자동 동기화를 일단 막고,
+         2) "이전 데이터를 삭제하고 새로 시작할지" 그 자리에서 confirm으로 물어본다.
+       [확인] → 이미 검증된 삭제 primitive(폴더 removeEntry + purgeWorkEverywhere)를
+                재사용해 실제로 지운다 (클라우드에는 손대지 않음 — cloud:false).
+       [취소] → 기존과 동일하게 동기화만 건너뛰고 데이터는 남겨둔다(안내 문구 표시).
+       같은 사람 재로그인이거나 이 기기에 기록된 주인이 아직 없으면(첫 로그인) 평소처럼 조용히 진행. */
+  var LOCAL_OWNER_KEY = 'ac_local_owner_uid';
+
+  // 이미 검증된 삭제 primitive 재사용 (dialogs.js의 deleteDateFolder, calendar.js의
+  // purgeWorkEverywhere와 동일한 방식) — 새 삭제 로직을 만들지 않는다.
+  async function _purgeMismatchedLocalData() {
+    try {
+      if (typeof photoFolderHandle === 'undefined' || !photoFolderHandle) {
+        alert('저장 폴더가 연결되어 있지 않아 삭제할 항목이 없습니다.');
+        return true;
+      }
+      try {
+        var perm = await photoFolderHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') perm = await photoFolderHandle.requestPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') { alert('쓰기 권한이 거부되어 삭제할 수 없습니다.'); return false; }
+      } catch (e) { alert('권한 확인 실패: ' + (e && e.message)); return false; }
+
+      var idx = null;
+      try { idx = await window.getWorkIndex(); } catch (e) {}
+      var works = (idx && Array.isArray(idx.works)) ? idx.works : [];
+
+      var failed = [];
+      for (var i = 0; i < works.length; i++) {
+        var name = works[i] && (works[i].folderName || works[i].name || works[i].workId);
+        if (!name) continue;
+        var deleted = false;
+        try {
+          await photoFolderHandle.removeEntry(name, { recursive: true });
+          deleted = true;
+        } catch (e1) {
+          try {
+            var dh = await photoFolderHandle.getDirectoryHandle(name);
+            if (typeof deleteDirectoryContents === 'function') await deleteDirectoryContents(dh);
+            await photoFolderHandle.removeEntry(name);
+            deleted = true;
+          } catch (e2) { /* 아래에서 failed 처리 */ }
+        }
+        if (!deleted) { failed.push(name); continue; }
+        try { if (typeof window.purgeWorkEverywhere === 'function') await window.purgeWorkEverywhere(name, { cloud: false }); }
+        catch (e3) {}
+      }
+
+      try { if (window.Reminders && Reminders.clearAll) await Reminders.clearAll(); } catch (e) {}
+      try { if (typeof invalidateWorkIndex === 'function') invalidateWorkIndex(); } catch (e) {}
+      try { if (typeof rebuildIndexFromFolders === 'function') await rebuildIndexFromFolders(); } catch (e) {}
+      try { if (typeof window.__calendarRefresh === 'function') window.__calendarRefresh(); } catch (e) {}
+
+      if (failed.length) {
+        alert('일부 항목(' + failed.length + '개)은 삭제하지 못했습니다.\n설정 > 작업기록 재생성 후, 남은 항목은 목록에서 직접 삭제해주세요.');
+      } else {
+        alert('✅ 이전 데이터 삭제가 완료되었습니다. 이제부터는 이 계정 데이터만 사용됩니다.');
+      }
+      return true;
+    } catch (e) {
+      alert('삭제 중 오류가 발생했습니다: ' + (e && e.message));
+      return false;
+    }
+  }
+
+  async function _checkLocalOwner(u) {
+    var owner = null;
+    try { owner = localStorage.getItem(LOCAL_OWNER_KEY); } catch (e) {}
+    var hasData = false;
+    try { hasData = await _hasLocalData(); } catch (e) {}
+    var mismatch = !!(owner && owner !== u.uid && hasData);
+    if (!mismatch) {
+      try { localStorage.setItem(LOCAL_OWNER_KEY, u.uid); } catch (e) {}
+      document.dispatchEvent(new CustomEvent('cloud-auth-changed', { detail: { user: u } }));
+      return;
+    }
+    console.warn('[Cloud] 다른 계정 로그인 감지 (기존 주인:', owner, '새 계정:', u.uid + ')');
+
+    var wantsDelete = false;
+    try {
+      wantsDelete = confirm(
+        '⚠️ 이 기기에는 다른 계정으로 저장된 일정·고객 데이터가 남아있습니다.\n\n' +
+        '이전 데이터를 삭제하고 이 계정으로 새로 시작할까요?\n\n' +
+        '[확인] 이전 데이터 삭제 후 계속\n' +
+        '[취소] 일단 보류 (자동 동기화만 건너뛰고 데이터는 남겨둠)\n\n' +
+        '※ 이 데이터가 사실 내 것이라면 [취소]를 누르고, 설정 화면의 "지금 동기화" 버튼을 이용해주세요.'
+      );
+    } catch (e) {}
+
+    if (wantsDelete) {
+      await _purgeMismatchedLocalData();
+      try { localStorage.setItem(LOCAL_OWNER_KEY, u.uid); } catch (e) {}
+      document.dispatchEvent(new CustomEvent('cloud-auth-changed', { detail: { user: u } }));
+      return;
+    }
+
+    try {
+      alert('⚠️ 이전 데이터를 남겨두었습니다.\n\n' +
+            '실수로 다른 사람 데이터가 이 계정 클라우드에 올라가지 않도록 자동 동기화를 건너뛰었습니다.\n\n' +
+            '이 데이터가 내 것이 맞다면 설정 > 로그인/계정 화면의 "지금 동기화" 버튼을 눌러주세요.\n' +
+            '내 것이 아니라면 각 작업을 열어 직접 삭제하거나, 앱을 삭제 후 다시 설치해 새로 시작해주세요.');
+    } catch (e) {}
+    try { localStorage.setItem(LOCAL_OWNER_KEY, u.uid); } catch (e) {}
+    document.dispatchEvent(new CustomEvent('cloud-auth-changed', { detail: { user: u, skipAutoSync: true } }));
+  }
+
   Cloud.signOut = function () {
     if (!Cloud.ready) return;
-    return Cloud.auth.signOut().then(function () { toast('로그아웃되었습니다.', 'ok'); });
+    return Promise.resolve(_warnBeforeSignOut()).then(function () {
+      return Cloud.auth.signOut().then(function () { toast('로그아웃되었습니다.', 'ok'); });
+    });
   };
 
   Cloud.resetPw = function (email) {
@@ -245,6 +400,7 @@
             '<div id="cloudShareArea" style="font-size:13px;color:var(--mu);text-align:center;padding:10px 0;">일정 공유 기능은 곧 추가됩니다.</div>' +
             '<div id="cloudTeamArea"></div>' +
             '<div style="margin-top:10px;font-size:11px;color:var(--mu);line-height:1.6;">ℹ️ 구독 해지 후 6개월간 미구독 상태가 지속되면 클라우드 데이터가 삭제될 수 있습니다(삭제 30일 전 안내).</div>' +
+            '<button class="btn b-ghost" id="cloudSyncNow" style="width:100%;justify-content:center;margin-top:8px;">🔄 지금 동기화</button>' +
             '<button class="btn b-red" id="cloudLogout" style="width:100%;justify-content:center;margin-top:8px;">로그아웃</button>' +
             '<button class="btn b-ghost" id="cloudDeleteAcct" style="width:100%;justify-content:center;margin-top:8px;font-size:11px;color:#d9534f;">🗑 계정·데이터 삭제</button>' +
           '</div>' +
@@ -294,6 +450,13 @@
       Cloud.signInWithGoogle().then(done, done);
     };
     document.getElementById('cloudLogout').onclick = function () { Cloud.signOut(); };
+    var _syncBtn = document.getElementById('cloudSyncNow');
+    if (_syncBtn) _syncBtn.onclick = function () {
+      if (!(window.CloudSync && CloudSync.fullSync)) { toast('동기화 기능을 불러오지 못했습니다.', 'err'); return; }
+      var b = this; b.disabled = true; toast('동기화 중...', 'ok');
+      CloudSync.fullSync().then(function () { b.disabled = false; toast('동기화 완료', 'ok'); },
+                                 function (e) { b.disabled = false; toast('동기화 실패: ' + ((e && e.message) || ''), 'err'); });
+    };
     var _delBtn = document.getElementById('cloudDeleteAcct');
     if (_delBtn) _delBtn.onclick = function () { Cloud.requestAccountDeletion(); };
   }

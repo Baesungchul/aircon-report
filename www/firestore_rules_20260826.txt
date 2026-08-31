@@ -1,4 +1,5 @@
 // ✅ 2026-08-26 콘솔 게시 완료 (2026-08-27 재확인)
+// 🆕 2026-08-31 admin_grants 블록 추가 — 아직 콘솔에 게시 안 함! 이 파일 전체를 Firebase 콘솔 Firestore Database → 규칙에 붙여넣고 게시할 것.
 //    확인법: 로그인 없이 REST 로 없는 문서를 읽어 404 면 허용, 403 이면 미게시.
 //    이 파일은 게시본의 사본이다 — 고쳤다면 콘솔에 다시 붙여넣어야 한다.
 rules_version = '2';
@@ -40,6 +41,14 @@ service cloud.firestore {
                     || ( request.auth.uid == uid
                          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan','admin']) );
       allow delete: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+    }
+    /* 🆕 2026-08-31 추가: "사용자 플랜 관리" 화면에서 관리자가 부여한 내역(감사 로그).
+         admin_grants/{관리자uid}/log/{자동id} — 관리자 본인만 자기 로그를 읽고 쓸 수
+         있다. 로그는 감사 기록이라 수정·삭제는 아무도 못 한다(추가만 가능). */
+    match /admin_grants/{uid}/log/{grantId} {
+      allow read:   if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid && isAdmin();
+      allow update, delete: if false;
     }
     // ★ 팀 문서
     match /teams/{teamId} {

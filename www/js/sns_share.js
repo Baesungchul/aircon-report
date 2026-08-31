@@ -177,8 +177,9 @@
   /* ── 안내 + 실행 시트 ── */
   function open(chId, text) {
     if (!available()) { toast('이 기능은 앱에서만 쓸 수 있습니다', 'err'); return; }
-    /* ★ 구독 전용 — 무료는 gateFeature 가 토스트+요금제 창을 띄운다 */
-    if (window.Subs && !Subs.gateFeature('share', '사진과 함께 올리기',
+    /* ★ 2026-08-31 무료 5회 블로그 글쓰기 안에서는 공유도 열어준다 — snsShare 로 분리
+         (share 는 팀 참여·일정공유 전용, 이거까지 같이 열리면 안 됨) */
+    if (window.Subs && !Subs.gateFeature('snsShare', '사진과 함께 올리기',
         '사진과 함께 올리기는 구독 사용자 전용 기능입니다.')) return;
 
     var ch = CH[chId] || CH.naver;
@@ -394,7 +395,9 @@
 
   /* PC 링크 모드 진입 — 사진 선택 없이 '보이는 순서 전체'를 담는다 */
   function openPc(chId, text) {
-    if (window.Subs && !Subs.gateFeature('share', 'PC로 올리기',
+    /* ★ 2026-08-31 무료 5회 블로그 글쓰기 안에서는 PC 링크도 열어준다 — snsShare 로 분리
+         (share 는 팀 참여·일정공유 전용, 이거까지 같이 열리면 안 됨) */
+    if (window.Subs && !Subs.gateFeature('snsShare', 'PC로 올리기',
         'PC로 올리기는 구독 사용자 전용 기능입니다.')) return;
     if (!loggedIn()) { toast('PC 링크를 만들려면 먼저 로그인해주세요', 'err'); return; }
     if (typeof firebase === 'undefined' || !firebase.storage) { toast('네트워크 기능을 불러오지 못했습니다', 'err'); return; }

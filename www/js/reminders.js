@@ -234,6 +234,13 @@
     _list = a; _saveLS(); _saveFile(); _notifyChanged();
     return r;
   };
+  // ★ 2026-08-31 다른 계정 데이터 정리용 — 기존 _saveLS/_saveFile 패턴 재사용
+  Reminders.clearAll = async function () {
+    _list = [];
+    _saveLS();
+    try { await _saveFile(); } catch (e) {}
+    _notifyChanged();
+  };
   Reminders.remove = function (id) {
     _list = _load().filter(function (r) { return r.id !== id; });
     _saveLS(); _saveFile(); _notifyChanged();

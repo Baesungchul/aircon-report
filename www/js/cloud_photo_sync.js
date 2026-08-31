@@ -2457,6 +2457,23 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       // ★ 그 사이 사용자가 다른 작업을 열었거나(seq) 편집을 시작(_dataDirty)했으면 통째 교체하지 않는다(입력 보호)
       if (CloudPhotoSync._openSeq !== _mySeq) return;
       if (typeof _dataDirty !== 'undefined' && _dataDirty) {
+        /* ★ 2026-08-31 수정 — 사진/호수는 편집 보호로 여기서 건너뛰지만,
+           업종만은 따로 바로잡는다. 안 그러면 _quickOpenSchedule() 이 즉시열기 때
+           못박은(비어 있을 수 있는) profileId 가 window._workProfileLoaded=true 상태로
+           그대로 굳어버려서, 이 사이 저장하면 업종이 빈 채로 디스크에 찍힌다
+           (사용자 보고: "실링팬 설치 업종이었는데 업종선택 안 된 상태로 저장됨").
+           사용자가 사진처럼 업종을 동시에 직접 편집 중일 가능성은 낮으므로
+           더 정확한 값을 구했을 때만 조용히 바로잡는다(못 구했으면 아무 것도 안 함). */
+        try {
+          if (window.Profiles) {
+            var _itSnapD = (itemData && itemData.profileSnap) ||
+                          ((itemData && (itemData.profileIcon || itemData.profileName))
+                            ? { icon: itemData.profileIcon || '', name: itemData.profileName || '' } : null);
+            var _pidD = (itemData && itemData.profileId) || (_fullSess && _fullSess.profileId) || '';
+            var _snD  = _itSnapD || (_fullSess && _fullSess.profileSnap) || null;
+            if (_pidD) { Profiles.bindWork(_pidD, _snD); window._workProfileLoaded = true; }
+          }
+        } catch (eProf) {}
         if (typeof showToast === 'function' && totalPhotos > 0) showToast('편집 중이라 사진은 다시 열 때 반영됩니다', 'ok');
         return;
       }

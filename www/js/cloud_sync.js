@@ -461,6 +461,6 @@
   };
   // ── 로그인 시 자동 동기화(폴더 준비 대기 포함) ──
   document.addEventListener('cloud-auth-changed', function(e){
-    if (e && e.detail && e.detail.user) { CloudSync._waitTries = 0; setTimeout(function(){ CloudSync.syncWhenReady(); }, 1500); }
+    if (e && e.detail && e.detail.user && !e.detail.skipAutoSync) { CloudSync._waitTries = 0; setTimeout(function(){ CloudSync.syncWhenReady(); }, 1500); }
   });
 })();

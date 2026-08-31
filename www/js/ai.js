@@ -136,14 +136,37 @@
           이 헤더가 없어서 막히는 정상 사용자는 없다. */
   async function _proxyHeaders() {
     var h = { 'content-type': 'application/json' };
+    var hadUser = false;
     try {
+      /* ★ 2026-08-31 원인① 대응 — 앱을 막 연 직후엔 Firebase 로그인 세션 복원이 아직
+           안 끝났을 수 있다. 복원 완료 신호를 최대 4초까지만 기다렸다가 Cloud.user 를
+           읽는다(보통은 이미 끝나있어 체감 지연 없음). */
+      if (window.Cloud && Cloud.authReadyPromise) {
+        await Promise.race([
+          Cloud.authReadyPromise,
+          new Promise(function (r) { setTimeout(r, 4000); })
+        ]);
+      }
       var u = window.Cloud && Cloud.user;
+      hadUser = !!u;
       if (u && u.getIdToken) {
-        var t = await u.getIdToken();
+        /* ★ 2026-08-31 원인② 대응 — getIdToken()은 캐시된 토큰이 만료에 가까우면 내부적으로
+             네트워크 요청을 한다. 현장(지하 기계실·옥상 등) 신호가 불안정하면 이게 실패할 수
+             있는데, 예전엔 그대로 조용히 포기해서 인증 헤더 없이 요청이 나가 401을 받았다.
+             잠깐의 신호 끊김은 1.5초면 대부분 회복되므로 한 번만 재시도한다. */
+        var t = null;
+        try {
+          t = await u.getIdToken();
+        } catch (e1) {
+          try {
+            await new Promise(function (r) { setTimeout(r, 1500); });
+            t = await u.getIdToken();
+          } catch (e2) {}
+        }
         if (t) h['authorization'] = 'Bearer ' + t;
       }
     } catch (e) {}
-    return h;
+    return { headers: h, hadUser: hadUser };
   }
 
   async function callClaude(opts) {
@@ -154,10 +177,11 @@
     };
     if (opts.system) body.system = opts.system;
     var res;
+    var _hp = await _proxyHeaders();
     try {
       res = await fetch(PROXY_URL, {
         method: 'POST',
-        headers: await _proxyHeaders(),
+        headers: _hp.headers,
         body: JSON.stringify(body)
       });
     } catch (e) {
@@ -166,6 +190,12 @@
     var data = null;
     try { data = await res.json(); } catch (e) {}
     if (res.status === 401) {
+      /* ★ 2026-08-31 로컬에는 로그인되어 있었는데(hadUser) 401을 받았다면, 진짜 미로그인이
+           아니라 토큰 갱신이 실패한 것(대개 네트워크 불안정)이다. 실제로는 로그인된 사용자한테
+           "로그인하라"고 하면 혼란만 준다 — 정확한 원인을 알려준다. */
+      if (_hp.hadUser) {
+        throw new Error('네트워크가 불안정해 인증에 실패했습니다. 신호가 좋은 곳에서 다시 시도해 주세요.');
+      }
       throw new Error('AI 기능은 로그인 후 사용할 수 있습니다. 설정에서 로그인해 주세요.');
     }
     if (res.status === 503) {

@@ -10,7 +10,11 @@
   window.Subs = window.Subs || {};
 
   var PLANS = {
-    free:   { name: '무료',   price: 0,     sched: 0,    blog: 0,   share: false, chat: false, chatMedia: false, teamCreate: false },
+    /* ★ 2026-08-31 snsShare — '사진과 함께 올리기'(모바일 공유하기) + 'PC로 올리기'(PC 링크)
+         전용 플래그. share(팀 참여·일정공유)와 분리한 이유는 이 파일 위 주석 참고.
+         free 도 true 인 이유: 무료 5회 블로그 글쓰기 자체가 이미 병목이라, 그 안에서
+         나온 결과물을 공유/PC로 옮기는 것까지 막을 실익이 없다고 판단(사용자 결정). */
+    free:   { name: '무료',   price: 0,     sched: 0,    blog: 0,   share: false, snsShare: true, chat: false, chatMedia: false, teamCreate: false },
     /* ★ 2026-08-30 개편 — 예전엔 4,900원을 내고도 AI 를 한 번도 못 썼다('팀 참여 전용').
          무료(0회) 와 베이직(9,900원·100회) 사이가 비어 있어 진입 계단이 없었다.
          베이직이 100회이므로 반값에 반건수(50회)로 둔다 — 건당 단가가 같아야
@@ -19,10 +23,10 @@
             Play Console·RevenueCat 에 추가로 등록할 것이 없다.
          ⚠️ 이름을 '팀원'→'라이트' 로 바꿨다. 팀을 만들 수 있는 줄 알고 결제하는
             사례가 있었다(2026-08-26). 아래 LITE_WARN 도 함께 고칠 것. */
-    lite:   { name: '라이트', price: 4900,  sched: 50,   blog: 0,   share: true,  chat: true,  chatMedia: false, teamCreate: false },
-    basic:  { name: '베이직', price: 9900,  sched: 100,  blog: 30,  share: true,  chat: true,  chatMedia: false, teamCreate: true },
-    pro:    { name: '프로',   price: 19900, sched: 300,  blog: 80,  share: true,  chat: true,  chatMedia: true,  teamCreate: true },
-    master: { name: '마스터', price: 49900, sched: 1500, blog: 300, share: true,  chat: true,  chatMedia: true,  teamCreate: true, unlimited: true }
+    lite:   { name: '라이트', price: 4900,  sched: 50,   blog: 0,   share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: false },
+    basic:  { name: '베이직', price: 9900,  sched: 100,  blog: 30,  share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: true },
+    pro:    { name: '프로',   price: 19900, sched: 300,  blog: 80,  share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true },
+    master: { name: '마스터', price: 49900, sched: 1500, blog: 300, share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, unlimited: true }
   };
   /* ★ 2026-08-24 무료 지급분의 기준을 '설치'에서 '로그인 계정'으로 옮겼다.
        왜: ① 설치 기준이라 앱을 지웠다 깔면 무한히 리셋됐다(기기에만 기록이 남아 막을 방법이 없었다)
@@ -513,6 +517,12 @@
         '<button class="btn b-blue" id="pmFind">검색</button>' +
       '</div>' +
       '<div id="pmResult" style="margin-top:12px;"></div>' +
+      /* ★ 2026-08-31 신설: 내가 지금까지 부여한 내역 + 지금 시점의 실제 플랜 */
+      '<div style="border-top:1px solid var(--bd);margin-top:16px;padding-top:12px;">' +
+        '<div style="font-size:13px;font-weight:800;margin-bottom:2px;">📜 내가 부여한 내역</div>' +
+        '<div style="font-size:11px;color:var(--mu);margin-bottom:8px;">최근 30건 · "현재"는 그새 바뀌었을 수 있어 지금 다시 조회한 값입니다</div>' +
+        '<div id="pmHistory" style="font-size:12px;">불러오는 중…</div>' +
+      '</div>' +
       '<button class="btn b-ghost" id="pmClose" style="width:100%;justify-content:center;margin-top:14px;">닫기</button>' +
       '</div>';
     document.body.appendChild(ov);
@@ -521,6 +531,62 @@
     ov.querySelector('#pmClose').onclick = close;
     var box = ov.querySelector('#pmResult');
     var inp = ov.querySelector('#pmEmail');
+
+    /* ── 부여 내역 기록 + 표시 ──
+         저장 위치 admin_grants/{내uid}/log/{자동id} — where 없이 orderBy 만 쓰도록
+         일부러 '내 uid 밑 서브컬렉션'으로 설계(복합 인덱스 불필요, 이 파일 위 설명 참고). */
+    function logGrant(uid, d, kind, value, prevValue) {
+      try {
+        fdb().collection('admin_grants').doc(Cloud.user.uid).collection('log').add({
+          targetUid: uid,
+          targetEmail: d.email || '',
+          targetName: d.nickname || d.displayName || d.email || uid,
+          kind: kind,            // 'plan' | 'admin'
+          value: value,
+          prevValue: prevValue,
+          grantedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(function (e) { console.warn('[Subs] 부여 내역 기록 실패', e && (e.code || e.message)); });
+      } catch (e) {}
+    }
+    async function renderHistory() {
+      var hbox = ov.querySelector('#pmHistory');
+      if (!hbox) return;
+      try {
+        var snap = await fdb().collection('admin_grants').doc(Cloud.user.uid)
+          .collection('log').orderBy('grantedAt', 'desc').limit(30).get();
+        if (snap.empty) { hbox.innerHTML = '<div style="color:var(--mu);">아직 부여한 내역이 없습니다.</div>'; return; }
+        var rows = snap.docs.map(function (d) { return d.data() || {}; });
+        // "지금" 플랜은 로그에 박제된 값이 아니라 매번 다시 조회한다(그새 바뀌었을 수 있어서)
+        var uids = [];
+        rows.forEach(function (g) { if (g.targetUid && uids.indexOf(g.targetUid) < 0) uids.push(g.targetUid); });
+        var curMap = {};
+        await Promise.all(uids.map(function (u) {
+          return fdb().collection('users').doc(u).get().then(function (ud) {
+            var dd = (ud && ud.exists) ? (ud.data() || {}) : {};
+            curMap[u] = (dd.admin === true) ? '관리자' : (PLANS[dd.plan] ? PLANS[dd.plan].name : '무료');
+          }).catch(function () { curMap[u] = '?'; });
+        }));
+        hbox.innerHTML = rows.map(function (g) {
+          var when = '';
+          try { when = g.grantedAt && g.grantedAt.toDate ? g.grantedAt.toDate().toLocaleString('ko-KR') : ''; } catch (e) {}
+          var given = g.kind === 'admin'
+            ? (g.value ? '👑 관리자 권한 부여' : '관리자 권한 해제')
+            : ('→ ' + (PLANS[g.value] ? PLANS[g.value].name : g.value));
+          var nowLabel = curMap[g.targetUid] || '?';
+          return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);">' +
+            '<div style="min-width:0;">' +
+              '<div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(g.targetName || g.targetEmail || g.targetUid || '') + '</div>' +
+              '<div style="color:var(--mu);font-size:11px;">' + esc(given) + ' · ' + esc(when) + '</div>' +
+            '</div>' +
+            '<div style="text-align:right;white-space:nowrap;font-size:11px;color:var(--ac);">현재: ' + esc(nowLabel) + '</div>' +
+          '</div>';
+        }).join('');
+      } catch (e) {
+        hbox.innerHTML = '<div style="color:#e5484d;">내역을 불러오지 못했습니다: ' + esc((e && (e.code || e.message)) || '') +
+          '<br><span style="font-size:11px;">Firestore 규칙에 admin_grants 블록을 게시했는지 확인해주세요.</span></div>';
+      }
+    }
+    renderHistory();
     var doFind = async function () {
       var email = (inp.value || '').trim().toLowerCase();
       if (!email) { toast('이메일을 입력해주세요', 'err'); return; }
@@ -563,8 +629,10 @@
           try {
             await fdb().collection('users').doc(uid).set({ plan: k }, { merge: true });
             toast('✅ ' + name + ' → ' + PLANS[k].name + ' 플랜으로 변경', 'ok');
+            logGrant(uid, d, 'plan', k, cur);
             if (uid === Cloud.user.uid) { S.plan = k; persist(); renderSettings(); }
             d.plan = k; renderUser(uid, d);
+            renderHistory();
           } catch (e) { toast('변경 실패: ' + ((e && e.code) || (e && e.message) || ''), 'err'); }
         };
       });
@@ -575,8 +643,10 @@
         try {
           await fdb().collection('users').doc(uid).set({ admin: v }, { merge: true });
           toast(v ? '👑 관리자 권한 부여됨' : '관리자 권한 해제됨', 'ok');
+          logGrant(uid, d, 'admin', v, isAdm);
           d.admin = v;
           if (uid === Cloud.user.uid) { S.admin = v; persist(); renderSettings(); }
+          renderHistory();
         } catch (e) { adm.checked = !v; toast('변경 실패: ' + ((e && e.code) || (e && e.message) || ''), 'err'); }
       };
     }

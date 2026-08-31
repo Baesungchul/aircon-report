@@ -81,10 +81,9 @@
     const fab = document.getElementById('fabNewWork');
     if (!fab) return;
     fab.addEventListener('click', () => {
-      /* ⭐ 2026-08-22 달력을 펼친(전체화면 목록) 동안 이 버튼은 '＋'가 아니라 '▲ 달력으로'다.
-         겉모습은 calendar.js _syncFab 가, 동작은 여기가 담당한다.
-         접혀 있으면 __calCollapse() 가 false 를 돌려주므로 평소 흐름은 그대로다. */
-      try { if (window.__calCollapse && window.__calCollapse()) return; } catch (e) {}
+      /* ⭐ 2026-08-22 도입 → 2026-08-31 되돌림(사용자 요청): 펼친 동안에도 ＋는 항상
+         '새 작업'이다 — 접기는 날짜 탭·하드웨어 뒤로가기·목록 바닥에서 위로 밀기로 한다.
+         (겉모습 쪽은 calendar.js _syncFab 가 같이 되돌렸다) */
       const presetDate = window._calSelectedDate || null;
       // ★ 추가 메뉴(작업 추가 / 일정 추가) - calendar.js 제공
       if (typeof window.openCalendarAddMenu === 'function') {

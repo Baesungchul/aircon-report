@@ -1958,18 +1958,17 @@
     grid.style.height = h; grid.style.gridAutoRows = ar; grid.style.transition = tr;
     return n;
   }
-  /* ⭐ 2026-08-22 펼친 동안에는 오른쪽 아래 ＋ 버튼이 '▲ 달력으로'가 된다.
-       왜 새 버튼을 안 만들었나 — 목록을 훑을 때 엄지는 화면 아래쪽에 있다(사용자 지적).
-       이미 그 자리에 있는 버튼을 쓰면 세로 공간을 1px도 안 먹고 동그란 버튼이 둘로 늘지도 않는다.
-       펼친 화면의 ＋는 원래 쓸모가 적다: 날짜를 고르지 않은 상태라 '어느 날에 추가할지'가 없고,
-       날짜를 누르면 어차피 접히면서 그날 목록이 열려 거기서 추가하게 된다.
-     ⚠️ 실제 클릭 처리는 tabbar.js bindFab 첫 줄의 __calCollapse() 가드에 있다. 여기는 겉모습만. */
+  /* ⭐ 2026-08-22 도입 — 펼친 동안 ＋ 버튼이 '▲ 달력으로'가 되던 겉모습.
+     ⭐ 2026-08-31 되돌림(사용자 요청): "위쪽 삼각형은 이제 필요 없다, ＋ 아이콘으로 유지".
+       펼침을 접는 다른 방법(날짜 탭·하드웨어 뒤로가기·목록 바닥에서 위로 밀기)이
+       이미 있어서, ＋는 펼친 동안에도 항상 '새 작업' 그대로 둔다.
+       tabbar.js bindFab 의 __calCollapse() 가드도 같이 제거했다 — 겉모습과 동작을 맞춘다. */
   function _syncFab() {
     var fab = document.getElementById('fabNewWork');
     if (!fab) return;
-    fab.classList.toggle('fab-back', !!_expanded);
-    fab.textContent = _expanded ? '▲' : '＋';
-    fab.title       = _expanded ? '달력으로' : '새 작업';
+    fab.classList.remove('fab-back');
+    fab.textContent = '＋';
+    fab.title       = '새 작업';
   }
   /* ★ 2026-08-27 펼침 보기 전환 ─────────────────────────────
        버튼은 **펼친 동안에만** 보인다(styles.css 의 .cal-expanded 조건).

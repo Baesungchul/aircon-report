@@ -664,15 +664,28 @@
   };
 
   /* ★ 2026-08-26 '팀원' 요금제를 팀을 만들 수 있는 줄 알고 결제하는 사례가 있었다.
-       안내 문구는 원래 있었지만 11px 회색 보조문구라 눈에 안 들어왔다 → 경고 박스로 올린다. */
-  var LITE_WARN =
-    '<div style="margin-top:10px;border:1.5px solid var(--wn);background:rgba(240,180,41,.12);border-radius:10px;padding:10px 12px;">' +
-      '<div style="font-size:13px;font-weight:800;color:var(--wn);line-height:1.5;">❗ 팀 만들기 ✕ · AI 글작성 ✕</div>' +
-      '<div style="font-size:12px;color:var(--tx);margin-top:5px;line-height:1.6;">' +
-        'AI <b>일정등록만</b> 쓰거나, <b>이미 만들어진 팀에 초대 코드로 참여</b>할 때 쓰는 요금제입니다.<br>' +
-        '내가 팀을 직접 만들려면 <b>베이직(월 9,900원)</b> 이상이 필요합니다.' +
-      '</div>' +
-    '</div>';
+       안내 문구는 원래 있었지만 11px 회색 보조문구라 눈에 안 들어왔다 → 경고 박스로 올렸었다.
+     ⭐ 2026-08-31 사용자 재지적 — "팀참여 전용·팀만들기X·AI글작성X 만 너무 강조되고
+        일정등록 50회는 안 보인다" (전에 합의했던 수정이 실제로는 반영 안 돼 있었음).
+        기존엔 굵은 노란 경고 박스(❗)가 "없는 것"만 크게 외쳐서, 있는 혜택(일정등록
+        월 50회)이 그 옆의 작은 회색 한 줄에 묻혔다. 이번엔:
+        · 있는 것(AI 일정등록 월 50회)을 카드 본문 첫 줄에 굵게·강조색으로 올리고
+        · 없는 것은 경고 박스를 없애고 아주 작은 보조문구 한 줄로 낮춘다. */
+  function _missingNote(p) {
+    if (p.teamCreate) return '';
+    var missing = [];
+    if (!p.blog) missing.push('글작성');
+    missing.push('팀 만들기');
+    return '<div style="font-size:11px;color:var(--mu);margin-top:5px;">' +
+      missing.join('·') + '는 지원하지 않음 — 필요하면 베이직(월 9,900원)부터</div>';
+  }
+  function _aiLine(p) {
+    if (p.unlimited) return 'AI 일정등록·글작성 무제한*';
+    if (p.sched && p.blog) return 'AI 일정등록 월 ' + p.sched + '회 · 글작성 월 ' + p.blog + '회';
+    if (p.sched) return '<b style="color:var(--ac);">📩 AI 일정등록 월 ' + p.sched + '회</b>';
+    if (p.blog)  return '<b style="color:var(--ac);">✍️ AI 글작성 월 ' + p.blog + '회</b>';
+    return 'AI 기능 미포함 (무료 제공분만 사용)';
+  }
 
   /* ── 요금제 안내 ── */
   Subs.openPlans = function () {
@@ -692,12 +705,10 @@
           '<b style="font-size:14px;">월 ' + p.price.toLocaleString('ko-KR') + '원</b>' +
         '</div>' +
         '<div style="font-size:12px;color:var(--mu);margin-top:6px;line-height:1.6;">' +
-          (p.unlimited ? 'AI 일정등록·글작성 무제한*'
-                       : ((p.sched || p.blog) ? ('AI 일정등록 월 ' + p.sched + '회 · 글작성 월 ' + p.blog + '회')
-                                              : 'AI 기능 미포함 (무료 제공분만 사용)')) +
+          _aiLine(p) +
           '<br>일정공유 ✓ · 채팅 ✓' + (p.chatMedia ? ' · 채팅 사진/영상 ✓' : ' · 채팅은 텍스트/문서만') +
           (p.teamCreate ? '<br>팀 만들기 ✓ · 팀 참여 ✓' : '') +
-        '</div>' + (p.teamCreate ? '' : LITE_WARN) + buyBtn + '</div>';
+        '</div>' + _missingNote(p) + buyBtn + '</div>';
     }).join('');
     var footMsg = billingOn
       ? '<div style="font-size:12px;color:var(--mu);margin-top:10px;line-height:1.6;">결제는 Google Play를 통해 안전하게 진행됩니다. <a href="#" id="plRestore" style="color:var(--ac);">구매 복원</a> · <a href="#" id="plManage" style="color:var(--ac);">구독 관리</a></div>'

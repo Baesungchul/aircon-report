@@ -700,14 +700,13 @@
       return '<div style="border:1px solid ' + (cur ? 'var(--ac)' : 'var(--bd)') + ';border-radius:12px;padding:12px 14px;margin-bottom:8px;' + (cur ? 'background:rgba(124,92,255,.08);' : '') + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<b style="font-size:14px;">' + p.name +
-            (p.teamCreate ? '' : ' <span style="font-size:10px;font-weight:800;color:var(--wn);background:rgba(240,180,41,.18);border-radius:6px;padding:2px 6px;vertical-align:middle;">팀 참여 전용</span>') +
             (cur ? ' <span style="font-size:11px;color:var(--ac);">현재 이용중</span>' : '') + '</b>' +
           '<b style="font-size:14px;">월 ' + p.price.toLocaleString('ko-KR') + '원</b>' +
         '</div>' +
         '<div style="font-size:12px;color:var(--mu);margin-top:6px;line-height:1.6;">' +
           _aiLine(p) +
           '<br>일정공유 ✓ · 채팅 ✓' + (p.chatMedia ? ' · 채팅 사진/영상 ✓' : ' · 채팅은 텍스트/문서만') +
-          (p.teamCreate ? '<br>팀 만들기 ✓ · 팀 참여 ✓' : '') +
+          (p.teamCreate ? '<br>팀 만들기 ✓ · 팀 참여 ✓' : '<br>팀참여 ✓') +
         '</div>' + _missingNote(p) + buyBtn + '</div>';
     }).join('');
     var footMsg = billingOn
@@ -730,13 +729,17 @@
     Array.prototype.forEach.call(ov.querySelectorAll('.subsBuy'), function (b) {
       b.onclick = function () {
         var k = b.getAttribute('data-plan');
-        /* ★ 2026-08-26 팀원(lite) 오구매 방지 — 결제 직전에 범위를 한 번 더 확인받는다. */
+        /* ★ 2026-08-26 팀원(lite) 오구매 방지 — 결제 직전에 범위를 한 번 더 확인받는다.
+           ⭐ 2026-08-31 사용자 지적 — AI 일정등록(월 50회)이 생긴 뒤로 라이트는 "팀 참여
+           전용"이 아니게 됐다. 팀 만들기가 안 된다는 점만 정확히 확인받고, 나머지는
+           있는/없는 기능을 사실대로 나열한다(전용이라 단정하지 않음). */
         if (!(PLANS[k] || {}).teamCreate && !confirm(
-              '「라이트」 요금제는 팀 참여 전용입니다.\n\n' +
-              '• 팀 만들기 ✕ (베이직 월 9,900원부터)\n' +
-              '• AI 일정등록 월 50회 · AI 글작성 ✕\n' +
+              '「라이트」 요금제 안내\n\n' +
+              '• AI 일정등록 월 50회\n' +
+              '• 팀 만들기 ✕ (베이직 월 9,900원부터) · 팀 참여 ✓\n' +
+              '• AI 글작성 ✕\n' +
               '• 일정공유 ✓ · 채팅 ✓\n\n' +
-              '이미 만들어진 팀에 초대 코드로 들어가시는 경우에만 선택해주세요.\n계속할까요?')) return;
+              '팀을 직접 만들 계획이라면 베이직 이상을 선택해주세요.\n계속할까요?')) return;
         close(); if (window.Billing) Billing.purchase(k);
       };
     });

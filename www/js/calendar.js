@@ -77,6 +77,15 @@
         _dateMap  = {};
         _monthCache = {};
         await loadCalendarData();
+        /* ★ 2026-08-31 수정 — 사용자 보고: "설정탭에서 스케줄로 이동했더니 펼침 화면이
+           위쪽 절반만 보이는 채로 깨져 있었다" (드래그·인터럽트 등 다른 이벤트는 없었음).
+           원인: 펼친(_expanded=true) 채로 다른 탭에 갔다가 돌아오면 이 재열기 경로를 타는데,
+           renderCalendarShell()을 다시 안 부르니 _expanded 가 초기화되지 않고, 여기서
+           loadCalendarData()로 내용만 새로 그릴 뿐 높이를 다시 맞추는 코드가 하나도 없었다
+           — 그래서 예전에(또는 숨겨진 동안) 어긋난 grid 높이가 그대로 굳어 있었다.
+           탭이 막 다시 보이는 시점이라 레이아웃이 자리잡을 시간을 주기 위해 살짝 지연 후
+           _fitExpanded 로 화면 크기에 맞춰 다시 맞춘다. */
+        if (_expanded) { try { _fitExpanded(80); } catch (e) {} }
       } else {
         await window.__calendarOpen();
       }

@@ -72,20 +72,32 @@
 
       _isOpen = true;
       if (body.querySelector('#calWrap')) {
-        // ★ 이미 캘린더 껍데기 있음 (모달 재열기) → 데이터만 새로고침
-        _calItems = null;
-        _dateMap  = {};
-        _monthCache = {};
-        await loadCalendarData();
-        /* ★ 2026-08-31 수정 — 사용자 보고: "설정탭에서 스케줄로 이동했더니 펼침 화면이
+        /* ★ 2026-08-31 1차 수정 — 사용자 보고: "설정탭에서 스케줄로 이동했더니 펼침 화면이
            위쪽 절반만 보이는 채로 깨져 있었다" (드래그·인터럽트 등 다른 이벤트는 없었음).
            원인: 펼친(_expanded=true) 채로 다른 탭에 갔다가 돌아오면 이 재열기 경로를 타는데,
            renderCalendarShell()을 다시 안 부르니 _expanded 가 초기화되지 않고, 여기서
            loadCalendarData()로 내용만 새로 그릴 뿐 높이를 다시 맞추는 코드가 하나도 없었다
            — 그래서 예전에(또는 숨겨진 동안) 어긋난 grid 높이가 그대로 굳어 있었다.
-           탭이 막 다시 보이는 시점이라 레이아웃이 자리잡을 시간을 주기 위해 살짝 지연 후
-           _fitExpanded 로 화면 크기에 맞춰 다시 맞춘다. */
-        if (_expanded) { try { _fitExpanded(80); } catch (e) {} }
+
+           ★ 2026-08-31 2차 수정(사용자 피드백 — "결국 돌아오긴 하는데 깨진 게 잠깐 보인다") —
+           1차 수정은 loadCalendarData() 가 다 끝난 '뒤에' 높이를 고쳤다. loadCalendarData()
+           는 폴더 스캔 등으로 시간이 걸릴 수 있어, 그 사이 사용자 눈엔 깨진 화면이 그대로
+           보였다. 펼친 높이(_expandedHeight)는 목록 내용과 무관하게 화면 크기만으로
+           정해지므로, 데이터를 기다릴 필요가 없다 — 화면이 다시 보이는 이 시점에 **곧바로,
+           애니메이션 없이** 높이부터 맞추고 나서(화면엔 이미 정상 크기로 보임) 그다음에
+           내용을 새로고침한다. */
+        var _wGrid = document.getElementById('calGrid');
+        if (_expanded && _wGrid) {
+          _wGrid.style.transition   = 'none';
+          _wGrid.style.gridAutoRows = '1fr';
+          _wGrid.style.height       = _expandedHeight() + 'px';
+        }
+        _calItems = null;
+        _dateMap  = {};
+        _monthCache = {};
+        await loadCalendarData();
+        // 내용이 새로 들어온 뒤 혹시 남은 오차(개수 변화 등)를 마무리로 한 번 더 다듬는다
+        if (_expanded) { try { _fitExpanded(0); } catch (e) {} }
       } else {
         await window.__calendarOpen();
       }

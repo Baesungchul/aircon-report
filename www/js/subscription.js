@@ -520,7 +520,7 @@
       /* ★ 2026-08-31 신설: 내가 지금까지 부여한 내역 + 지금 시점의 실제 플랜 */
       '<div style="border-top:1px solid var(--bd);margin-top:16px;padding-top:12px;">' +
         '<div style="font-size:13px;font-weight:800;margin-bottom:2px;">📜 내가 부여한 내역</div>' +
-        '<div style="font-size:11px;color:var(--mu);margin-bottom:8px;">최근 30건 · "현재"는 그새 바뀌었을 수 있어 지금 다시 조회한 값입니다</div>' +
+        '<div style="font-size:11px;color:var(--mu);margin-bottom:8px;">사용자별 마지막 부여만 표시(최근 30건 중) · "현재"는 그새 바뀌었을 수 있어 지금 다시 조회한 값입니다</div>' +
         '<div id="pmHistory" style="font-size:12px;">불러오는 중…</div>' +
       '</div>' +
       '<button class="btn b-ghost" id="pmClose" style="width:100%;justify-content:center;margin-top:14px;">닫기</button>' +
@@ -556,6 +556,17 @@
           .collection('log').orderBy('grantedAt', 'desc').limit(30).get();
         if (snap.empty) { hbox.innerHTML = '<div style="color:var(--mu);">아직 부여한 내역이 없습니다.</div>'; return; }
         var rows = snap.docs.map(function (d) { return d.data() || {}; });
+        /* ★ 2026-08-31 수정 — 같은 사용자 플랜을 여러 번 바꾸면 예전 이동 내역까지
+           전부 쌓여 보였다(사용자 보고). rows 는 이미 grantedAt desc(최신순) 정렬이므로
+           사용자(targetUid)당 맨 처음 등장하는 것 = 가장 최근 부여만 남긴다. */
+        var _seenUid = {};
+        rows = rows.filter(function (g) {
+          var u = g.targetUid || '';
+          if (!u) return true;   // 대상 uid가 없는 옛 기록은 걸러낼 기준이 없어 그대로 둔다
+          if (_seenUid[u]) return false;
+          _seenUid[u] = true;
+          return true;
+        });
         // "지금" 플랜은 로그에 박제된 값이 아니라 매번 다시 조회한다(그새 바뀌었을 수 있어서)
         var uids = [];
         rows.forEach(function (g) { if (g.targetUid && uids.indexOf(g.targetUid) < 0) uids.push(g.targetUid); });

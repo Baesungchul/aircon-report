@@ -1132,10 +1132,25 @@ async function applyOnboardingSettings() {
         CloudShare.saveMyProfile(_obData.coNick, _col);
       }
     } catch (e) {}
-    const coNameEl = document.getElementById('coName');
-    const coTelEl  = document.getElementById('coTel');
-    if (coNameEl && _obData.coName) coNameEl.value = _obData.coName;
-    if (coTelEl  && _obData.coTel)  coTelEl.value  = _obData.coTel;
+    /* ★ 2026-09-02 보강 — 온보딩 직후(재시작 없이 같은 세션) 바로 작업을 저장하면
+         사업자정보가 일부만 저장되던 버그(사용자 보고).
+         여기서 원래 coName·coTel 딱 두 칸만 DOM에 채워줬는데, 사업자번호·대표자·주소·
+         이메일·홈페이지·소개·계좌 등 나머지는 아무도 안 채워서 앱을 재시작하기 전까지
+         (state.js init()이 ac_co_v2에서 다시 읽어줄 때까지) 비어 있었다.
+         그 사이 저장(saveToFolder)·임시저장(doSave)·세션 자동저장(folder.js)이 전부
+         '지금 DOM 값'을 그대로 작업 스냅샷에 박아 넣으므로, 그 창(window) 안에 저장한
+         작업엔 사업자정보가 반쪽만(이름·전화만) 남게 됐다.
+         populateIndustryDropdowns()가 방금 위에서 Profiles.applyCoObject(ci)로 반영된
+         전체 사업자정보를 Profiles.info()에서 그대로 다시 읽어와 DOM 전부를 채워주므로,
+         있으면 그걸 쓰고 없으면(구버전 등) 기존 2칸짜리 폴백으로 동작한다. */
+    if (typeof populateIndustryDropdowns === 'function') {
+      populateIndustryDropdowns();
+    } else {
+      const coNameEl = document.getElementById('coName');
+      const coTelEl  = document.getElementById('coTel');
+      if (coNameEl && _obData.coName) coNameEl.value = _obData.coName;
+      if (coTelEl  && _obData.coTel)  coTelEl.value  = _obData.coTel;
+    }
     if (_obData.coIcon) {
       const el = document.getElementById('logoIcon');
       if (el) el.textContent = _obData.coIcon;

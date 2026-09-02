@@ -29,7 +29,17 @@
   }
 
   var _running = false;
-  var _incomplete = false;     // 이전 실행이 끝까지 못 갔는지
+  // ★ 2026-09-02 보강: 강제종료(스와이프)에도 '중단됨' 상태가 살아남도록 localStorage에 영속화.
+  //   기존에는 모듈-스코프 변수라 프로세스가 죽으면 값이 사라져, 재실행 시 '이어하기(resume-catchup)'
+  //   판단을 전혀 할 수 없었다(항상 처음부터 다시 시작한 것처럼 동작).
+  var INCOMPLETE_LS = 'auto_backup_incomplete';
+  function setIncomplete(v) {
+    _incomplete = v;
+    try { if (v) localStorage.setItem(INCOMPLETE_LS, '1'); else localStorage.removeItem(INCOMPLETE_LS); } catch (e) {}
+  }
+  var _incomplete = (function () {   // 이전 실행이 끝까지 못 갔는지 — 재시작 후에도 localStorage에서 복원
+    try { return localStorage.getItem(INCOMPLETE_LS) === '1'; } catch (e) { return false; }
+  })();
   var _lastRunAt = 0;
 
   function isNative() {
@@ -264,7 +274,7 @@
     if (reason !== 'manual' && (now - _lastRunAt) < minIntervalFor(reason)) return { skipped: true, throttled: true };
     _running = true;
     _lastRunAt = now;
-    _incomplete = true;  // 성공적으로 끝나면 false 로 내림
+    setIncomplete(true);  // 성공적으로 끝나면 false 로 내림
     try {
       var appF = await appFolder();
 
@@ -286,13 +296,13 @@
           if (reason === 'manual' && typeof showToast === 'function') {
             showToast('원본에 작업이 없어 백업을 건너뛰었어요 (기존 백업은 그대로 보호됨)', 'ok');
           }
-          _incomplete = false;
+          setIncomplete(false);
           return { skipped: true, reason: 'empty-source-guard' };
         }
       } catch (e) {
         // 원본을 읽지 못하면(권한·경로 문제) 위험하므로 안전하게 중단 — 백업을 지우지 않는다
         console.warn('[자동백업] 원본 확인 실패 → 안전하게 백업/정리 중단:', e && (e.message || e));
-        _incomplete = false;
+        setIncomplete(false);
         return { skipped: true, reason: 'source-unreadable-guard' };
       }
 
@@ -317,7 +327,7 @@
             );
             if (!_ok) {
               console.warn('[자동백업] 사진 급감 → 사용자가 보존 선택, 백업 건너뜀');
-              _incomplete = false;
+              setIncomplete(false);
               return { skipped: true, reason: 'photo-drop-declined', drops: _drops };
             }
             console.warn('[자동백업] 사진 급감 사용자 승인 → 백업 진행');
@@ -357,7 +367,7 @@
       if (saf && bf && bf.backupTree && !_holdPrune) {
         try {
           var r = await bf.backupTree({ uri: saf, appFolder: appF });
-          _incomplete = false;
+          setIncomplete(false);
           try { if (_curCounts) _saveSnap(_curCounts); AutoBackup.clearPendingDrop(); } catch (e) {}
           try { localStorage.setItem(LAST_LS, new Date().toISOString()); } catch (e) {}
           console.log('[자동백업/SAF](' + (reason || '') + ') 완료 - 갱신 ' + (r && r.copied) + ' / 정리 ' + (r && r.pruned) + ' / 실패 ' + (r && r.fail));
@@ -384,7 +394,7 @@
       } else {
         await pruneWalk(fs, appF, '', budget);     // 삭제 반영 (거울 정리)
       }
-      _incomplete = false;
+      setIncomplete(false);
       // 보류 중에는 스냅샷을 갱신하지 않는다(다음 판정에서 같은 급감을 계속 보게 해야 12시간 규칙이 동작)
       try { if (_curCounts && !_holdPrune) { _saveSnap(_curCounts); AutoBackup.clearPendingDrop(); } } catch (e) {}
       try { localStorage.setItem(LAST_LS, new Date().toISOString()); } catch (e) {}
@@ -566,6 +576,21 @@
       });
     }
   } catch (e) {}
+
+  // ★ 2026-09-02 보강: 콜드스타트(새 프로세스로 앱 실행) 시 '이어하기' 트리거.
+  //   document는 처음부터 visible 상태로 시작하므로 visibilitychange(hidden→visible)가
+  //   전혀 발생하지 않는다 — 즉 onReturn()이 위 리스너들로는 앱을 '새로 켤 때' 호출되지 않는다.
+  //   그래서 스와이프(강제종료)로 백업이 중단된 채(_incomplete=true, localStorage 영속) 앱이 죽으면,
+  //   그동안은 다음 백그라운드 전환 전까지 보완 백업이 아예 돌지 않는 사각지대가 있었다.
+  //   → 앱을 새로 켤 때마다 한 번, 중단 표시가 남아있으면 즉시 이어하기 백업을 실행한다.
+  setTimeout(function () {
+    try {
+      if (_incomplete) {
+        console.warn('[자동백업] 이전 실행이 중단된 채로 종료됨(강제종료 등) → 콜드스타트 이어하기 백업 실행');
+        AutoBackup.run('cold-start-resume');
+      }
+    } catch (e) {}
+  }, 3000);
 
   // 저장/수정/삭제 후에도 (앱을 나가지 않아도) 최근 작업을 백업 폴더에 반영한다.
   //  · 앱-백그라운드 순간에만 의존하면 큰 사진 복사가 중단돼 최근 며칠이 백업에서 누락될 수 있음.

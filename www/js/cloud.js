@@ -287,6 +287,28 @@
       }
 
       try { if (window.Reminders && Reminders.clearAll) await Reminders.clearAll(); } catch (e) {}
+
+      /* ★ 2026-09-02 보강 — 업종/업체정보(사업자정보)가 안 지워지던 버그 (사용자 보고).
+           지금까지는 사진·일정 폴더만 지우고 ac_co_v2(업체정보)·ac_profiles/ac_biz_list(업종)는
+           그대로 뒀다. 그 결과:
+             ① 삭제 후에도 화면에 이전 계정의 업종/업체정보가 계속 보였다.
+             ② 더 나쁘게도, 바로 이어서 도는 CloudBackup.pull()이 "로컬이 비어있을 때만
+                채움" 규칙이라 — 이전 계정 값이 남아있으니 '비어있지 않다'고 판단해
+                새 계정의 업종을 서버에서 복구도 못 해왔다("서버에서 복구했는데 업종정보만
+                안 돌아온다"는 증상이 여기서 나온다).
+           CloudBackup.allKeys()(설정/지침/학습/업체정보/업종 백업 대상 전체)를 그대로 지우고,
+           Profiles.ensure()로 빈 껍데기(seed) 프로필을 다시 만들어 둔다 — 그래야 뒤이은
+           pull()이 "복구해도 되는 빈 상태"로 인식해 새 계정 값을 제대로 채운다. */
+      try {
+        var _acctKeys = (window.CloudBackup && CloudBackup.allKeys) ? CloudBackup.allKeys() : [];
+        _acctKeys.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+        if (window.Profiles && Profiles.ensure) Profiles.ensure();   // 빈 seed 프로필 재생성
+        if (typeof populateIndustryDropdowns === 'function') populateIndustryDropdowns();
+        if (typeof applyCustomLabels === 'function') applyCustomLabels();
+        if (typeof updateCoHdrBtn === 'function') updateCoHdrBtn();
+        if (typeof applyCoIcon === 'function') applyCoIcon();
+      } catch (e) { console.warn('[Cloud] 업종/업체정보 삭제 실패(무시):', e && e.message); }
+
       try { if (typeof invalidateWorkIndex === 'function') invalidateWorkIndex(); } catch (e) {}
       try { if (typeof rebuildIndexFromFolders === 'function') await rebuildIndexFromFolders(); } catch (e) {}
       try { if (typeof window.__calendarRefresh === 'function') window.__calendarRefresh(); } catch (e) {}

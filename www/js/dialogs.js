@@ -2147,9 +2147,18 @@ function populateIndustryDropdowns() {
     if (window.Profiles) {
       Profiles.ensure();
       const inf = Profiles.info();
+      /* ★ 2026-09-02 업종 필드 5개만 채우고 사업자정보(coName·coBiz·coCeo·coAddr·coEmail·coBank 등)는
+           안 채우고 있었다 — 저장은 Profiles.bizSave/applyCoObject 로 잘 되는데, 화면(DOM)엔
+           coName·coTel 두 개만 온보딩 쪽에서 채워주고 나머지는 아무도 안 채워서 앱을 새로 열면
+           설정 화면 미리보기가 "업체정보가 입력되지 않았습니다"로 보이던 버그(사용자 보고 2026-09-02).
+           Profiles.info()가 이미 다 갖고 있으니 여기서 같이 채운다. */
       [['coIndustryMajor', inf.coIndustryMajor], ['coIndustryMinor', inf.coIndustryMinor],
        ['coReportTitle', inf.coReportTitle], ['coUnitLabel', inf.coUnitLabel],
-       ['coStageLabel', inf.coStageLabel]].forEach(([id, v]) => {
+       ['coStageLabel', inf.coStageLabel],
+       ['coName', inf.coName], ['coBrand', inf.coBrand], ['coTel', inf.coTel],
+       ['coBiz', inf.coBiz], ['coCeo', inf.coCeo], ['coAddr', inf.coAddr],
+       ['coEmail', inf.coEmail], ['coWeb', inf.coWeb], ['coDesc', inf.coDesc],
+       ['coBank', inf.coBank]].forEach(([id, v]) => {
         const el = document.getElementById(id);
         if (el) el.value = v || '';
       });

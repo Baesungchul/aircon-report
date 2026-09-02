@@ -471,6 +471,12 @@ function openSettings() {
   // ★ 로그인/공유 UI를 설정 안에 인라인 표시 (중간 모달 제거)
   try { if (window.Cloud && Cloud.mountInline) Cloud.mountInline(document.getElementById('cloudInlineHost')); } catch (e) {}
   moveShareAreaToOwnSection();
+  /* ★ 2026-09-02 업체정보 미리보기가 DOM(#coName·#coBiz 등)의 '지금 값'을 읽는데,
+       업종 모달을 한 번도 안 연 세션(예: 온보딩 직후 앱을 새로 연 경우)엔 그 입력창들이
+       비어 있어서 실제로는 저장돼 있는 사업자정보도 "입력되지 않았습니다"로 보였다.
+       populateIndustryDropdowns()가 Profiles.info()(진짜 저장소)로 DOM을 채워주므로
+       미리보기를 계산하기 '전에' 먼저 불러서 항상 최신 값을 보게 한다. */
+  try { if (typeof populateIndustryDropdowns === 'function') populateIndustryDropdowns(); } catch (e) {}
   // 업체정보 미리보기 갱신
   const coSummary = document.getElementById('setCoSummary');
   if (coSummary) {

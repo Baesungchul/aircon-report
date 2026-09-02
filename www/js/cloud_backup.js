@@ -180,6 +180,10 @@
     } catch (e) { console.warn('[CloudBackup] pull 실패:', e && (e.code || e.message)); }
   }
   CloudBackup.pull = pull; CloudBackup.push = push;
+  // ★ 2026-09-02: 계정전환 시 '이전 데이터 삭제'(cloud.js _purgeMismatchedLocalData)가
+  //   업종/업체정보까지 함께 지울 수 있도록, 백업 대상 키 목록을 그대로 노출한다.
+  //   (새 삭제 목록을 따로 만들지 않고 이미 검증된 정의를 재사용 — 빠뜨림 방지)
+  CloudBackup.allKeys = allKeys;
   var _t = null;
   CloudBackup.onChanged = function () { if (!loggedIn()) return; clearTimeout(_t); _t = setTimeout(function () { push(true); }, 1500); };
 

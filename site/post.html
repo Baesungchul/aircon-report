@@ -132,35 +132,56 @@
   });
 
   /* ── 본문 렌더 ──
-     ⭐ 2026-08-26 마커를 실제 사진으로 바꾼다. 두 가지 형식을 모두 받는다.
-        ① AI 글쓰기 지침이 쓰는 형식 — (사진: 작업 전) (사진: 작업 후) (사진)
-           → 그 자리에 해당 종류의 남은 사진을 **전부** 넣는다(전 5장이면 5장 다).
-        ② 번호 형식 — [PHOTO_2] [사진2] → 그 번호 사진 한 장만.
-        어느 마커에도 안 걸린 사진은 글 뒤에 순서대로 붙인다.
-     ⚠️ 지침을 직접 고쳐 마커 줄을 지운 사용자는 마커가 없으니 전부 뒤에 붙는다(예전 동작).
+     ⭐ 2026-08-26 마커를 실제 사진으로 바꾼다.
+     ⭐ 2026-09-01 **마커 하나 = 사진 한 장** 으로 바꿨다.
+        예전에는 (사진: 작업 전) 한 자리에 '전' 사진을 전부 몰아넣어서,
+        사진이 10장이면 글 중간에 5장 덩어리 + 5장 덩어리가 됐다(사용자 지적).
+        이제 ai.js 가 사진 장수만큼 번호 마커를 만들고, 여기서 한 장씩 꽂는다.
+        받는 형식:
+        ① (사진: 작업 전 2) (사진: 작업 후 1) (사진: 특이사항 1) — 종류 + 번호
+        ② (사진: 작업 전) — 번호가 없으면 그 종류의 '다음 한 장'
+        ③ [PHOTO_2] [사진2] — 전체 순번으로 한 장
+        ④ (사진) — 종류 상관없이 다음 한 장
+     ⭐ 마커에 못 담긴 나머지는 글 **끝에 몰지 않고 문단 사이에 고르게 흩는다**.
+        (지침을 고쳐 마커를 지운 사용자, 예전에 저장해 둔 글도 이 경로로 예쁘게 나온다)
      ⚠️ 사진으로 바뀌지 못한 마커는 지운다 — 안 그러면 블로그 글에 "(사진: 작업 전)" 이 그대로 남는다. */
   function render(text, photos, kinds) {
     kinds = kinds || [];
     var used = photos.map(function () { return false; });
 
-    function takeKind(k) {                 // 그 종류의 남은 사진 전부
-      var out = [];
-      photos.forEach(function (u, i) { if (!used[i] && kinds[i] === k) { used[i] = true; out.push(u); } });
-      return out;
+    /* 종류별 사진 인덱스 목록 — 번호 마커는 이 목록의 n번째를 가리킨다 */
+    function poolOf(k) {
+      var a = [];
+      photos.forEach(function (u, i) { if (kinds[i] === k) a.push(i); });
+      return a;
     }
-    function takeOne(i) { if (photos[i] && !used[i]) { used[i] = true; return [photos[i]]; } return []; }
+    var POOL = { before: poolOf('before'), after: poolOf('after'), special: poolOf('special') };
+
+    function markUse(i) { used[i] = true; return [photos[i]]; }
+    /* 그 종류의 n번째(1-based). 번호가 없거나 범위를 벗어나면 그 종류의 다음 미사용 사진 */
+    function takeKindNth(k, nth) {
+      var arr = POOL[k] || [];
+      if (nth > 0) {
+        var i = arr[nth - 1];
+        if (i != null && !used[i]) return markUse(i);
+      }
+      for (var j = 0; j < arr.length; j++) { if (!used[arr[j]]) return markUse(arr[j]); }
+      return [];   // 그 종류가 동났으면 비워 둔다 — 다른 종류를 억지로 끼우지 않는다
+    }
+    function takeOne(i) { return (photos[i] && !used[i]) ? markUse(i) : []; }
     function takeAny() {
-      for (var i = 0; i < photos.length; i++) { if (!used[i]) { used[i] = true; return [photos[i]]; } }
+      for (var i = 0; i < photos.length; i++) { if (!used[i]) return markUse(i); }
       return [];
     }
     function resolve(label) {
-      if (/후/.test(label)) return takeKind('after');
-      if (/전/.test(label)) return takeKind('before');
-      if (/특이|추가|기타/.test(label)) return takeKind('special');
+      label = String(label || '');
+      var m = label.match(/(\d+)/);
+      var nth = m ? parseInt(m[1], 10) : 0;
+      if (/후/.test(label)) return takeKindNth('after', nth);
+      if (/전/.test(label)) return takeKindNth('before', nth);
+      if (/특이|추가|기타/.test(label)) return takeKindNth('special', nth);
+      if (nth > 0) return takeOne(nth - 1);
       return takeAny();
-    }
-    function imgs(list) {
-      return list.map(function (u) { return '<img src="' + esc(u) + '" alt="">'; }).join('');
     }
     function para(t) {
       t = t.trim();
@@ -171,25 +192,64 @@
     /* 괄호형 (사진: …) 과 대괄호형 [PHOTO_1]/[사진1] 을 한 번에 훑는다 */
     var MARK = /[\(（]\s*(?:사진|이미지)\s*[:：\-]?\s*([^)）]*)[\)）]|\[\s*(?:PHOTO_|사진\s*)(\d+)\s*\]/gi;
 
+    /* 블록 배열로 만든다 — 나중에 남은 사진을 문단 사이에 끼워 넣어야 해서 문자열로 두면 안 된다 */
+    var blocks = [];
+    function pushPara(t) { var h = para(t); if (h) blocks.push({ t: 'p', html: h }); }
+    function pushImgs(list) { list.forEach(function (u) { blocks.push({ t: 'img', url: u }); }); }
+
     var lines = String(text).replace(/\r/g, '').split('\n');
-    var html = '';
     lines.forEach(function (ln) {
       var t = ln.replace(/^#{1,6}\s+/, '').replace(/^\s*[-*+]\s+/, '• ').replace(/^\s{0,3}>\s?/, '');
       MARK.lastIndex = 0;
       var last = 0, m, hit = false;
       while ((m = MARK.exec(t)) !== null) {
         hit = true;
-        html += para(t.slice(last, m.index));
-        html += imgs(m[2] != null ? takeOne(parseInt(m[2], 10) - 1) : resolve(m[1] || ''));
+        pushPara(t.slice(last, m.index));
+        pushImgs(m[2] != null ? takeOne(parseInt(m[2], 10) - 1) : resolve(m[1] || ''));
         last = m.index + m[0].length;
       }
-      if (hit) { html += para(t.slice(last)); return; }
-      html += para(t);
+      if (hit) { pushPara(t.slice(last)); return; }
+      pushPara(t);
     });
 
-    // 마커에 못 담긴 나머지는 글 뒤에
-    html += imgs(photos.filter(function (u, i) { return !used[i]; }));
-    $('post').innerHTML = html;
+    /* ── 남은 사진을 문단 사이에 고르게 흩는다 ──
+       제목(첫 문단) 앞에는 넣지 않는다. 사진이 문단보다 많으면 한 자리에 두 장 이상 들어간다. */
+    var left = [];
+    photos.forEach(function (u, i) { if (!used[i]) left.push(u); });
+    if (left.length) {
+      var pPos = [], firstImg = -1;
+      blocks.forEach(function (b, i) {
+        if (b.t === 'p') pPos.push(i);
+        else if (firstImg < 0) firstImg = i;
+      });
+      var slots = pPos.slice(1);   // 각 문단 '앞'에 삽입 — 첫 문단(제목) 앞은 제외
+      /* 마커로 이미 꽂힌 사진이 있으면 그 뒤에만 흩는다 —
+         안 그러면 '작업 전 2'가 '작업 전 1'보다 앞에 오는 순서 뒤집힘이 생긴다 */
+      if (firstImg >= 0) {
+        var after = slots.filter(function (i) { return i > firstImg; });
+        if (after.length) slots = after;
+      }
+      if (!slots.length) {
+        left.forEach(function (u) { blocks.push({ t: 'img', url: u }); });
+      } else {
+        var bySlot = {};
+        var step = slots.length / left.length;
+        left.forEach(function (u, i) {
+          var s = slots[Math.min(slots.length - 1, Math.floor(i * step))];
+          (bySlot[s] = bySlot[s] || []).push(u);
+        });
+        var out = [];
+        blocks.forEach(function (b, i) {
+          (bySlot[i] || []).forEach(function (u) { out.push({ t: 'img', url: u }); });
+          out.push(b);
+        });
+        blocks = out;
+      }
+    }
+
+    $('post').innerHTML = blocks.map(function (b) {
+      return b.t === 'img' ? '<img src="' + esc(b.url) + '" alt="">' : b.html;
+    }).join('');
 
     $('ctl').innerHTML =
       '<button class="btn" id="copyAll">📋 글+사진 전체 복사</button>' +

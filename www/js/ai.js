@@ -352,6 +352,80 @@
     return out;
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     사진 배치 마커 — 2026-09-01
+     왜: 지금까지 지침이 (사진: 작업 전) (사진: 작업 후) 두 개만 만들게 했다.
+         그래서 post.html 이 그 두 자리에 같은 종류 사진을 **전부 몰아넣어**,
+         사진 10장이면 "글 → 전 5장 덩어리 → 글 → 후 5장 덩어리"가 됐다
+         (사용자 지적 2026-09-01: "사진 수량에 맞게 본문 사이사이에 넣어달라").
+     무엇: 실제 사진 장수를 세어, 장수만큼 **번호가 붙은 마커**를 만들게 한다.
+           (사진: 작업 전 1) (사진: 작업 후 1) (사진: 작업 전 2) …
+           → post.html 은 마커 하나당 사진 한 장만 넣는다.
+     ⚠️ 마커는 PC 링크(post.html)에서만 자동으로 사진으로 바뀐다.
+        모바일은 본문 중간에 사진을 자동으로 못 넣으므로 사용자가 손으로 끼워 넣는데,
+        그때 마커가 '여기에 어느 사진' 인지 알려주는 표시가 된다 → **지우지 않고 그대로 둔다**(사용자 결정 2026-09-01).
+     ═══════════════════════════════════════════════════════════ */
+
+  /* 현재 작업에 실제로 붙어 있는 사진 장수 (AI 에게 넘기는 이미지 6장 제한과는 별개 —
+     여기는 '마커를 몇 개 만들지'를 정하는 수치라 전량을 센다) */
+  function photoInventory() {
+    var inv = { before: 0, after: 0, special: 0, total: 0 };
+    try {
+      (units || []).forEach(function (u) {
+        if (!u) return;
+        inv.before += (u.before || []).length;
+        inv.after += (u.after || []).length;
+        (u.specials || []).forEach(function (sp) { inv.special += ((sp && sp.photos) || []).length; });
+      });
+    } catch (e) {}
+    inv.total = inv.before + inv.after + inv.special;
+    return inv;
+  }
+  ClaudeAI.photoInventory = photoInventory;
+
+  /* 사진이 너무 많으면 글이 사진 도배가 된다 — 본문에 흩을 상한 */
+  var MARK_MAX = 12;
+
+  /* ★ 2026-09-01 마커 이모지 (사용자 요청) — 모바일에서 사진을 손으로 끼워 넣을 때
+       긴 글 속에서 자리를 눈으로 빨리 찾기 위한 표시. 종류마다 색이 달라야 쓸모가 있다.
+     ⚠️ site/post.html 의 마커 해석은 라벨의 '전/후/특이' 글자만 보므로 이모지가 있어도 그대로 동작한다.
+        (이모지를 바꿔도 post.html 은 고칠 필요 없다) */
+  var MARK_EMO = { before: '🔴', after: '🟢', special: '⚠️' };
+
+  /* 인벤토리 → AI 에게 줄 '마커 배치 규칙' 문자열 */
+  function photoMarkGuide(inv) {
+    if (!inv || !inv.total) return '';
+    /* 상한을 넘으면 종류별 비율을 유지하며 줄인다(최소 1장씩은 남긴다) */
+    var b = inv.before, a = inv.after, s = inv.special, tot = inv.total;
+    if (tot > MARK_MAX) {
+      var sc = MARK_MAX / tot;
+      b = b ? Math.max(1, Math.round(b * sc)) : 0;
+      a = a ? Math.max(1, Math.round(a * sc)) : 0;
+      s = s ? Math.max(1, Math.round(s * sc)) : 0;
+    }
+    var mk = function (emo, label, n) {
+      var out = [];
+      for (var i = 1; i <= n; i++) out.push('(사진: ' + emo + ' ' + label + ' ' + i + ')');
+      return out.join(' ');
+    };
+    var L = [];
+    L.push('[사진 배치 규칙 — 다른 어떤 지침보다 우선한다]');
+    L.push('이 작업에는 본문에 넣을 사진이 ' + (b + a + s) + '장 있습니다'
+      + ' (작업 전 ' + b + '장, 작업 후 ' + a + '장' + (s ? ', 특이사항 ' + s + '장' : '') + ').');
+    L.push('- 아래 마커를 하나도 빠뜨리지 말고, 각각 정확히 한 번씩만 본문에 넣으세요. 개수를 늘리거나 줄이지 마세요.');
+    L.push('- 이모지(' + MARK_EMO.before + '작업 전 / ' + MARK_EMO.after + '작업 후 / ' + MARK_EMO.special + '특이사항)까지 그대로 옮겨 적으세요. 글에서 사진 자리를 눈으로 찾는 표시입니다.');
+    if (b) L.push('  · ' + mk(MARK_EMO.before, '작업 전', b));
+    if (a) L.push('  · ' + mk(MARK_EMO.after, '작업 후', a));
+    if (s) L.push('  · ' + mk(MARK_EMO.special, '특이사항', s));
+    L.push('- 마커는 반드시 **한 줄에 하나만** 적고, 앞뒤로 빈 줄을 두어 문단과 문단 사이에 놓습니다.');
+    L.push('- 마커를 한자리에 몰아 붙이지 마세요. 마커와 마커 사이에는 최소 2~3문장 이상의 글이 있어야 합니다.');
+    L.push('- 작업 전 사진을 다 쓴 뒤에 작업 후 사진을 쓰는 식으로 두 덩어리로 나누지 말고, 이야기 흐름(현장 도착 → 문제 확인 → 작업 과정 → 결과 → 마무리)에 맞게 전·후 사진을 번갈아 섞어 배치하세요.');
+    L.push('- 마커 바로 앞이나 뒤 문장에서 그 사진이 무엇을 보여주는지 한 마디로 설명해 주세요.');
+    L.push('- 글의 맨 첫 줄(제목)과 맨 마지막 해시태그 줄에는 마커를 넣지 마세요.');
+    L.push('- 위 형식 외의 사진 표기((사진), [사진1], [PHOTO_1] 등)는 쓰지 마세요.');
+    return L.join('\n');
+  }
+
   // 현재 작업 메타 텍스트
   function currentWorkMeta() {
     var g = function (id) { var el = document.getElementById(id); return el ? (el.value || '') : ''; };
@@ -488,7 +562,7 @@
       label: '네이버 블로그', icon: '📝', color: 'linear-gradient(135deg,#03c75a,#02a34a)',
       copyHint: '전체 복사 후 네이버 블로그에 붙여넣으세요. (#·** 같은 기호가 거슬리면 "서식 없이")',
       guidePh: '예) 친근한 존댓말, 800자 내외, 소제목 3개, 마지막에 업체명·연락처와 해시태그 5개. {단계} 전후 차이를 강조.',
-      defGuide: '- 친근하고 신뢰감 있는 존댓말로 작성\n- 전체 1,000~1,500자, 소제목 3~4개로 단락 구분\n- 도입: 고객이 겪던 불편에 공감하며 시작\n- 본문: {단계} 과정과 전/후 변화를 구체적으로 설명\n- 검색 키워드(지역명+{업종})를 제목과 본문에 자연스럽게 2~3회 포함\n- 사진이 들어갈 자리를 (사진: 작업 전) (사진: 작업 후) 형식으로 표시\n- 마무리: {업종} 관련 관리 팁 1가지 + 예약/문의 안내\n- 마지막 줄에 해시태그 5개 (#지역명{업종태그} #{업종태그} 등)\n- 개인정보 보호: 동·호수, 고객 이름, 전화번호는 절대 쓰지 않기 (아파트/건물명까지만)',
+      defGuide: '- 친근하고 신뢰감 있는 존댓말로 작성\n- 전체 1,000~1,500자, 소제목 3~4개로 단락 구분\n- 도입: 고객이 겪던 불편에 공감하며 시작\n- 본문: {단계} 과정과 전/후 변화를 구체적으로 설명\n- 검색 키워드(지역명+{업종})를 제목과 본문에 자연스럽게 2~3회 포함\n- 사진 자리는 (사진: 🔴 작업 전 1) (사진: 🟢 작업 후 1) 처럼 이모지와 번호를 붙여, 사진 장수만큼 문단 사이사이에 나눠 표시\n- 마무리: {업종} 관련 관리 팁 1가지 + 예약/문의 안내\n- 마지막 줄에 해시태그 5개 (#지역명{업종태그} #{업종태그} 등)\n- 개인정보 보호: 동·호수, 고객 이름, 전화번호는 절대 쓰지 않기 (아파트/건물명까지만)',
       sys: '당신은 {업종} 전문가의 마케팅 블로그 글을 쓰는 한국어 카피라이터입니다. 제공된 작업 정보와 작업 전/후 사진을 바탕으로 자연스럽고 신뢰감 있는 네이버 블로그 글을 작성하세요. 사진이 있으면 전/후 변화와 {단계} 효과를 구체적으로 묘사하고, 사실에 근거하되 과장은 피하세요. 이 글은 {업종} 작업에 대한 글입니다 — 다른 업종의 내용을 끌어오지 마세요. [개인정보 보호 — 최우선 규칙] 글에 동(棟)·호수, 고객 이름, 전화번호, 상세 주소 등 개인정보는 절대 쓰지 마세요. 위치는 아파트/건물명(단지명)까지만 언급합니다.'
     },
     daangn: {
@@ -669,10 +743,17 @@
     var sys = indFill(ch.sys);   // ★ AI 역할 문구도 지금 업종으로 (안 하면 조명 글이 에어컨 쪽으로 끌려간다)
     sys += '\n\n' + COMMON_WRITE_GUIDE;   // ★ 전 채널 공통 지침(안전정책·문체·SEO)
     if (guide) sys += '\n\n[반드시 반영할 지침]\n' + guide;
+    /* ★ 2026-09-01 사진 배치 규칙은 **맨 마지막**에 붙인다.
+         사용자가 예전 지침("(사진: 작업 전) (사진: 작업 후) 로 표시")을 저장해 뒀을 수 있어,
+         그 뒤에 와야 새 규칙이 이긴다. 마커가 사진으로 바뀌는 곳은 PC 링크(post.html)뿐이라
+         네이버 블로그에서만 켠다 — 인스타/당근 캡션에 마커가 남으면 지저분하다. */
+    var markGuide = (chId === 'naver') ? photoMarkGuide(photoInventory()) : '';
+    if (markGuide) sys += '\n\n' + markGuide;
     var content = [];
     images.forEach(function (im) { content.push({ type: 'image', source: { type: 'base64', media_type: im.media_type, data: im.data } }); });
     var ask = '아래 작업 정보' + (memo ? '와 추가 메모' : '') + (images.length ? '와 전/후 사진' : '') + '를 바탕으로 ' + ch.label + ' 글을 작성해줘.\n\n[작업 정보]\n' + meta.text;
     if (memo) ask += '\n\n[추가 메모/강조점]\n' + memo;
+    if (markGuide) ask += '\n\n※ 위 [사진 배치 규칙]의 마커를 빠짐없이, 본문 문단 사이사이에 흩어서 넣어줘.';
     content.push({ type: 'text', text: ask });
     return await callClaude({ model: getBlogModel(), max_tokens: 2200, system: sys, messages: [{ role: 'user', content: content }] });
   }
@@ -1181,6 +1262,13 @@
     };
     document.getElementById('aiBlogClose').onclick = close;
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });   // 바깥 탭해서 닫아도 저장되게
+    /* ☠️ 2026-09-01 여기서 사진 마커를 지우지 말 것 (사용자 결정).
+         한때 클립보드로 나갈 때 (사진: 작업 전 1) 을 지우게 했었다. 그런데
+         **모바일 앱에서는 본문 중간에 사진을 자동으로 못 넣는다** — 사용자가 붙여넣은 글을 보며
+         손으로 사진을 끼워 넣어야 하고, 그때 마커가 '여기에 어느 사진' 인지 알려주는 유일한 표시다.
+         마커가 사진으로 자동 치환되는 곳은 PC 링크(site/post.html) 하나뿐이고,
+         거기서는 마커가 사진으로 바뀌어 사라지므로 본문에 남지 않는다.
+         → 붙여넣기를 끝낸 사용자가 마커 줄만 지우면 된다. 자동 삭제는 하지 않는다. */
     function doCopy(v) {
       var ta = document.getElementById('aiBlogOut');
       try { ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); } catch (e) {}

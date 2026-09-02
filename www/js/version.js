@@ -10,8 +10,8 @@
    따로 놀면 사용자가 보는 번호와 스토어 번호가 어긋나고,
    version_gate.js 의 강제 업데이트 판정(minVersion 비교)도 엉뚱해진다.
    배포할 때 build.gradle(versionCode +1, versionName) 과 여기를 같이 고칠 것. */
-const APP_VERSION = '3.2.4';
-const APP_VERSION_DATE = '2026-08-30';
+const APP_VERSION = '3.2.7';
+const APP_VERSION_DATE = '2026-09-02';
 
 // 버전 표시 갱신 함수
 function applyAppVersion() {

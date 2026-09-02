@@ -593,6 +593,13 @@
     ov.id = 'bupRestoreOv';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:3200;display:flex;align-items:center;justify-content:center;padding:16px;';
 
+    /* ★ 2026-09-02 선택 삭제/일괄 삭제 (사용자 요청) — workId로 추적한다.
+         missing 배열은 삭제할 때마다 splice/filter로 바뀌므로, 위치(idx)가 아니라
+         안정적인 키(workId)로 선택 상태를 들고 있어야 재렌더 후에도 어긋나지 않는다. */
+    var _sel = {};
+    function wKey(w) { return (w && (w.workId || w.id)) || ''; }
+    function selCount() { return Object.keys(_sel).length; }
+
     function rowsHtml() {
       return missing.map(function (w, idx) {
         var f = _bupFields(_bupParse(w));
@@ -600,10 +607,14 @@
         var sub = (w.date || f.date || '');
         if (f.worker) sub += ' · ' + f.worker;
         if (f.photos) sub += ' · 📷 ' + f.photos + '장';
+        var checked = _sel[wKey(w)] ? ' checked' : '';
         return '<div style="background:var(--sf2,#f0f3fa);border-radius:9px;padding:11px 12px;margin-bottom:8px;">' +
-            '<div class="bupRowInfo" data-idx="' + idx + '" style="cursor:pointer;">' +
-              '<div style="font-size:14px;font-weight:700;color:var(--tx);">' + _bupEsc(title) + ' <span style="font-size:11px;font-weight:400;color:var(--ac);">자세히 ›</span></div>' +
-              '<div style="font-size:11px;color:var(--mu);margin-top:2px;">' + _bupEsc(sub) + '</div>' +
+            '<div style="display:flex;gap:9px;align-items:flex-start;">' +
+              '<input type="checkbox" class="bupSelChk" data-idx="' + idx + '"' + checked + ' style="margin-top:3px;width:18px;height:18px;flex-shrink:0;">' +
+              '<div class="bupRowInfo" data-idx="' + idx + '" style="cursor:pointer;flex:1;min-width:0;">' +
+                '<div style="font-size:14px;font-weight:700;color:var(--tx);">' + _bupEsc(title) + ' <span style="font-size:11px;font-weight:400;color:var(--ac);">자세히 ›</span></div>' +
+                '<div style="font-size:11px;color:var(--mu);margin-top:2px;">' + _bupEsc(sub) + '</div>' +
+              '</div>' +
             '</div>' +
             '<div style="display:flex;gap:6px;margin-top:9px;">' +
               '<button class="btn b-blue b-xs bupRestore" data-idx="' + idx + '" style="flex:1;justify-content:center;">♻️ 복구</button>' +
@@ -635,6 +646,9 @@
 
     function render() {
       if (!missing.length) { ov.remove(); return; }
+      // 삭제 등으로 missing에서 빠진 항목은 선택목록에서도 정리
+      var stillHere = {}; missing.forEach(function (w) { stillHere[wKey(w)] = 1; });
+      Object.keys(_sel).forEach(function (k) { if (!stillHere[k]) delete _sel[k]; });
       ov.innerHTML = '<div style="background:var(--sf);border-radius:14px;padding:20px;max-width:420px;width:100%;max-height:86vh;display:flex;flex-direction:column;">' +
           '<div style="text-align:center;">' +
             '<div style="font-size:30px;">☁️</div>' +
@@ -646,6 +660,10 @@
           '<div style="display:flex;gap:8px;margin-top:12px;">' +
             '<button class="btn b-ghost" id="bupLater" style="flex:1;justify-content:center;">나중에</button>' +
             '<button class="btn b-blue" id="bupAll" style="flex:1;justify-content:center;">전체 복구</button>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;margin-top:8px;">' +
+            '<button class="btn b-ghost" id="bupSelPurge" style="flex:1;justify-content:center;color:var(--dn,#e5484d);"' + (selCount() ? '' : ' disabled') + '>선택 삭제' + (selCount() ? (' (' + selCount() + ')') : '') + '</button>' +
+            '<button class="btn b-ghost" id="bupAllPurge" style="flex:1;justify-content:center;color:var(--dn,#e5484d);">전체 삭제</button>' +
           '</div>' +
         '</div>';
       bind();
@@ -659,6 +677,21 @@
         try { if (window.Subs && Subs.openPlans) Subs.openPlans(); } catch (e) {}
       };
       ov.querySelector('#bupAll').onclick = function () { doRestore(missing.slice()); };
+
+      ov.querySelectorAll('.bupSelChk').forEach(function (chk) {
+        chk.addEventListener('change', function () {
+          var i = parseInt(chk.getAttribute('data-idx'));
+          var k = wKey(missing[i]);
+          if (chk.checked) _sel[k] = 1; else delete _sel[k];
+          var b = ov.querySelector('#bupSelPurge');
+          if (b) {
+            var n = selCount();
+            b.disabled = !n;
+            b.textContent = n ? ('선택 삭제 (' + n + ')') : '선택 삭제';
+          }
+        });
+      });
+
       ov.querySelectorAll('.bupRowInfo').forEach(function (el) {
         el.onclick = function () { var i = parseInt(el.getAttribute('data-idx')); showBackupWorkDetail(missing[i], function () { doRestore([missing[i]]); }); };
       });
@@ -675,9 +708,43 @@
           try { await serverPurgeWork(w); } catch (e) {}
           missing.splice(i, 1);
           render();
-          if (typeof showToast === 'function') showToast('🗑 서버에서 삭제됨', 'ok');
+          if (typeof showToast === 'function') showToast('서버에서 삭제됨', 'ok');
         };
       });
+
+      // ★ 2026-09-02 선택 삭제 / 전체 삭제 (사용자 요청 — 하나씩만 지울 수 있던 것 보강)
+      var _selBtn = ov.querySelector('#bupSelPurge');
+      if (_selBtn) _selBtn.onclick = async function () {
+        var list = missing.filter(function (w) { return _sel[wKey(w)]; });
+        if (!list.length) return;
+        if (!confirm('선택한 ' + list.length + '개 작업을 서버에서 완전히 삭제할까요?\n\n서버 백업(사진 포함)이 지워지고,\n이후 복구 목록에 다시 뜨지 않습니다.\n(이 기기의 로컬 작업에는 영향 없음)')) return;
+        await purgeMany(list);
+        render();
+      };
+      var _allBtn = ov.querySelector('#bupAllPurge');
+      if (_allBtn) _allBtn.onclick = async function () {
+        if (!confirm('서버에 백업된 작업 ' + missing.length + '개를 전부 삭제할까요?\n\n서버 백업(사진 포함)이 모두 지워지고,\n복구 목록에 다시 뜨지 않습니다.\n(이 기기의 로컬 작업에는 영향 없음)\n\n되돌릴 수 없습니다.')) return;
+        await purgeMany(missing.slice());
+        render();
+      };
+    }
+
+    // 여러 건을 순서대로 서버에서 삭제하고, 성공한 만큼 missing에서 제거한다.
+    async function purgeMany(list) {
+      if (typeof showOverlay === 'function') showOverlay('서버에서 삭제 중...');
+      var okIds = {};
+      for (var i = 0; i < list.length; i++) {
+        if (typeof showOverlay === 'function') showOverlay('서버에서 삭제 중 ' + (i + 1) + '/' + list.length);
+        try { await serverPurgeWork(list[i]); okIds[wKey(list[i])] = 1; }
+        catch (e) { console.warn('[CloudBackup] 삭제 실패', list[i] && list[i].workId, e && e.message); }
+      }
+      if (typeof hideOverlay === 'function') hideOverlay();
+      missing = missing.filter(function (w) { return !okIds[wKey(w)]; });
+      var okCount = Object.keys(okIds).length;
+      if (typeof showToast === 'function') {
+        if (okCount === list.length) showToast(okCount + '개 삭제됨', 'ok');
+        else showToast(okCount + '/' + list.length + '개 삭제됨(일부 실패)', okCount ? 'ok' : 'err');
+      }
     }
 
     async function doRestore(list) {

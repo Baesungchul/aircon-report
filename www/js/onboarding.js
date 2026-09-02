@@ -147,14 +147,21 @@ function onboardingNext() {
     applyOnboardingSettings();
     closeOnboarding(true);
     finishOnboardingExtras();
-    // ★ 초기설정 완료 후 로그인창 안내 (로그인 안 된 경우만) - 회원가입/구글로그인 선택 가능
+    /* ★ 2026-09-02 보강 — 백업 폴더 지정(네이티브 피커)과 로그인 안내(모달)가
+         각자 따로 setTimeout(800)/setTimeout(500)으로 거의 동시에 뜨다 보니, 폴더 피커가
+         로그인 모달에 가려지거나 사용자가 뭐가 뭔지 모르고 폴더 피커 쪽을 취소해버려도
+         AutoBackup.pickFolder()는 취소 시 에러를 띄우지 않아 조용히 "폴더 미지정" 상태로
+         끝나던 문제(사용자 보고 2026-09-02). 순서를 매겨 겹치지 않게 한다 —
+         폴더 피커가 끝난 뒤(성공/취소 상관없이)에만 로그인 모달을 띄운다. */
     setTimeout(function () {
-      try {
-        if (window.Cloud && Cloud.ready && !Cloud.user && typeof openCloudModal === 'function') {
-          openCloudModal();
-        }
-      } catch (e) {}
-    }, 500);
+      _obPickBackupFolderIfNeeded().then(function () {
+        try {
+          if (window.Cloud && Cloud.ready && !Cloud.user && typeof openCloudModal === 'function') {
+            openCloudModal();
+          }
+        } catch (e) {}
+      });
+    }, 800);
     return;
   }
   _obStep++; renderOnboardingStep();
@@ -338,14 +345,21 @@ function renderSlideLogin(c) {
        ⚠️ 횟수는 Subs 상수에서 읽는다. 여기에 숫자를 박아두면 정책이 바뀔 때 조용히 어긋난다. */
   var _fSched = 30, _fBlog = 5;
   try { if (window.Subs && Subs.freeInit) { _fSched = Subs.freeInit('sched'); _fBlog = Subs.freeInit('blog'); } } catch (e) {}
+  /* ★ 2026-09-02 문구 정리 (사용자 지시).
+       - "로그인하면 무료로 드려요" 서브타이틀 삭제 — 아래 캘아웃과 내용이 겹쳐 불필요.
+       - "작업 기록이 서버에 보관돼 폰을 바꿔도 되살릴 수 있어요" 캘아웃 삭제 —
+         서버 보관(백업/복구)은 무료 로그인이 아니라 구독(유료) 기능이라, 로그인만 하면
+         받는 혜택인 것처럼 안내하면 사실과 다르다. 로그인 시 실제로 바로 받는 혜택인
+         AI 일정등록/글작성 무료 횟수만 남긴다. */
+  /* ★ 2026-09-02 "로그인됨 · 무료 — 작업 기록이 서버에 보관돼요"도 삭제(사용자 지시: 사실과 다름).
+       서버 보관은 구독 전용이라, 무료 로그인 상태에는 그 혜택을 붙여 말하지 않는다. */
   var statusHtml = isIn
-    ? '<div class="ob-callout" style="margin-top:12px;"><span class="ob-callout-num">✓</span><span class="ob-callout-txt">로그인됨' + (isSub ? ' · <b>구독 중</b> — 사진까지 서버에 보관돼요' : ' · 무료 — 작업 기록이 서버에 보관돼요') + '</span></div>'
-    : '<div class="ob-callout" style="margin-top:12px;"><span class="ob-callout-num">🎁</span><span class="ob-callout-txt"><b>AI 일정등록 ' + _fSched + '회 · 글작성 ' + _fBlog + '회</b>를 바로 드려요</span></div>' +
-      '<div class="ob-callout" style="margin-top:8px;"><span class="ob-callout-num">📄</span><span class="ob-callout-txt">작업 기록이 서버에 보관돼<br><b>폰을 바꾸거나 앱을 지워도</b> 되살릴 수 있어요</span></div>';
+    ? '<div class="ob-callout" style="margin-top:12px;"><span class="ob-callout-num">✓</span><span class="ob-callout-txt">로그인됨' + (isSub ? ' · <b>구독 중</b> — 사진까지 서버에 보관돼요' : '') + '</span></div>'
+    : '<div class="ob-callout" style="margin-top:12px;"><span class="ob-callout-num">1</span><span class="ob-callout-txt">로그인하면 <b>AI 일정등록 ' + _fSched + '회, AI 글작성 ' + _fBlog + '회</b> 무료 지급</span></div>';
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">로그인</div>
-    <p class="ob-setup-sub">${isIn ? '쓰던 데이터가 있다면 복구할 수 있어요' : '로그인하면 무료로 드려요'}</p>
+    ${isIn ? '<p class="ob-setup-sub">쓰던 데이터가 있다면 복구할 수 있어요</p>' : ''}
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px;">
       <button class="btn ${isIn ? 'b-ghost' : 'b-blue'}" id="obLoginBtn" style="width:100%;justify-content:center;padding:14px 16px;">
         ${isIn ? '✓ 로그인됨' : '☁️ 로그인 / 회원가입'}
@@ -1170,16 +1184,24 @@ function finishOnboardingExtras() {
       if (WorkerCombo.refresh) WorkerCombo.refresh();
     }
   } catch (e) {}
-  // 자동백업 선택 반영 (온보딩에서 결정했으므로 별도 팝업 안 뜸)
+  // 자동백업 on/off 값 저장 + 상태 표시 갱신 (동기 부분만 — 폴더 피커는 아래 별도 함수에서, 로그인 모달과 순서를 맞춰 실행)
   try {
     if (_obData.autoBackup === '1' || _obData.autoBackup === '0') {
       localStorage.setItem('auto_backup_enabled', _obData.autoBackup);
       if (window.AutoBackup && AutoBackup.refreshStatus) AutoBackup.refreshStatus();
-      if (_obData.autoBackup === '1' && window.AutoBackup && AutoBackup.hasFolder && !AutoBackup.hasFolder()) {
-        setTimeout(function () { try { AutoBackup.pickFolder(); } catch (e) {} }, 800);
-      }
     }
   } catch (e) {}
+}
+
+// 온보딩에서 "자동백업 사용하기"를 골랐고 아직 폴더가 없으면 네이티브 폴더 피커를 띄운다.
+// (성공/취소/에러 상관없이 항상 resolve — 호출부가 이어서 로그인 모달을 띄울 수 있게)
+function _obPickBackupFolderIfNeeded() {
+  try {
+    if (_obData.autoBackup === '1' && window.AutoBackup && AutoBackup.hasFolder && !AutoBackup.hasFolder()) {
+      return Promise.resolve(AutoBackup.pickFolder()).catch(function () {});
+    }
+  } catch (e) {}
+  return Promise.resolve();
 }
 
 /* ── 체크 + 이벤트 ── */

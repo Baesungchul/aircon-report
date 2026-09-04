@@ -1,4 +1,6 @@
-// 서비스워커 v608 (앱 v3.2.6 · 2026-09-01) — 빌드 대기
+// 서비스워커 v609 (앱 v3.2.8 · 2026-09-04) — 빌드 대기
+//   ★ v609: release 빌드 minifyEnabled 켜기 (Play 콘솔 "난독화 4%" 경고 대응) +
+//     버전 올림(3.2.7→3.2.8). www 쪽 코드 변경은 없음(네이티브/버전 표기만).
 //   ★ v608: 관리자 저장소 섹션에 확인용 3줄 추가 (실기기에서 콘솔을 못 보니 앱이 대신 보여준다)
 //     · 동기화 해시 — 옛 형식이 몇 건 남았는지 / 다른 계정(uid) 찌꺼기가 몇 건인지
 //     · 마지막 동기화 — 스캔·변경 건수 + 옛 해시 교체 건수(마이그레이션 패스가 실제로 돈 증거)
@@ -28,7 +30,7 @@
 //           v597 페이스북 올리기 버튼(채널 키 'fb'→'facebook') / v598 달력 보기 전환(▦격자 ↔ ☰목록)
 //           v599 인앱 별점(review.js) + 설정 Play 리뷰 링크 + 격자에서도 위로 밀어 접기
 //   site/ 쪽: post.html 사진 ZIP 내려받기 + 새 파일 site/jszip.min.js → `firebase deploy --only hosting` 필요
-const CACHE = 'ac1004-v608';
+const CACHE = 'ac1004-v609';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

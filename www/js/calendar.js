@@ -225,17 +225,21 @@
   function _saveMonthCacheLS(month, items) {
     try {
       var txt = JSON.stringify(_slimCalItems(items));
-      if (txt.length > 500000) return;   // 안전 상한 (localStorage 용량 보호)
+      /* ★ 2026-09-01 (1단계) — 상한 축소: 월 500KB×8개월(최대 4MB) → 150KB×3개월(최대 0.45MB).
+         이 캐시만으로 localStorage 오리진 한도(≈5MB)의 대부분을 먹고 있었다.
+         넘치면 동기화 해시 저장이 조용히 실패해 매번 전량 재업로드가 난다.
+         대가: 4개월 이전 달을 열면 '즉시 표시'가 없고 스캔을 기다린다(0.3~1초). 데이터 손실은 없다. */
+      if (txt.length > 150000) return;   // 안전 상한 (localStorage 용량 보호)
       localStorage.setItem(CAL_LS_PREFIX + month, txt);
-      // 오래된 달 정리 (최근 8개 달만 보관)
+      // 오래된 달 정리 (최근 3개 달만 보관)
       var keys = [];
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
         if (k && k.indexOf(CAL_LS_PREFIX) === 0) keys.push(k);
       }
-      if (keys.length > 8) {
+      if (keys.length > 3) {
         keys.sort();
-        while (keys.length > 8) { localStorage.removeItem(keys.shift()); }
+        while (keys.length > 3) { localStorage.removeItem(keys.shift()); }
       }
     } catch (e) { /* 용량 초과 등 → 캐시 없이 동작 */ }
   }

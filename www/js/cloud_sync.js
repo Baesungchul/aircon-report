@@ -109,8 +109,56 @@
     return _p;
   }
 
-  function hashOf(p){ try { return JSON.stringify(p); } catch(e){ return String(Math.random()); } }
+  /* ★ 2026-09-01 (1단계) — 동기화 해시를 'payload JSON 통째'에서 짧은 지문으로
+       예전 hashOf 는 JSON.stringify(p) 를 **그대로** localStorage 값으로 넣었다(작업당 300~800B).
+       2,000건이면 이것만 1MB 를 넘겨 오리진 한도(≈5MB)를 밀어올렸고, 한도에 닿는 순간
+       해시 저장이 조용히 실패해 **매 동기화마다 전량 재업로드**가 났다(요금·지연의 주범).
+       → 길이 + FNV-1a 32bit 로 8~16B. 약 50~100배 절감.
+       길이를 같이 보는 건 cloudFullHash_ 가 이미 쓰던 검증된 패턴이다(충돌 확률 사실상 0). */
+  function fnv1a(str){
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return h.toString(36);
+  }
+  function hashOf(p){ try { var j = JSON.stringify(p); return j.length + ':' + fnv1a(j); } catch(e){ return String(Math.random()); } }
   function hkey(uid, id){ return 'cloudSyncHash_' + uid + '_' + id; }
+
+  /* ★ 마이그레이션 패스 — 이게 없으면 형식이 바뀌는 첫 실행에 전 작업이 한꺼번에 재업로드된다
+       (2,000건이면 get 2,000 + set 2,000 이 동시에 발사). 옛 값은 payload JSON 통째라
+       '{' 로 시작한다 → 지금 payload 와 문자열이 같으면 **업로드 없이 짧은 해시로 갈아끼우고**
+       '변경 없음'으로 처리한다. 결과적으로 전환 비용 0건. */
+  function hashUnchanged(uid, id, p, h){
+    var prev = null;
+    try { prev = localStorage.getItem(hkey(uid, id)); } catch (e) {}
+    if (prev == null) return false;
+    if (prev === h) return true;
+    if (prev.charAt(0) === '{') {
+      var same = false;
+      try { same = (prev === JSON.stringify(p)); } catch (e) {}
+      if (same) {
+        try { localStorage.setItem(hkey(uid, id), h); } catch (e) {}
+        try { if (window.Diag) Diag.noteHashMigrated(); } catch (e) {}
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* ★ 동시 실행 제한 — 예전엔 items.forEach 안에서 get/set 이 제한 없이 한꺼번에 발사됐다.
+       평소엔 변경분이 0~1건이라 티가 안 나지만, 전량 재업로드가 도는 순간(위 상황) 수천 개가
+       동시에 나가 실패·지연을 만든다. 한 번에 6건까지만 흐르게 한다. 총량은 그대로다. */
+  var _gateRun = 0, _gateQ = [];
+  function _gatePump(){ while (_gateRun < 6 && _gateQ.length) { (_gateQ.shift())(); } }
+  function gate(fn){
+    _gateQ.push(function(){
+      _gateRun++;
+      Promise.resolve().then(fn).catch(function(){}).then(function(){ _gateRun--; _gatePump(); });
+    });
+    _gatePump();
+  }
   function idsKey(uid){ return 'cloudSyncedIds_' + uid; }
   function getSyncedIds(uid){ try { return JSON.parse(localStorage.getItem(idsKey(uid)) || '[]'); } catch(e){ return []; } }
   function setSyncedIds(uid, arr){ try { localStorage.setItem(idsKey(uid), JSON.stringify(arr)); } catch(e){} }
@@ -135,15 +183,16 @@
       if (!sess || d._slim) return;                                  // 달력 슬림캐시 항목은 전체본이 아님 → 스킵
       if (!Array.isArray(sess.units) || !sess.units.length) return;  // 완전한 세션만 업로드
       var j = JSON.stringify(sess);
+      try { if (window.Diag) Diag.noteFull(id, j.length); } catch (e) {}   // ★ 2026-09-01 계측(탐지만, 동작 변화 없음)
       var tag = j.length + ':' + (sess.savedAt || '');
       var prev = null; try { prev = localStorage.getItem(fkey(uid, id)); } catch (e) {}
       if (prev === tag) return;   // 변경 없음
-      Cloud.db.collection('schedules').doc(uid).collection('full').doc(id).set({
+      gate(function () { return Cloud.db.collection('schedules').doc(uid).collection('full').doc(id).set({
         workId: p.workId, date: p.date, json: j,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true })
       .then(function(){ try { localStorage.setItem(fkey(uid, id), tag); } catch (e) {} })
-      .catch(function(e){ console.warn('[CloudSync] 전체본 업로드 실패', id, e && e.code); });
+      .catch(function(e){ console.warn('[CloudSync] 전체본 업로드 실패', id, e && e.code); }); });
     } catch (e) {}
   }
 
@@ -200,7 +249,7 @@
           }
         } catch(e){}
         var h = hashOf(p);
-        if (localStorage.getItem(hkey(uid, id)) === h) return;  // 변경 없음
+        if (hashUnchanged(uid, id, p, h)) return;  // 변경 없음(옛 형식이면 여기서 조용히 갈아끼운다)
         // ★ 로컬 저장시각(충돌 방지)
         var _lsaved = 0; try { if (it.data.session && it.data.session.savedAt) { var _tt = Date.parse(it.data.session.savedAt); if (!isNaN(_tt)) _lsaved = _tt; } } catch (e) {}
         p.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
@@ -209,7 +258,7 @@
         writes++;
         (function (it2, p2, id2, h2, lsaved2) {
           // 서버가 더 최신이면(=다른 기기에서 나중에 수정) 구버전 로컬로 덮어쓰지 않음
-          itemsCol().doc(id2).get().then(function (snap) {
+          gate(function () { return itemsCol().doc(id2).get().then(function (snap) {
             var sd = (snap.exists && snap.data()) || null;
             var sv = (sd && sd.savedAt) || 0;
             if (sv && lsaved2 && sv > lsaved2) {
@@ -219,11 +268,11 @@
             }
             // ★ 자동정리로 휴지통에 갔던 작업이 로컬에 다시 있으면 = 오삭제 → 자동 복원
             if (sd && sd.cleanupTrashed) { p2.trashed = false; p2.cleanupTrashed = false; p2.restoredAt = firebase.firestore.FieldValue.serverTimestamp(); }
-            itemsCol().doc(id2).set(p2, { merge: true })
+            return itemsCol().doc(id2).set(p2, { merge: true })
               .then(function () { try { localStorage.setItem(hkey(uid, id2), h2); } catch (e) {} })
               .catch(function (e) { console.warn('[CloudSync] 업로드 실패', id2, e && e.code); });
             // (전체본 업로드는 pushFull로 일원화 — 해시 경합으로 인한 누락 방지)
-          }).catch(function (e) { console.warn('[CloudSync] savedAt 확인 실패', id2, e && e.code); });
+          }).catch(function (e) { console.warn('[CloudSync] savedAt 확인 실패', id2, e && e.code); }); });
         })(it, p, id, h, _lsaved);
       });
       // ★ 권위적 정리(2026-07-24): localStorage 목록이 아니라 "클라우드 실제 문서 ↔ 로컬 폴더"를 대조해
@@ -313,6 +362,7 @@
       }
       setSyncedIds(uid, currentIds);
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
+      try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: removed }); } catch (e) {}
       if (!silent && typeof showToast==='function') showToast('✓ 동기화 완료 (' + items.length + '건)','ok');
     } catch (e) {
       console.warn('[CloudSync] 동기화 오류', e);
@@ -350,7 +400,7 @@
         } catch(e){}
         pushFull(uid, it, p, id);   // ★ 전체본 업로드 (items 해시와 별개 - 경합 누락 방지)
         var h = hashOf(p);
-        if (localStorage.getItem(hkey(uid, id)) === h) return;
+        if (hashUnchanged(uid, id, p, h)) return;  // 변경 없음(옛 형식이면 여기서 조용히 갈아끼운다)
         /* ⭐⭐ 2026-08-13 근본버그 — 여기엔 충돌 가드가 통째로 없었다.
            pushWorkItems 는 달력을 열 때마다 호출된다(loadCalendarData). 그래서 공유 상대가
            작업자·날짜를 고쳐 서버에 잘 저장해도, 원작업자가 달력을 여는 순간
@@ -366,7 +416,7 @@
         p.editedBy = uid;
         p.savedAt = _lsaved;
         (function (p2, id2, h2, lsaved2) {
-          itemsCol().doc(id2).get().then(function (snap) {
+          gate(function () { return itemsCol().doc(id2).get().then(function (snap) {
             var sd = (snap.exists && snap.data()) || null;
             var sv = (sd && sd.savedAt) || 0;
             if (sv && lsaved2 && sv > lsaved2) {
@@ -376,10 +426,10 @@
               try { localStorage.setItem(hkey(uid, id2), h2); } catch (e) {}
               return;
             }
-            itemsCol().doc(id2).set(p2, { merge: true })
+            return itemsCol().doc(id2).set(p2, { merge: true })
               .then(function(){ try { localStorage.setItem(hkey(uid, id2), h2); } catch(e){} })
               .catch(function(e){ console.warn('[CloudSync] 업로드 실패', id2, e && e.code); });
-          }).catch(function (e) { console.warn('[CloudSync] savedAt 확인 실패', id2, e && e.code); });
+          }).catch(function (e) { console.warn('[CloudSync] savedAt 확인 실패', id2, e && e.code); }); });
         })(p, id, h, _lsaved);
       } catch(e){}
     });

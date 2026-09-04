@@ -258,6 +258,64 @@
       h += row('예상 월 비용', _cs + ' USD', '추정 · ' + (s.gb || 0) + 'GB × $' + s.rate + '/GB' + (_free ? ' · 무료 한도(5GB) 내라 실제 청구는 $0' : '') + (s.note ? (' · ' + esc(s.note)) : ''));
     } else { h += row('사용 용량', '<span style="color:var(--mu);">미설정</span>', esc(s.reason || '')); }
 
+    /* ★ 2026-09-01 — 이 기기의 저장소 상태 (장기 누적 관찰용, 관리자 전용 화면이라 여기에만 둔다)
+       숫자는 전부 이 폰의 로컬 값이다. 서버 호출 없음. diag_storage.js 가 모은다. */
+    h += sechead('📦 이 기기 저장소');
+    try {
+      var _d = (window.Diag && Diag.state) || null;
+      var _u = (window.Diag && Diag.lsUsage) ? Diag.lsUsage() : null;
+      if (_u && _u.ok) {
+        var _topTxt = (_u.top || []).slice(0, 3).map(function (t) {
+          return esc(t.g) + ' ' + fmtBytes(t.bytes) + '(' + t.n + ')';
+        }).join(' · ');
+        h += row('localStorage', _u.keys + '키 · 약 ' + fmtBytes(_u.bytes), _topTxt);
+      } else {
+        h += row('localStorage', '<span style="color:var(--mu);">읽기 불가</span>', '');
+      }
+      if (_d && window.Diag && Diag.hashStats) {
+        var _uid = '';
+        try { _uid = (window.Cloud && Cloud.user && Cloud.user.uid) || ''; } catch (e) {}
+        var _hs = Diag.hashStats(_uid);
+        if (_hs.total) {
+          h += row('동기화 해시',
+            _hs.total + '키 · ' + fmtBytes(_hs.bytes),
+            (_hs.old ? ('<span style="color:#e5484d;font-weight:800;">옛 형식 ' + _hs.old + '건 남음</span>')
+                     : '전부 새 형식(짧은 지문)으로 전환됨')
+            + (_hs.other ? (' · 다른 계정 찌꺼기 ' + _hs.other + '건') : ''));
+        }
+        var _sc = (_d.syncScanned != null ? _d.syncScanned : -1);
+        h += row('마지막 동기화',
+          (_sc < 0 ? '<span style="color:var(--mu);">아직 안 돎</span>'
+                   : (_sc + '건 스캔 · 변경 ' + _d.syncChanged + '건')),
+          (_sc < 0 ? '로그인 + 폴더 연결 상태에서 저장하거나 앱에 복귀하면 돈다'
+                   : ('옛 해시 교체 ' + (_d.hashMigrated || 0) + '건 · 휴지통정리 ' + _d.syncRemoved + '건'
+                      + ' · 첫 실행에 변경이 작아야 정상')));
+      }
+      if (_d) {
+        var _qf = Number(_d.quotaFails) || 0;
+        h += row('쓰기 실패',
+          _qf ? ('<span style="color:#e5484d;font-weight:800;">' + _qf + '회</span>') : '0회',
+          _qf ? ('마지막 키 ' + esc(_d.lastQuotaKey) + ' · 한도에 닿으면 동기화 해시·크래시 복구가 조용히 죽는다')
+              : '이번 실행 기준 · 한도 초과가 있으면 여기 빨갛게 뜬다');
+        h += row('인덱스 파일',
+          (_d.tmpLeft === null ? '<span style="color:var(--mu);">미확인</span>'
+            : (_d.tmpLeft ? '<span style="color:#e5484d;font-weight:800;">.tmp 남음</span>' : '.tmp 없음 · 정상')),
+          (_d.tmpLeft === null ? '이번 실행에서 인덱스를 저장한 적이 없음(작업을 하나 저장하면 확인된다)'
+                               : '저장할 때마다 만들던 .tmp 를 없앴다 — 쓰기 3회 → 1회'));
+        h += row('작업 인덱스',
+          (_d.indexCount < 0 ? '<span style="color:var(--mu);">미확인</span>'
+                             : (_d.indexCount + '건 · ' + fmtBytes(_d.indexBytes))),
+          (_d.indexCount < 0 ? '이번 실행에서 아직 읽거나 쓴 적 없음'
+                             : '작업을 저장할 때마다 이 크기를 통째로 다시 쓴다'));
+        var _fm = Number(_d.fullMaxLen) || 0;
+        h += row('전체본 최대',
+          _fm ? fmtBytes(_fm) : '<span style="color:var(--mu);">—</span>',
+          (_fm ? ('작업 ' + esc(_d.fullMaxId) + ' · Firestore 문서 한도 1MiB')
+               : '이번 실행에 업로드 없음')
+          + (_d.fullOver ? (' · ⚠️ 임계 초과 ' + _d.fullOver + '건') : ''));
+      }
+    } catch (e) {}
+
     h += '<div style="text-align:center;margin-top:14px;"><button class="btn b-ghost" id="asDiag" style="font-size:12px;">🔧 공유 진단 (팀원 작업 표시 문제)</button></div>';
     h += '<div style="font-size:10px;color:var(--mu);margin-top:10px;text-align:center;">생성: ' + esc((j.generatedAt || '').replace('T', ' ').slice(0, 16)) + ' · 금액은 참고용(추정 포함)</div>';
     ov.innerHTML = card(h);

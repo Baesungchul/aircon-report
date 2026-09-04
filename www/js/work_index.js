@@ -12,6 +12,8 @@ let _indexCache = null;          // 메모리 캐시
 let _indexLoaded = false;
 let _indexWriteTimer = null;     // 디바운스용
 let _indexWriteInProgress = false;
+let _lastSavedCount = -1;        // ★ 2026-09-01 직전 저장 건수(.bak 을 남길지 판단)
+let _tmpCleaned = false;         // ★ 옛 .tmp 찌꺼기 1회 정리 여부
 const INDEX_WRITE_DEBOUNCE = 1500;  // 1.5초 디바운스
 
 // 인덱스 파일 로드 (메모리 캐시 활용)
@@ -29,7 +31,9 @@ async function loadWorkIndex(force = false) {
     }
     _indexCache = data;
     _indexLoaded = true;
-    console.log(`[인덱스] 로드 완료: ${data.works.length}건`);
+    _lastSavedCount = data.works.length;
+    try { if (window.Diag) Diag.noteIndex(data.works.length, text.length); } catch(e) {}
+    console.log(`[인덱스] 로드 완료: ${data.works.length}건 (${Math.round(text.length/1024)}KB)`);
     return data;
   } catch(e) {
     // 파일 없거나 손상 → null 반환 (호출자가 폴더 스캔으로 복구)
@@ -45,7 +49,7 @@ async function saveWorkIndex(indexData) {
   if (!photoFolderHandle || !indexData) return false;
   if (_indexWriteInProgress) {
     // 동시 저장 충돌 방지 - 기다리기
-    let retries = 5;
+    let retries = 25;   // ★ 2026-09-01 0.5초 → 2.5초 (기존엔 사실상 못 막고 그냥 진행됐다)
     while (_indexWriteInProgress && retries-- > 0) {
       await new Promise(r => setTimeout(r, 100));
     }
@@ -54,21 +58,35 @@ async function saveWorkIndex(indexData) {
   try {
     indexData.version = INDEX_VERSION;
     indexData.updatedAt = (typeof kstIsoString === 'function') ? kstIsoString() : new Date().toISOString();
+    // ★ 2026-09-01 계측: 같은 내용을 두 번 stringify 하던 것을 한 번으로 모았다(내용 동일)
+    const _json = JSON.stringify(indexData);
+    try { if (window.Diag) Diag.noteIndex(indexData.works.length, _json.length); } catch(e) {}
 
-    // 1차 저장: 임시 파일에
-    const tempName = INDEX_FILE_NAME + '.tmp';
-    try {
-      const tmpFh = await photoFolderHandle.getFileHandle(tempName, { create: true });
-      const w = await tmpFh.createWritable();
-      await w.write(JSON.stringify(indexData));
-      await w.close();
-    } catch(e) {
-      throw new Error('임시 인덱스 쓰기 실패: ' + e.message);
+    /* ★ 2026-09-01 (1단계) — 저장 쓰기량을 1/3로 줄인다
+       예전엔 저장할 때마다 ① .tmp 에 전체쓰기 ② 기존 본파일을 읽어 .bak 으로 복사
+       ③ 본파일에 전체쓰기 를 했다. 그런데 코드 어디에서도 **.tmp 와 .bak 을 읽지 않는다**
+       (전수 확인). .tmp 는 rename 원본으로도 안 쓰였다 — 본파일을 따로 새로 썼으니
+       애초에 원자적 교체가 아니었다. 즉 3번 중 쓸모 있는 건 1번뿐이었다.
+       안드로이드에선 이 쓰기가 base64 로 Capacitor 브리지를 통과하므로 낭비가 특히 크다
+       (.bak 은 기존 파일을 읽기까지 해서 인덱스 크기의 약 4배가 오갔다).
+       → .tmp 는 없앤다. .bak 은 **작업 건수가 줄어들 때만** 남긴다
+         (인덱스가 망가지는 시나리오가 곧 건수 급감이라 안전망은 그때만 의미가 있다).
+       ⚠️ 인덱스는 폴더에서 언제든 재생성되는 캐시다 — 최악이 '느린 재빌드'지 데이터 손실이 아니다. */
+
+    // 옛 버전이 남긴 .tmp 찌꺼기 1회 정리 (사용자 폴더에 쓸모없는 파일을 남기지 않는다)
+    if (!_tmpCleaned) {
+      _tmpCleaned = true;
+      try { await photoFolderHandle.removeEntry(INDEX_FILE_NAME + '.tmp'); } catch(e) {}
+      // 정리 후 실제로 사라졌는지 확인해 진단에 남긴다 (폴더를 직접 못 여는 안드로이드용)
+      try {
+        let _left = false;
+        try { await photoFolderHandle.getFileHandle(INDEX_FILE_NAME + '.tmp'); _left = true; } catch(e) {}
+        if (window.Diag) Diag.noteIndexFiles(_left);
+      } catch(e) {}
     }
 
-    // 2차: 본 파일로 교체 (이전 백업 보관)
-    try {
-      // 기존 _works_index.json → _works_index.json.bak
+    // 건수가 줄었을 때만 직전 본파일을 .bak 으로 보관
+    if (_lastSavedCount >= 0 && indexData.works.length < _lastSavedCount) {
       try {
         const oldFh = await photoFolderHandle.getFileHandle(INDEX_FILE_NAME);
         const oldFile = await oldFh.getFile();
@@ -76,23 +94,23 @@ async function saveWorkIndex(indexData) {
         const bw = await bakFh.createWritable();
         await bw.write(oldFile);
         await bw.close();
-      } catch(e) { /* 처음이면 옛 파일 없음 */ }
+        console.log(`[인덱스] 건수 감소(${_lastSavedCount}→${indexData.works.length}) → .bak 보관`);
+      } catch(e) { /* 옛 파일이 없으면 보관할 것도 없음 */ }
+    }
 
-      // 새 인덱스 본 파일에 쓰기
+    try {
       const mainFh = await photoFolderHandle.getFileHandle(INDEX_FILE_NAME, { create: true });
       const mw = await mainFh.createWritable();
-      await mw.write(JSON.stringify(indexData));
+      await mw.write(_json);
       await mw.close();
-
-      // 임시 파일 삭제
-      try { await photoFolderHandle.removeEntry(tempName); } catch(e) {}
     } catch(e) {
-      throw new Error('인덱스 교체 실패: ' + e.message);
+      throw new Error('인덱스 쓰기 실패: ' + e.message);
     }
+    _lastSavedCount = indexData.works.length;
 
     _indexCache = indexData;
     _indexLoaded = true;
-    console.log(`[인덱스] 저장 완료: ${indexData.works.length}건`);
+    console.log(`[인덱스] 저장 완료: ${indexData.works.length}건 (${Math.round(_json.length/1024)}KB)`);
     return true;
   } catch(e) {
     console.error('[인덱스] 저장 실패:', e.message);

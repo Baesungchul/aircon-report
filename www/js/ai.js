@@ -1326,14 +1326,22 @@
       // ★ 참고메모 기억: 다음 글작성(다른 채널)에서 자동으로 다시 채워짐
       try { workPostMemo = memo; if (typeof sessionAutoSave === 'function') sessionAutoSave(); } catch (e) {}
       if (typeof showOverlay === 'function') showOverlay(ch.label + ' 글 생성 중...');
+      var _stopBusy1 = (typeof startBusyProgress === 'function') ? startBusyProgress([
+        '작업 사진·메모 확인하는 중...',
+        ch.label + ' 스타일로 글 구상하는 중...',
+        '문장 다듬는 중...',
+        '거의 다 됐어요...'
+      ]) : null;
       try {
         var t = await generatePost(chId, memo);
         try { if (window.Subs) Subs.consumeAI('blog'); } catch (e) {}  // ★ 구독: 1회 차감
+        if (_stopBusy1) _stopBusy1();
         if (typeof hideOverlay === 'function') hideOverlay();
         close();
         var pid = hasPhotosInWork() ? savePostToWork(chId, t) : null;
         showBlogResult(t, chId, pid);
       } catch (e) {
+        if (_stopBusy1) _stopBusy1();
         if (typeof hideOverlay === 'function') hideOverlay();
         toast('생성 실패: ' + (e && e.message), 'err');
       }
@@ -1426,6 +1434,12 @@
       if (!req && !imgs.length && !useWork) { toast('고객 요청 내용을 입력하거나 캡처를 첨부해주세요', 'err'); return; }
       if (window.Subs && !Subs.gateAI('sched', 'aiQuoteGo')) return;  // ★ 구독: 견적서(문자용)은 일정등록 횟수 차감 (로그인 후엔 이 버튼을 다시 누른다)
       if (typeof showOverlay === 'function') showOverlay('견적서 생성 중...');
+      var _stopBusy2 = (typeof startBusyProgress === 'function') ? startBusyProgress([
+        '요청 내용 확인하는 중...',
+        '견적 항목 정리하는 중...',
+        '금액 계산하는 중...',
+        '거의 다 됐어요...'
+      ]) : null;
       try {
         // 캡처가 있으면 먼저 글자만 정확히 전사(OCR) 후 요청 텍스트에 합침
         if (imgs.length) {
@@ -1436,11 +1450,13 @@
         }
         var t = await generateQuote(req, useWork);
         try { if (window.Subs) Subs.consumeAI('sched'); } catch (e) {}  // ★ 구독: 일정등록 1회 차감
+        if (_stopBusy2) _stopBusy2();
         if (typeof hideOverlay === 'function') hideOverlay();
         close();
         // 견적서는 작업에 저장하지 않음(의뢰 전 일회성) — 대신 사용자가 고치면 교정 학습
         showBlogResult(t, 'quote', null, { request: req || '(열린 작업 정보 기준)', aiText: t });
       } catch (e) {
+        if (_stopBusy2) _stopBusy2();
         if (typeof hideOverlay === 'function') hideOverlay();
         toast('생성 실패: ' + (e && e.message), 'err');
       }

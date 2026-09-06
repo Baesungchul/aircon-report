@@ -21,8 +21,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -344,8 +346,26 @@ public class BackupFolderPlugin extends Plugin {
                     Uri treeUri = Uri.parse(uriStr);
                     String rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
 
+                    // ★ 1단계: 목록만 먼저 모아 전체 개수 파악 (진행률 표시용, 바이트 복사 없음 → 상대적으로 빠름)
+                    List<String[]> files = new ArrayList<>(); // [childId, childRel]
+                    collectFiles(resolver, treeUri, rootDocId, "", files);
+                    int total = files.size();
+                    notifyProgress(0, total);
+
+                    // ★ 2단계: 실제 복사, 진행 상황을 주기적으로 JS에 알림
                     int[] counts = new int[]{0, 0, 0}; // ok, skip, fail
-                    walk(resolver, treeUri, rootDocId, "", destRoot, counts);
+                    long lastNotify = System.currentTimeMillis();
+                    for (int i = 0; i < files.size(); i++) {
+                        String[] f = files.get(i);
+                        copyOne(resolver, treeUri, f[0], f[1], destRoot, counts);
+                        int done = i + 1;
+                        long now = System.currentTimeMillis();
+                        // 200ms 마다 + 마지막 항목은 반드시 알림 (너무 자주 알리면 JS 쪽 부담)
+                        if (done == total || now - lastNotify >= 200) {
+                            notifyProgress(done, total);
+                            lastNotify = now;
+                        }
+                    }
 
                     JSObject ret = new JSObject();
                     ret.put("ok", counts[0]);
@@ -359,8 +379,17 @@ public class BackupFolderPlugin extends Plugin {
         }).start();
     }
 
-    private void walk(ContentResolver resolver, Uri treeUri, String docId, String rel,
-                      File destRoot, int[] counts) {
+    // 진행률 이벤트: JS 쪽에서 BackupFolder.addListener('restoreProgress', cb) 로 받는다
+    private void notifyProgress(int done, int total) {
+        JSObject data = new JSObject();
+        data.put("done", done);
+        data.put("total", total);
+        notifyListeners("restoreProgress", data);
+    }
+
+    // 폴더 트리를 훑어 파일(디렉토리 아님) 목록만 수집 — 복사 없이 목록 조회만 하므로 가볍다
+    private void collectFiles(ContentResolver resolver, Uri treeUri, String docId, String rel,
+                              List<String[]> out) {
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
         Cursor c = null;
         try {
@@ -376,9 +405,9 @@ public class BackupFolderPlugin extends Plugin {
                 String mime = c.getString(2);
                 String childRel = rel.isEmpty() ? name : rel + "/" + name;
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                    walk(resolver, treeUri, childId, childRel, destRoot, counts);
+                    collectFiles(resolver, treeUri, childId, childRel, out);
                 } else {
-                    copyOne(resolver, treeUri, childId, childRel, destRoot, counts);
+                    out.add(new String[]{childId, childRel});
                 }
             }
         } catch (Exception e) {

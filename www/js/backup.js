@@ -287,9 +287,23 @@
       if (!confirm('선택한 폴더로 복원합니다:\n' + prettyName +
                    '\n\n없어진 사진만 채웁니다.\n지금 있는 사진·정보는 그대로 둡니다(덮어쓰지 않음). 진행할까요?')) return;
 
-      if (typeof showOverlay === 'function') showOverlay('복원 중...');
+      if (typeof showOverlay === 'function') showOverlay('파일 목록 확인 중...');
       var srcDir = chosen.dir;
       var appFolder = await _appFolder();
+      // ★ 진행률: 복사 전에 전체 파일 개수를 먼저 세어(바이트 복사 없이 목록만) done/total 표시에 쓴다
+      async function _countFiles(rel) {
+        var here2 = dataRoot + (rel ? '/' + rel : '');
+        var items2 = await _list(srcDir, here2);
+        var n = 0;
+        for (var i2 = 0; i2 < items2.length; i2++) {
+          if (items2[i2].isDir) n += await _countFiles(rel ? rel + '/' + items2[i2].name : items2[i2].name);
+          else n++;
+        }
+        return n;
+      }
+      var totalCount = 0;
+      try { totalCount = await _countFiles(''); } catch (e) { totalCount = 0; }
+      if (typeof showOverlay === 'function') showOverlay('복원 중...');
       console.log('[복원] 시작 chosen=', JSON.stringify(chosen), 'dataRoot=', dataRoot, '→ appFolder=', appFolder);
       try {
         var _raw = await FS.readdir({ path: dataRoot, directory: srcDir });
@@ -343,7 +357,11 @@
                 }
               }
             }
-            if (prog % 8 === 0) { if (typeof setProg === 'function') setProg(0, '복원 중 ' + prog + '개'); await new Promise(function (r) { setTimeout(r, 0); }); }
+            if (prog % 4 === 0 || prog === totalCount) {
+              var _pct = totalCount ? Math.round(prog / totalCount * 100) : 0;
+              if (typeof setProg === 'function') setProg(_pct, totalCount ? ('복원 중 ' + prog + ' / ' + totalCount + '개') : ('복원 중 ' + prog + '개'));
+              await new Promise(function (r) { setTimeout(r, 0); });
+            }
           }
         }
       }
@@ -383,9 +401,27 @@
       try {
         var picked = await BF.pickFolder();
         if (!picked || picked.cancelled || !picked.uri) return;  // 사용자가 취소
-        if (typeof showOverlay === 'function') showOverlay('복원 중... (잠시만요)');
+        if (typeof showOverlay === 'function') showOverlay('복원 준비 중...');
         var appFolder = await _appFolder();
-        var res = await BF.restoreTree({ uri: picked.uri, appFolder: appFolder });
+        // ★ 진행률: 네이티브가 전체 개수를 센 뒤 restoreProgress 이벤트로 done/total 을 보내온다
+        var _progHandle = null;
+        try {
+          if (BF.addListener) {
+            _progHandle = await BF.addListener('restoreProgress', function (ev) {
+              var done = (ev && ev.done) || 0, total = (ev && ev.total) || 0;
+              var pct = total ? Math.round(done / total * 100) : 0;
+              if (typeof setProg === 'function') {
+                setProg(pct, total ? ('복원 중 ' + done + ' / ' + total + '개') : '폴더 확인 중...');
+              }
+            });
+          }
+        } catch (e) {}
+        var res;
+        try {
+          res = await BF.restoreTree({ uri: picked.uri, appFolder: appFolder });
+        } finally {
+          try { if (_progHandle && _progHandle.remove) await _progHandle.remove(); } catch (e) {}
+        }
         if (typeof invalidateWorkIndex === 'function') invalidateWorkIndex();
         if (typeof invalidateRecordsCache === 'function') invalidateRecordsCache();
         var ok = (res && res.ok) || 0, skip = (res && res.skip) || 0, fail = (res && res.fail) || 0;

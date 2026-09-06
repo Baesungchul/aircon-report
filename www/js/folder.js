@@ -1405,20 +1405,27 @@ function showOverlay(t){
 }
 function setProg(p,l){document.getElementById('progFl').style.width=p+'%';document.getElementById('progLb').textContent=l;}
 // ★ AI 글생성 등, 실제 진행률(총 개수)을 알 수 없는 오래 걸리는 작업용 — "멈춘 것처럼 보이는" 문제 완화
-// 진행 중임을 알 수 있게 진행바를 서서히 채우고(끝까지는 안 감) 안내 문구를 번갈아 보여준다.
+// 진행바를 서서히 채우면서(끝까지는 안 감) 그 진행률 구간에 맞는 문구 하나만 보여준다.
+// ⚠️ 문구는 진행률 구간과 짝을 맞춰 앞으로만 나아가고 처음으로 되돌아가 반복하지 않는다
+//    (초반 문구가 뒷부분에서 다시 뜨면 "가짜 진행바"인 게 티가 나서 생긴 개선 — 2026-09-06)
 // 사용법: var stop = startBusyProgress(['문구1','문구2',...]); ... 끝나면 stop();
 function startBusyProgress(messages, opts) {
   opts = opts || {};
-  var interval = opts.interval || 2600;
+  var tickMs = opts.interval || 700; // 진행바는 짧은 주기로 조금씩만 움직임(문구는 구간에 따라 자연히 바뀜)
   var msgs = (messages && messages.length) ? messages : ['처리 중...'];
-  var idx = 0, pct = 10;
-  function tick() {
-    pct = Math.min(pct + 6 + Math.random() * 8, 92); // 92%에서 멈춰 기다림(완료 전엔 100% 안 보여줌)
-    if (typeof setProg === 'function') setProg(Math.round(pct), msgs[idx % msgs.length]);
-    idx++;
+  var cap = 92; // 완료 전엔 100%를 보여주지 않고 여기서 대기
+  var seg = cap / msgs.length; // 문구 하나가 담당하는 진행률 구간
+  var pct = Math.min(4, seg * 0.3);
+  function paint() {
+    var idx = Math.min(msgs.length - 1, Math.floor(pct / seg));
+    if (typeof setProg === 'function') setProg(Math.round(pct), msgs[idx]);
   }
-  tick();
-  var timer = setInterval(tick, interval);
+  paint();
+  var timer = setInterval(function () {
+    if (pct >= cap) return; // 상한 도달 후엔 문구도 진행률도 그대로 — 반복 없이 실제 완료를 기다림
+    pct = Math.min(pct + seg * (0.12 + Math.random() * 0.1), cap);
+    paint();
+  }, tickMs);
   var stopped = false;
   return function stopBusyProgress() {
     if (stopped) return;

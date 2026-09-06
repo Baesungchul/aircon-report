@@ -287,7 +287,7 @@
       if (!confirm('선택한 폴더로 복원합니다:\n' + prettyName +
                    '\n\n없어진 사진만 채웁니다.\n지금 있는 사진·정보는 그대로 둡니다(덮어쓰지 않음). 진행할까요?')) return;
 
-      if (typeof showOverlay === 'function') showOverlay('파일 목록 확인 중...');
+      if (typeof showOverlay === 'function') showOverlay('복원 중...');
       var srcDir = chosen.dir;
       var appFolder = await _appFolder();
       // ★ 진행률: 복사 전에 전체 파일 개수를 먼저 세어(바이트 복사 없이 목록만) done/total 표시에 쓴다
@@ -401,7 +401,7 @@
       try {
         var picked = await BF.pickFolder();
         if (!picked || picked.cancelled || !picked.uri) return;  // 사용자가 취소
-        if (typeof showOverlay === 'function') showOverlay('복원 준비 중...');
+        if (typeof showOverlay === 'function') showOverlay('복원 중...');
         var appFolder = await _appFolder();
         // ★ 진행률: 네이티브가 전체 개수를 센 뒤 restoreProgress 이벤트로 done/total 을 보내온다
         var _progHandle = null;

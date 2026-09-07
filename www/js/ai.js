@@ -1253,6 +1253,10 @@
     /* ★ 2026-08-26 버튼 아래 작은 안내줄은 제거했다 —
          "잘 보이지도 않고 의미도 부정확하다"(사용자). 설명은 버튼 문구로 끝낸다. */
     var _snsOff = 230 + ((_snsMo ? 1 : 0) + (_snsPc ? 1 : 0)) * 54;
+    /* 사진으로 볼 수 있는 글인가 — 마커가 있고, 이 작업에 사진이 있어야 뜻이 있다.
+       ⚠️ 견적서·문자에는 마커가 없으니 자연히 안 뜬다(버튼을 억지로 숨길 필요 없음). */
+    var _pvOn = false;
+    try { _pvOn = !!(window.Preview && Preview.hasMarker(text) && hasPhotosInWork()); } catch (e) {}
     var snsRow = (_snsMo || _snsPc)
       ? ((_snsMo ? '<button class="btn b-blue" id="aiBlogSns" style="width:100%;justify-content:center;margin-top:10px;">' + _snsMoLabel + '</button>' : '') +
          (_snsPc ? '<button class="btn b-blue" id="aiBlogSnsPc" style="width:100%;justify-content:center;margin-top:10px;">💻 PC 블로그에 올리기</button>' : ''))
@@ -1262,8 +1266,15 @@
       '<div style="font-size:11px;color:var(--mu);margin-bottom:6px;">' + ch.copyHint +
         (isQuote ? '' : ' 닫으면 현재 작업에 자동 저장되어 <b>📂 저장된 글</b>에서 다시 열 수 있어요.') +
         (isQuote && learnCtx ? ' 내용을 고쳐서 복사하면 다음 견적서에 그 방식이 반영됩니다. 🧠' : '') + '</div>' +
+      /* ⭐ 2026-09-07 (사용자 요청) — "찍고쓰다는 글 사이사이에 사진이 들어가는데
+           현장매니저는 마커만 들어간다". 마커가 사진으로 바뀌는 곳이 PC 링크뿐이라
+           앱에서는 (사진: 작업 전 2) 가 글자로만 보였다. 이제 여기서 바로 보여준다.
+         ☠️ 화면만 바꾼다 — 복사·공유되는 글은 아래 textarea 의 값(마커 포함) 그대로다.
+            마커는 모바일에서 손으로 사진을 끼울 때 자리를 알려주는 유일한 표시다. */
+      (_pvOn ? '<button class="btn b-ghost" id="aiBlogPvBtn" style="width:100%;justify-content:center;margin-bottom:8px;">🖼 사진으로 보기</button>' : '') +
+      '<div id="aiBlogPv" class="post-pv" style="display:none;height:calc(100vh - ' + (_snsOff + 46) + 'px);min-height:180px;"></div>' +
       '<textarea class="cust-memo" id="aiBlogOut" rows="14" style="width:100%;font-size:13px;line-height:1.6;' +
-        'height:calc(100vh - ' + _snsOff + 'px);min-height:180px;box-sizing:border-box;resize:none;">' + esc(text) + '</textarea>' +
+        'height:calc(100vh - ' + (_snsOff + (_pvOn ? 46 : 0)) + 'px);min-height:180px;box-sizing:border-box;resize:none;">' + esc(text) + '</textarea>' +
       snsRow +
       '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">' +
         '<button class="btn b-blue" id="aiBlogCopy" style="flex:2;min-width:110px;">📋 전체 복사</button>' +
@@ -1272,6 +1283,33 @@
       '</div>', 858);
     // 결과 화면은 본문이 주인공 → 오버레이 위쪽 여백을 줄여 그만큼 글에 준다
     try { ov.style.paddingTop = '14px'; ov.style.paddingBottom = '14px'; } catch (e) {}
+    /* ── 사진으로 보기 ↔ 글 고치기 (2026-09-07) ────────────────────────────
+       ☠️ 미리보기는 **화면일 뿐**이다. 복사·공유·저장은 전부 textarea 값을 읽으므로
+          마커가 그대로 남는다 — 그게 모바일에서 사진 자리를 알려주는 유일한 표시다.
+       ⚠️ 편집으로 돌아올 때마다 다시 그린다. 글을 고치고 나면 사진 자리도 달라진다. */
+    var _pvBtn = ov.querySelector('#aiBlogPvBtn');
+    var _pvBox = ov.querySelector('#aiBlogPv');
+    var _pvShown = false;
+    function paintPreview() {
+      if (!_pvShown || !_pvBox) return;
+      _pvBox.innerHTML = '<div class="pv-empty">사진 불러오는 중…</div>';
+      var src = (document.getElementById('aiBlogOut') || {}).value || '';
+      Preview.render(src).then(function (html) { _pvBox.innerHTML = html; })
+        .catch(function () { _pvBox.innerHTML = '<div class="pv-empty">미리보기를 만들지 못했습니다.</div>'; });
+    }
+    function showPreview(on) {
+      _pvShown = !!on;
+      var ta = document.getElementById('aiBlogOut');
+      if (ta) ta.style.display = _pvShown ? 'none' : '';
+      if (_pvBox) _pvBox.style.display = _pvShown ? '' : 'none';
+      if (_pvBtn) _pvBtn.textContent = _pvShown ? '✏️ 글 고치기' : '🖼 사진으로 보기';
+      paintPreview();
+    }
+    if (_pvBtn) _pvBtn.onclick = function () { showPreview(!_pvShown); };
+    /* 사진이 들어간 모습을 **먼저** 보여준다 — 사장님이 원한 게 그 화면이다.
+       고치려면 버튼 한 번이면 된다. */
+    if (_pvOn) showPreview(true);
+
     // 견적 교정 학습: 사용자가 고친 견적서를 복사/공유/닫기 시점에 정답으로 저장
     function maybeLearnQuote() {
       if (!isQuote || !learnCtx || !learnCtx.request) return;
@@ -1301,6 +1339,8 @@
           }
         } catch (e) {}
       }
+      /* ☠️ 미리보기가 만든 blob URL 을 놓아 준다 — 안 놓으면 글을 열 때마다 사진이 메모리에 쌓인다 */
+      try { if (window.Preview && Preview.release) Preview.release(); } catch (e) {}
       if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     };
     document.getElementById('aiBlogClose').onclick = close;

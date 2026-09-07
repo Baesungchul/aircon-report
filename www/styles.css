@@ -2955,6 +2955,18 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
       기기에 따라 글자가 뿌옇게 보인다. 움직이는 동안에만 .cal-anim 을 붙였다 뗀다
       (calendar.js 의 _navAnimating · snapBack · 가로 드래그 판정 세 곳에서 관리). */
 .cal-grid.cal-anim{will-change:transform,opacity;backface-visibility:hidden;}
+
+/* ═══ 글 결과의 '사진으로 보기' (2026-09-07) ═══════════════════════════════
+   사용자 요청: "찍고쓰다는 글 사이사이에 사진이 들어가는데 현장매니저는 마커만 들어간다"
+   ☠️ 이 화면은 **보기 전용**이다. 복사·공유되는 글은 마커가 그대로 남아 있어야 한다
+      (모바일에서 손으로 사진을 끼울 때 자리를 알려주는 유일한 표시 — js/ai.js 주석 참고). */
+.post-pv{ border:1px solid var(--bd); border-radius:10px; background:var(--sf2,var(--sf));
+          padding:12px 13px; font-size:13.5px; line-height:1.85; color:var(--tx);
+          overflow-y:auto; -webkit-overflow-scrolling:touch; box-sizing:border-box; }
+.post-pv p{ margin:0 0 11px; white-space:pre-wrap; word-break:break-word; }
+.post-pv p:last-child{ margin-bottom:0; }
+.post-pv img{ display:block; width:100%; height:auto; border-radius:9px; margin:12px 0; }
+.post-pv .pv-empty{ color:var(--mu); font-size:12.5px; text-align:center; padding:14px 0; }
 .cal-expanded .cal-revenue,
 .cal-expanded .cal-detail,
 .cal-expanded .cal-swipe-hint{display:none!important;}

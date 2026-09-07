@@ -124,6 +124,24 @@
     return { applied: applied, skipped: skipped, names: names };
   };
 
+  /* ── 파일 내용(문자열)으로 바로 적용 ──
+     ☠️ 2026-09-07 추가. 기존 autoApply 는 **지금 앱 폴더**의 _appdata.json 을 읽는데,
+        복원은 '이미 있는 파일은 건너뜀' 규칙 때문에 백업본을 그 자리에 못 넣었다.
+        그래서 결국 자기 자신을 읽고 0건 복원하고 끝났다(안내도 안 뜬다 — applied 가 0이라).
+        backup.js 가 백업본을 읽어 이 함수로 넘긴다. */
+  AppData.applyText = function (text, mode) {
+    var snap = null;
+    try { snap = JSON.parse(String(text || '')); } catch (e) { return 0; }
+    if (!snap || !snap.data) return 0;
+    var r = AppData.apply(snap, mode || 'missing');
+    if (r.applied) {
+      try { if (typeof updateCoHdrBtn === 'function') updateCoHdrBtn(); } catch (e) {}
+      try { if (typeof applyCoIcon === 'function') applyCoIcon(); } catch (e) {}
+      try { if (typeof applyCustomLabels === 'function') applyCustomLabels(); } catch (e) {}
+    }
+    return r.applied;
+  };
+
   /* ── 지금 비어있는 주요 항목 ───────────── */
   function missingImportant(snap) {
     var out = [];

@@ -72,6 +72,87 @@
     }
   }
 
+  /* ═══════════ 스냅샷(리마인더·설정) 복원 ═══════════
+     ☠️ 2026-09-07 사용자 신고: "폴더복구를 했는데 리마인더는 복구가 안 되는 현상".
+        리마인더·설정·지침·학습기록은 사진과 다르다. 파일이 아니라 localStorage 에 사는 값이고,
+        폴더에는 **이름이 늘 같은 '지금 상태의 사본'** 두 개로만 남는다.
+        그런데 모든 복원 경로가 사진 기준의 비파괴 규칙 — "이미 있는 파일은 건너뜀" — 을 쓴다.
+        앱은 켜지자마자 (거의 빈) 사본을 새로 써 두므로, 백업 안의 진짜 사본은 늘 그 규칙에
+        걸려 영영 안 들어왔다. 그러고 나서 AppData.autoApply() 가 그 빈 사본을 읽어
+        0건 복원하고 조용히 끝났다(applied 가 0이면 안내도 안 뜬다).
+
+        고치는 자리가 중요하다. 복원은 네 갈래(폴더·SAF 선택기·폴더선택·ZIP)이고,
+        SAF 는 자바(BackupFolderPlugin.copyOne)가 같은 규칙으로 건너뛴다.
+        규칙 자체를 네 군데(+자바) 고치면 또 어긋난다 — 그래서 복원 **앞뒤**에서 처리한다.
+          ① 복원 전 _snapStash(): 내 사본을 .mine 으로 잠시 치운다 → 백업본이 들어올 자리가 생긴다
+          ② 복원 후 _snapMerge(): 들어온 백업본을 지금 값과 **합치고**(둘 다 살린다) .mine 을 지운다
+                                  백업에 없던 파일이면 치워 둔 걸 그대로 되돌린다
+        ☠️ ①만 넣고 ②를 빼면 안 된다 — 파일만 바뀌고 화면·알림은 옛 값 그대로다. */
+  var SNAP_FILES = ['_reminders.json', '_appdata.json'];
+
+  async function _snapStash() {
+    var FS = _FS(), base;
+    try { base = await _appFolder(); } catch (e) { return; }
+    for (var i = 0; i < SNAP_FILES.length; i++) {
+      var p = base + '/' + SNAP_FILES[i];
+      if (!(await _exists('EXTERNAL', p))) continue;
+      try { await FS.deleteFile({ path: p + '.mine', directory: 'EXTERNAL' }); } catch (e) {}
+      try {
+        await FS.rename({ from: p, to: p + '.mine', directory: 'EXTERNAL', toDirectory: 'EXTERNAL' });
+      } catch (e) { console.warn('[복원] 스냅샷 치우기 실패:', SNAP_FILES[i], e && e.message); }
+    }
+  }
+
+  async function _snapMerge() {
+    var FS = _FS(), out = { reminders: 0, settings: 0 }, base;
+    try { base = await _appFolder(); } catch (e) { return out; }
+    for (var i = 0; i < SNAP_FILES.length; i++) {
+      var name = SNAP_FILES[i], p = base + '/' + name;
+      if (!(await _exists('EXTERNAL', p))) {
+        /* 백업에 없던 파일 — 치워 둔 내 사본을 되돌린다 */
+        try { await FS.rename({ from: p + '.mine', to: p, directory: 'EXTERNAL', toDirectory: 'EXTERNAL' }); } catch (e) {}
+        continue;
+      }
+      var text = '';
+      try {
+        var rd = await FS.readFile({ path: p, directory: 'EXTERNAL', encoding: 'utf8' });
+        text = (rd && rd.data != null) ? String(rd.data) : '';
+      } catch (e) { console.warn('[복원] 스냅샷 읽기 실패:', name, e && e.message); }
+      try {
+        if (name === '_reminders.json' && window.Reminders && Reminders.mergeSnapshot) {
+          out.reminders = await Reminders.mergeSnapshot(text);
+        } else if (name === '_appdata.json' && window.AppData && AppData.applyText) {
+          out.settings = AppData.applyText(text, 'missing');
+        }
+      } catch (e) { console.warn('[복원] 스냅샷 적용 실패:', name, e && e.message); }
+      try { await FS.deleteFile({ path: p + '.mine', directory: 'EXTERNAL' }); } catch (e) {}
+    }
+    var msg = [];
+    if (out.reminders) msg.push('리마인더 ' + out.reminders + '건');
+    if (out.settings) msg.push('설정 · 지침 ' + out.settings + '건');
+    if (msg.length && typeof showToast === 'function') {
+      showToast('🔔 ' + msg.join(' · ') + '도 함께 되살렸어요', 'ok');
+    }
+    return out;
+  }
+
+  /* 복원이 중간에 끊겨 .mine 만 남아 있으면 앱 시작 때 되돌린다 (안 그러면 리마인더가 통째로 사라진다) */
+  async function _snapRecoverStray() {
+    var FS = _FS(), base;
+    if (!_isNative()) return;
+    try { base = await _appFolder(); } catch (e) { return; }
+    for (var i = 0; i < SNAP_FILES.length; i++) {
+      var p = base + '/' + SNAP_FILES[i];
+      try {
+        if (!(await _exists('EXTERNAL', p + '.mine'))) continue;
+        if (await _exists('EXTERNAL', p)) { await FS.deleteFile({ path: p + '.mine', directory: 'EXTERNAL' }); continue; }
+        await FS.rename({ from: p + '.mine', to: p, directory: 'EXTERNAL', toDirectory: 'EXTERNAL' });
+        console.log('[복원] 끊긴 복원의 스냅샷을 되돌림:', SNAP_FILES[i]);
+      } catch (e) {}
+    }
+  }
+  setTimeout(function () { _snapRecoverStray(); }, 5000);
+
   /* ═══════════ 백업 내보내기 (파일단위 복사) ═══════════ */
   async function exportBackup() {
     if (!_isNative()) { _toast('이 기능은 앱에서만 지원됩니다', 'err'); return; }
@@ -288,6 +369,8 @@
                    '\n\n없어진 사진만 채웁니다.\n지금 있는 사진·정보는 그대로 둡니다(덮어쓰지 않음). 진행할까요?')) return;
 
       if (typeof showOverlay === 'function') showOverlay('복원 중...');
+      /* ★ 복원 전에 리마인더·설정 사본을 잠시 치운다 — 안 그러면 백업본이 '이미 있음'으로 건너뛰어진다 */
+      try { await _snapStash(); } catch (e) { console.warn('[복원] 스냅샷 치우기:', e && e.message); }
       var srcDir = chosen.dir;
       var appFolder = await _appFolder();
       // ★ 진행률: 복사 전에 전체 파일 개수를 먼저 세어(바이트 복사 없이 목록만) done/total 표시에 쓴다
@@ -372,19 +455,24 @@
       if (typeof hideOverlay === 'function') hideOverlay();
       if (ok === 0 && skip === 0 && fail === 0) {
         _toast('폴더 안에서 사진·파일을 찾지 못했습니다 (폴더 구조 확인)', 'err');
+        try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
         return;
       }
       if (ok === 0 && skip === 0) {
         // 파일은 찾았지만 전부 복사 실패 → 진짜 원인(권한/경로)을 표시
         _toast('파일은 찾았으나 복원에 실패했습니다 (' + fail + '개): ' + lastErr, 'err');
+        try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
         return;
       }
-      // ★ 설정·지침·학습기록(_appdata.json)도 함께 되살릴지 제안 (2026-08-09)
-      try { if (window.AppData && AppData.autoApply) AppData.autoApply(); } catch (e) {}
+      /* ★ 2026-09-07 — 설정·지침·학습기록 + 리마인더를 백업본에서 합친다.
+         예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
+         읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
+      try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
       alert('✅ 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' · 그대로 둠 ' + skip + '개') : '') + (fail ? (' · 실패 ' + fail + '개' ) : '') +
             '\n\n스케줄/작업기록을 열어 확인하세요.');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
+      try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
       _toast('복원 실패: ' + (e && e.message), 'err');
     }
   }
@@ -402,6 +490,8 @@
         var picked = await BF.pickFolder();
         if (!picked || picked.cancelled || !picked.uri) return;  // 사용자가 취소
         if (typeof showOverlay === 'function') showOverlay('복원 중...');
+        /* ★ 복원 전에 리마인더·설정 사본을 잠시 치운다 — 안 그러면 백업본이 '이미 있음'으로 건너뛰어진다 */
+        try { await _snapStash(); } catch (e) { console.warn('[복원] 스냅샷 치우기:', e && e.message); }
         var appFolder = await _appFolder();
         // ★ 진행률: 네이티브가 전체 개수를 센 뒤 restoreProgress 이벤트로 done/total 을 보내온다
         var _progHandle = null;
@@ -433,15 +523,19 @@
         if (typeof hideOverlay === 'function') hideOverlay();
         if (ok === 0 && skip === 0) {
           _toast('복원할 파일을 찾지 못했습니다 (실패 ' + fail + '개). 백업 폴더가 맞는지 확인하세요.', 'err');
+          try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
           return;
         }
-      // ★ 설정·지침·학습기록(_appdata.json)도 함께 되살릴지 제안 (2026-08-09)
-      try { if (window.AppData && AppData.autoApply) AppData.autoApply(); } catch (e) {}
+      /* ★ 2026-09-07 — 설정·지침·학습기록 + 리마인더를 백업본에서 합친다.
+         예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
+         읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
+      try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
       alert('\u2705 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' \u00b7 그대로 둠 ' + skip + '개') : '') + (fail ? (' \u00b7 실패 ' + fail + '개') : '') +
               '\n\n스케줄/작업기록을 열어 확인하세요.');
         return;
       } catch (e) {
         if (typeof hideOverlay === 'function') hideOverlay();
+        try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
         var m = (e && (e.message || e.errorMessage)) || String(e);
         if (/취소|cancel/i.test(m)) return;
         _toast('폴더 복원 실패: ' + m, 'err');
@@ -481,6 +575,8 @@
     var FS = _FS();
     try {
       if (typeof showOverlay === 'function') showOverlay('복원 준비 중...');
+      /* ★ 복원 전에 리마인더·설정 사본을 잠시 치운다 — 안 그러면 백업본이 '이미 있음'으로 건너뛰어진다 */
+      try { await _snapStash(); } catch (e) { console.warn('[복원] 스냅샷 치우기:', e && e.message); }
       var appFolder = await _appFolder();
       // 앱 기준 상대경로(날짜폴더부터)로 변환
       var items = [];
@@ -495,6 +591,7 @@
       if (!items.length) {
         if (typeof hideOverlay === 'function') hideOverlay();
         _toast('백업 구조의 파일을 찾지 못했습니다 (날짜 폴더 없음)', 'err');
+        try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
         return;
       }
       var ok = 0, skip = 0, fail = 0, lastErr = '';
@@ -517,14 +614,18 @@
       if (typeof hideOverlay === 'function') hideOverlay();
       if (ok === 0 && skip === 0) {
         _toast('복원에 실패했습니다 (' + fail + '개): ' + lastErr, 'err');
+        try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
         return;
       }
-      // ★ 설정·지침·학습기록(_appdata.json)도 함께 되살릴지 제안 (2026-08-09)
-      try { if (window.AppData && AppData.autoApply) AppData.autoApply(); } catch (e) {}
+      /* ★ 2026-09-07 — 설정·지침·학습기록 + 리마인더를 백업본에서 합친다.
+         예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
+         읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
+      try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
       alert('\u2705 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' \u00b7 그대로 둠 ' + skip + '개') : '') + (fail ? (' \u00b7 실패 ' + fail + '개') : '') +
             '\n\n스케줄/작업기록을 열어 확인하세요.');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
+      try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
       _toast('복원 실패: ' + (e && e.message), 'err');
     }
   }
@@ -548,12 +649,15 @@
       if (typeof showOverlay === 'function') showOverlay('복원 준비 중...');
       var zip = await JSZip.loadAsync(file);
       var FS = _FS();
+      /* ★ 복원 전에 리마인더·설정 사본을 잠시 치운다 — 안 그러면 백업본이 '이미 있음'으로 건너뛰어진다 */
+      try { await _snapStash(); } catch (e) { console.warn('[복원] 스냅샷 치우기:', e && e.message); }
       var appFolder = await _appFolder();
       var entries = [];
       zip.forEach(function (path, e) { if (!e.dir) entries.push({ path: path, e: e }); });
       if (!entries.length) {
         if (typeof hideOverlay === 'function') hideOverlay();
         _toast('백업 파일이 비어있거나 형식이 다릅니다', 'err');
+        try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
         return;
       }
       var ok = 0, skip = 0, fail = 0;
@@ -574,12 +678,15 @@
       if (typeof invalidateWorkIndex === 'function') invalidateWorkIndex();
       if (typeof invalidateRecordsCache === 'function') invalidateRecordsCache();
       if (typeof hideOverlay === 'function') hideOverlay();
-      // ★ 설정·지침·학습기록(_appdata.json)도 함께 되살릴지 제안 (2026-08-09)
-      try { if (window.AppData && AppData.autoApply) AppData.autoApply(); } catch (e) {}
+      /* ★ 2026-09-07 — 설정·지침·학습기록 + 리마인더를 백업본에서 합친다.
+         예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
+         읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
+      try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
       alert('✅ 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' · 그대로 둠 ' + skip + '개') : '') + (fail ? (' · 실패 ' + fail + '개') : '') +
             '\n\n스케줄/작업기록을 열어 확인하세요.');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
+      try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
       _toast('복원 실패: ' + e.message, 'err');
     }
   }
@@ -591,6 +698,9 @@
   window.importBackup = restoreBackupFromFolder;   // 호환
   window.importBackupZip = importBackupZip;         // zip 복원
   window.importBackupFromPicker = importBackupFromPicker;  // 폴더 직접 선택(SAF) 복원
+  /* 검사용 — tools/test-restore-snapshot.js 가 복원 앞뒤 동작을 가짜 파일시스템으로 그대로 돌려 본다.
+     화면 어디서도 쓰지 않는다. 조용히 실패하는 자리라 자동 검사를 붙여 뒀다. */
+  window.__snapRestore = { stash: _snapStash, merge: _snapMerge };
 
   /* ☁️ 서버에서 복구: 미로그인 → 로그인창 / 로그인하면 바로 복구
      ★ 2026-08-24 예전엔 여기서 구독을 확인해 무료 계정을 요금제 창으로 돌려보냈다.

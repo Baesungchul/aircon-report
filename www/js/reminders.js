@@ -106,6 +106,42 @@
     } catch (e) { console.warn('[리마인더] 폴더 읽기 실패:', e && (e.message || e)); }
   };
 
+  /* ── 백업 스냅샷(_reminders.json 내용) 합치기 ──
+     ☠️ 2026-09-07 사용자 신고: "폴더복구를 했는데 리마인더는 복구가 안 되는 현상".
+        복원은 사진 기준으로 '이미 있는 파일은 건너뜀'이라, 이름이 늘 같은 이 스냅샷은
+        앱이 켜지며 다시 써 둔 (거의 빈) 사본에 막혀 백업본이 영영 안 들어왔다.
+        backup.js 가 복원 앞뒤에서 파일을 치웠다가 이 함수로 합친다.
+     ☠️ localStorage 만 고치면 안 된다 — _list 메모리 캐시를 다시 읽지 않으면 화면은 그대로다.
+     지금 것도 백업 것도 **둘 다** 살린다. 같은 id 면 updatedAt 이 최신인 쪽. */
+  Reminders.mergeSnapshot = async function (text) {
+    var obj = null;
+    try { obj = JSON.parse(String(text || '')); } catch (e) { return 0; }
+    var items = Array.isArray(obj && obj.items) ? obj.items : (Array.isArray(obj) ? obj : []);
+    items = items.filter(_valid);
+    if (!items.length) return 0;
+
+    _list = null;                 // 앞 단계가 localStorage 를 고쳤을 수 있다 — 다시 읽는다
+    var cur = _load();
+    var before = cur.length;
+    var map = {};
+    cur.forEach(function (r) { map[r.id] = r; });
+    items.forEach(function (r) {
+      var ex = map[r.id];
+      if (!ex || (r.updatedAt || 0) > (ex.updatedAt || 0)) map[r.id] = r;
+    });
+    var merged = Object.keys(map).map(function (k) { return map[k]; });
+    merged.sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+    if (merged.length > MAX) merged = merged.slice(merged.length - MAX);
+
+    _list = merged;
+    _saveLS();
+    try { await _saveFile(); } catch (e) {}   // 합친 결과를 폴더 사본에도 남긴다
+    _notifyChanged();                          // 달력 다시 그리기 + 알림 재예약
+    var added = merged.length - before;
+    console.log('[리마인더] 백업에서 합침: 총 ' + merged.length + '건 (새로 ' + (added > 0 ? added : 0) + '건)');
+    return added > 0 ? added : 0;
+  };
+
   function _notifyChanged() {
     try { if (window.__calendarRefresh) window.__calendarRefresh(); } catch (e) {}
     try { if (window.Notify && Notify.refresh) Notify.refresh(); } catch (e) {}

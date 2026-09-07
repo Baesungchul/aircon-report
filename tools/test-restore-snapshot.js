@@ -182,8 +182,11 @@ console.log('\n[1] Reminders.mergeSnapshot — 백업본을 지금 목록에 합
     load(ctx, 'backup.js');
 
     const APP = 'work-report/_reminders.json';
-    /* 앱이 켜지며 써 둔 '거의 빈' 사본 — 이게 예전엔 백업본을 막았다 */
-    disk[APP] = REM([]);
+    /* 앱이 켜지며 써 둔 '거의 빈' 사본 — 이게 예전엔 백업본을 막았다.
+       ⚠️ REM() 은 savedAt 에 지금 시각을 넣는다. 비교할 때 다시 부르면 밀리초가 달라
+          엉뚱하게 실패한다 — 값을 한 번만 만들어 두고 그걸로 비교한다. */
+    const MINE = REM([]);
+    disk[APP] = MINE;
     /* 백업 폴더에 든 진짜 사본 */
     const BACKUP = REM([
       mk('r_a', '10시까지 서비스센터 방문', '2026-09-10', 1000),
@@ -200,7 +203,7 @@ console.log('\n[1] Reminders.mergeSnapshot — 백업본을 지금 목록에 합
 
     /* (가) 예전 동작 — 치우기 없이 바로 복사 */
     must(await copyLikeRestore() === 1, '예전 버그가 재현되지 않음 (건너뛰지 않았다)');
-    must(disk[APP] === REM([]), '재현 실패 — 빈 사본이 아니다');
+    must(disk[APP] === MINE, '재현 실패 — 빈 사본이 아니다');
 
     /* (나) 고친 동작 — 치우기 → 복사 → 합치기 */
     await ctx.__snapRestore.stash();

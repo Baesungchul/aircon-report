@@ -14,25 +14,47 @@
          전용 플래그. share(팀 참여·일정공유)와 분리한 이유는 이 파일 위 주석 참고.
          free 도 true 인 이유: 무료 5회 블로그 글쓰기 자체가 이미 병목이라, 그 안에서
          나온 결과물을 공유/PC로 옮기는 것까지 막을 실익이 없다고 판단(사용자 결정). */
-    free:   { name: '무료',   price: 0,     sched: 0,    blog: 0,   share: false, snsShare: true, chat: false, chatMedia: false, teamCreate: false },
-    /* ★ 2026-08-30 개편 — 예전엔 4,900원을 내고도 AI 를 한 번도 못 썼다('팀 참여 전용').
-         무료(0회) 와 베이직(9,900원·100회) 사이가 비어 있어 진입 계단이 없었다.
-         베이직이 100회이므로 반값에 반건수(50회)로 둔다 — 건당 단가가 같아야
-         '더 쓰려면 베이직' 이 성립하고 베이직을 잠식하지 않는다.
-         ⭐ 새 상품을 만들지 않고 기존 lite 상품의 내용만 바꾸므로
-            Play Console·RevenueCat 에 추가로 등록할 것이 없다.
-         ⚠️ 이름을 '팀원'→'라이트' 로 바꿨다. 팀을 만들 수 있는 줄 알고 결제하는
-            사례가 있었다(2026-08-26). 아래 LITE_WARN 도 함께 고칠 것. */
-    lite:   { name: '라이트', price: 4900,  sched: 50,   blog: 0,   share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: false },
-    basic:  { name: '베이직', price: 9900,  sched: 100,  blog: 30,  share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: true },
-    pro:    { name: '프로',   price: 19900, sched: 300,  blog: 80,  share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true },
-    master: { name: '마스터', price: 49900, sched: 1500, blog: 300, share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, unlimited: true }
+    free:   { name: '무료',   price: 0,     sched: 0,    blog: 0,   share: false, snsShare: true, chat: false, chatMedia: false, teamCreate: false, maxMembers: 0 },
+    /* ═══ ★ 2026-09-07 요금제 개편 (사용자 결정) ═══════════════════════════════
+       실측 원가로 다시 짰다. 파이어스토어 users/{uid}.subs.aiCost 에 쌓인 실제
+       토큰 비용을 사용 횟수로 나눠 얻은 값이다(2026-09 표본: 일정 8건·글 2건).
+         · AI 일정등록  약 16원 (문자만) ~ 31원 (캡처 1장) → 계산에는 25원
+         · AI 글작성    약 57원 (사진 없음) ~ 83원 (사진 6장) → 계산에는 80원
+       실수령 = 표시가 ÷ 1.1(부가세) × 0.85(구글 수수료).
+
+       바뀐 점 ①  라이트에 글작성 10회와 팀 만들기를 넣었다.
+                  예전 라이트는 팀을 못 만들어서 "팀 하나 굴리려면 9,900원"이 진입장벽이었다.
+       바뀐 점 ②  한도를 전반적으로 낮췄다. 예전 마스터는 한도를 다 쓰면 원가율 156%,
+                  프로는 103% 로 **적자**였다. 지금은 전 플랜이 41~55% 다.
+       바뀐 점 ③  플랜별 팀 인원 상한(maxMembers)을 뒀다. 팀장 본인을 **포함**한 수다
+                  (화면의 "멤버 N명" 표시와 같은 기준 — teams.js 는 owner 도 members 에 넣는다).
+
+       ☠️ 한도를 내리는 것은 **구독자가 0명인 지금만** 할 수 있다. 한 명이라도 결제한
+          뒤에는 이미 판 것보다 적게 주는 셈이 되어 되돌리기 어렵다.
+       ⚠️ 한도·인원은 앱 코드 안의 값이라 Play Console 가격 변경(동의 절차)이 아니다.
+          새 버전만 올리면 적용된다. 가격(price)을 건드릴 때만 Play Console 이 필요하다.
+
+       계단 검산 — 가격 2배에 횟수가 2배보다 조금 더 늘어야 위 플랜을 잠식하지 않는다:
+         라이트→베이직 가격 2.02배 / 일정 2.33배 / 글 2.50배
+         베이직→프로   가격 2.01배 / 일정 2.14배 / 글 2.20배
+         프로→마스터   가격 2.51배 / 일정 2.67배 / 글 2.55배               */
+    lite:   { name: '라이트', price: 4900,  sched: 30,  blog: 10,  share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: true, maxMembers: 2 },   /* 원가 1,550원 / 41% */
+    basic:  { name: '베이직', price: 9900,  sched: 70,  blog: 25,  share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: true, maxMembers: 3 },   /* 원가 3,750원 / 49% */
+    pro:    { name: '프로',   price: 19900, sched: 150, blog: 55,  share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, maxMembers: 5 },   /* 원가 8,150원 / 53% */
+    /* ⚠️ 예전 마스터에는 unlimited:true 가 있어 화면에 "무제한*" 으로 적고 각주로 1,500회
+         제한을 달았다. 한도가 400 회로 내려온 지금 그 표기는 과장 광고(표시광고법)에
+         가깝다 — 실제 숫자를 그대로 보여준다. */
+    master: { name: '마스터', price: 49900, sched: 400, blog: 140, share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, maxMembers: 10 }  /* 원가 21,200원 / 55% */
   };
   /* ★ 2026-08-24 무료 지급분의 기준을 '설치'에서 '로그인 계정'으로 옮겼다.
        왜: ① 설치 기준이라 앱을 지웠다 깔면 무한히 리셋됐다(기기에만 기록이 남아 막을 방법이 없었다)
            ② 로그인해도 무료 사용자가 얻는 게 없어서 로그인할 이유가 없었다
        INSTALL_TASTER 를 0 이 아닌 값으로 바꾸면 '설치 시 맛보기'를 다시 켤 수 있다(사용자 결정: 지금은 없음). */
-  var FREE_INIT = { sched: 30, blog: 5 };        // 계정당 1회 지급(첫 로그인)
+  /* ★ 2026-09-07 30/5 → 15/3 으로 줄였다(사용자 결정).
+       라이트가 일정 30 회가 되면서 무료 지급분이 라이트 한 달치와 같아져,
+       첫 달에는 결제할 이유가 사라지는 상태였다.
+       가입 한 명당 원가도 1,150원 → 615원으로 내려간다(일정 25원·글 80원 기준). */
+  var FREE_INIT = { sched: 15, blog: 3 };        // 계정당 1회 지급(첫 로그인)
   var INSTALL_TASTER = { sched: 0, blog: 0 };    // 로그인 전 맛보기 — 현재 없음
   var GRANT_LEGACY = 'legacy';                   // 이 변경 이전부터 쓰던 기기 표시(횟수 보존용)
   var FREE_TTL_MS = 30 * 24 * 60 * 60 * 1000;    // ★ 2026-08-24 무료 지급분 유효기간 = 지급일로부터 30일(1회성)
@@ -244,6 +266,26 @@
     persist();
   };
   Subs.planInfo = function () { load(); return PLANS[effPlan()] || PLANS.free; };
+
+  /* ── 팀 인원 상한 (2026-09-07) ────────────────────────────────────────────
+     ☠️ 이 숫자는 **팀장 본인을 포함**한다. teams.js 가 팀을 만들 때 owner 를
+        members 배열에 같이 넣고, 화면도 "멤버 N명" 을 그 배열 길이로 센다.
+        라이트(2) = 팀장 + 팀원 1명. 두 기준이 어긋나면 사용자가 곧바로 알아챈다.
+     ⚠️ 상한을 실제로 막는 곳은 teams.js 다. 참여하는 사람은 팀장의 users 문서를
+        읽을 수 없으므로(보안 규칙), 팀 문서에 maxMembers 를 새겨 두고 그걸 본다.
+     ⚠️ 관리자는 무제한 — hasFeature 와 같은 규칙이다. */
+  var MEMBERS_FALLBACK = 3;   /* maxMembers 가 안 새겨진 옛 팀 문서용(베이직 기준) */
+  Subs.maxMembersOf = function (planKey) {
+    var p = PLANS[planKey];
+    return p ? (p.maxMembers || 0) : 0;
+  };
+  Subs.maxMembers = function () {
+    if (Subs.isAdmin()) return 9999;
+    load();
+    var p = Subs.planInfo();
+    return p.maxMembers || 0;
+  };
+  Subs.membersFallback = function () { return MEMBERS_FALLBACK; };
   Subs.hasFeature = function (k) {
     if (Subs.isAdmin()) return true;
     var p = Subs.planInfo();
@@ -671,6 +713,8 @@
         월 50회)이 그 옆의 작은 회색 한 줄에 묻혔다. 이번엔:
         · 있는 것(AI 일정등록 월 50회)을 카드 본문 첫 줄에 굵게·강조색으로 올리고
         · 없는 것은 경고 박스를 없애고 아주 작은 보조문구 한 줄로 낮춘다. */
+  /* ⭐ 2026-09-07 유료 플랜은 전부 팀을 만들 수 있게 됐다 → 이 문구가 뜨는 플랜은 없다.
+       그래도 지우지 않는다: 나중에 teamCreate 를 뺀 플랜을 다시 만들면 그대로 살아난다. */
   function _missingNote(p) {
     if (p.teamCreate) return '';
     var missing = [];
@@ -678,6 +722,11 @@
     missing.push('팀 만들기');
     return '<div style="font-size:11px;color:var(--mu);margin-top:5px;">' +
       missing.join('·') + '는 지원하지 않음 — 필요하면 베이직(월 9,900원)부터</div>';
+  }
+  /* 팀 인원은 팀장 포함이다 — 화면에도 그렇게 적는다(오해가 곧 환불 문의가 된다) */
+  function _teamLine(p) {
+    if (!p.teamCreate) return '<br>팀 참여 ✓';
+    return '<br>팀 만들기 ✓ · 팀 참여 ✓ · <b>팀 인원 ' + (p.maxMembers || 0) + '명</b>(팀장 포함)';
   }
   function _aiLine(p) {
     if (p.unlimited) return 'AI 일정등록·글작성 무제한*';
@@ -706,7 +755,7 @@
         '<div style="font-size:12px;color:var(--mu);margin-top:6px;line-height:1.6;">' +
           _aiLine(p) +
           '<br>일정공유 ✓ · 채팅 ✓' + (p.chatMedia ? ' · 채팅 사진/영상 ✓' : ' · 채팅은 텍스트/문서만') +
-          (p.teamCreate ? '<br>팀 만들기 ✓ · 팀 참여 ✓' : '<br>팀참여 ✓') +
+          _teamLine(p) +
         '</div>' + _missingNote(p) + buyBtn + '</div>';
     }).join('');
     var footMsg = billingOn
@@ -716,10 +765,12 @@
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2400;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px 16px;overflow-y:auto;';
     ov.innerHTML = '<div style="background:var(--sf);border-radius:14px;padding:18px;max-width:440px;width:100%;">' +
       '<div style="font-size:16px;font-weight:800;margin-bottom:4px;">⭐ 구독 안내</div>' +
-      '<div style="font-size:12px;color:var(--mu);margin-bottom:12px;">무료: 모든 기본 기능 + 사진 폰 저장 · AI 일정 30회/글작성 5회(1회 지급) · 일정공유/채팅 미포함' +
+      /* ⚠️ 무료 지급분 숫자는 FREE_INIT 에서 가져온다 — 예전엔 30/5 가 문구에 박혀 있어
+           값을 바꿀 때마다 화면이 거짓말을 했다(2026-09-07). */
+      '<div style="font-size:12px;color:var(--mu);margin-bottom:12px;">무료: 모든 기본 기능 + 사진 폰 저장 · AI 일정 ' + FREE_INIT.sched + '회/글작성 ' + FREE_INIT.blog + '회(1회 지급) · 일정공유/채팅 미포함' +
         '<br>남아 있는 무료 지급분은 구독한 뒤에도 <b>사라지지 않고 월 한도와 합산</b>됩니다(월 한도를 먼저 사용).</div>' +
       rows +
-      '<div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">*무제한: 공정 사용 정책(월 일정 1,500회·글 300회 초과 시 속도 제한). 가격은 부가세 포함.</div>' +
+      '<div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">팀 인원은 팀장을 포함한 수입니다. 가격은 부가세 포함.</div>' +
       footMsg +
       '<button class="btn b-blue" id="plClose" style="width:100%;justify-content:center;margin-top:12px;">닫기</button></div>';
     document.body.appendChild(ov);
@@ -729,17 +780,20 @@
     Array.prototype.forEach.call(ov.querySelectorAll('.subsBuy'), function (b) {
       b.onclick = function () {
         var k = b.getAttribute('data-plan');
-        /* ★ 2026-08-26 팀원(lite) 오구매 방지 — 결제 직전에 범위를 한 번 더 확인받는다.
-           ⭐ 2026-08-31 사용자 지적 — AI 일정등록(월 50회)이 생긴 뒤로 라이트는 "팀 참여
-           전용"이 아니게 됐다. 팀 만들기가 안 된다는 점만 정확히 확인받고, 나머지는
-           있는/없는 기능을 사실대로 나열한다(전용이라 단정하지 않음). */
-        if (!(PLANS[k] || {}).teamCreate && !confirm(
-              '「라이트」 요금제 안내\n\n' +
-              '• AI 일정등록 월 50회\n' +
-              '• 팀 만들기 ✕ (베이직 월 9,900원부터) · 팀 참여 ✓\n' +
-              '• AI 글작성 ✕\n' +
-              '• 일정공유 ✓ · 채팅 ✓\n\n' +
-              '팀을 직접 만들 계획이라면 베이직 이상을 선택해주세요.\n계속할까요?')) return;
+        /* ★ 2026-08-26 라이트 오구매 방지 — 결제 직전에 범위를 한 번 더 확인받는다.
+           ⭐ 2026-09-07 개편 — 이제 라이트도 팀을 만들 수 있다. 오해가 옮겨갔을 뿐이다:
+              예전엔 "팀을 만들 수 있는 줄 알고" 샀다면, 이제는 "팀에 여럿 넣을 수 있는
+              줄 알고" 산다. 라이트는 팀장 포함 2명 = 실제 팀원 1명뿐이다.
+              ☠️ 이 문구의 숫자는 PLANS 에서 꺼내 쓴다 — 손으로 적으면 한도를 바꿀 때마다
+                 화면이 거짓말을 한다(실제로 '월 50회'가 그렇게 남아 있었다). */
+        var _p = PLANS[k] || {};
+        if (k === 'lite' && !confirm(
+              '「' + _p.name + '」 요금제 안내\n\n' +
+              '• AI 일정등록 월 ' + _p.sched + '회 · AI 글작성 월 ' + _p.blog + '회\n' +
+              '• 팀 만들기 ✓ · 팀 참여 ✓\n' +
+              '• 팀 인원 ' + _p.maxMembers + '명 (팀장 포함 — 팀원은 1명까지)\n' +
+              '• 일정공유 ✓ · 채팅 ✓ (사진/영상 전송은 프로부터)\n\n' +
+              '팀원을 2명 이상 두실 계획이라면 베이직(월 9,900원, 3명) 이상을 선택해주세요.\n계속할까요?')) return;
         close(); if (window.Billing) Billing.purchase(k);
       };
     });

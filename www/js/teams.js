@@ -65,6 +65,37 @@
     _teams.forEach(ensureTeamRoom);   // ★ 팀 단체 채팅방 자동 관리
     _teams.forEach(mergeTeamIndustries);  // ★ 2026-08-23 팀 업종을 내 업종에 병합
     reconcileGuideLocks();                // ★ 2026-08-24 나간 팀의 지침 잠금 풀기
+    _teams.forEach(syncMaxMembers);       // ★ 2026-09-07 내 플랜이 바뀌면 팀 문서의 인원 상한도 갱신
+  }
+
+  /* ── 팀 인원 상한 (2026-09-07) ──────────────────────────────────────────────
+     ☠️ 왜 팀 문서에 새겨 두는가:
+        참여하는 사람은 **팀장의 users 문서를 읽을 수 없다**(보안 규칙). 그래서
+        "팀장 플랜이 뭔지" 를 참여 시점에 알아낼 방법이 없다. 팀장이 자기 플랜의
+        상한을 팀 문서에 적어 두고, 참여자는 그 값만 본다.
+     ⚠️ 상한은 팀장 본인을 **포함**한 수다(members 배열에 owner 가 들어 있다).
+     ⚠️ 팀장이 플랜을 내리면 이미 들어와 있는 사람은 **그대로 둔다**(내보내지 않는다).
+        새로 들어오는 것만 막힌다 — 쓰던 사람을 끊는 쪽이 훨씬 나쁜 경험이다. */
+  function myMaxMembers() {
+    try { if (window.Subs && Subs.maxMembers) return Subs.maxMembers(); } catch (e) {}
+    return 0;
+  }
+  function capOf(t) {
+    var n = Number(t && t.maxMembers);
+    if (n > 0) return n;
+    /* 이 값이 없는 팀은 2026-09-07 개편 전에 만들어진 팀이다(그때는 베이직 이상만 팀을
+       만들 수 있었다) → 베이직 기준으로 본다. 팀장이 앱을 한 번 열면 제 값으로 덮인다. */
+    try { if (window.Subs && Subs.membersFallback) return Subs.membersFallback(); } catch (e) {}
+    return 3;
+  }
+  CloudTeams.capOf = capOf;
+
+  function syncMaxMembers(t) {
+    if (!t || !t.id || t.owner !== myUid()) return;   // 팀장만 쓴다
+    var want = myMaxMembers();
+    if (!want || Number(t.maxMembers) === want) return;
+    db().collection('teams').doc(t.id).set({ maxMembers: want }, { merge: true })
+      .catch(function (e) { console.warn('[CloudTeams] 인원 상한 갱신 실패', e && e.code); });
   }
 
   /* 아직 '팀이 관리 중'인 업종만 남기고 지침 편집 잠금을 푼다 */
@@ -284,7 +315,9 @@
   /* ════════ 팀 만들기 / 참여 / 나가기 ════════ */
   CloudTeams.createTeam = async function (name) {
     if (!loggedIn()) { toast('먼저 로그인해주세요', 'err'); return; }
-    if (window.Subs && !Subs.gateFeature('teamCreate', '팀 만들기', '팀 만들기는 베이직 이상 플랜에서 가능합니다. 라이트 플랜은 초대 코드로 참여만 할 수 있어요.')) return;
+    /* ⭐ 2026-09-07 라이트(월 4,900원)부터 팀을 만들 수 있다 — 안내 문구도 같이 고쳤다.
+         예전 문구("베이직 이상")를 그대로 두면 무료 사용자에게 거짓말이 된다. */
+    if (window.Subs && !Subs.gateFeature('teamCreate', '팀 만들기', '팀 만들기는 라이트 플랜(월 4,900원)부터 가능합니다. 무료 플랜은 초대 코드로도 참여할 수 없어요.')) return;
     name = (name || '').trim();
     if (!name) { toast('팀 이름을 입력해주세요', 'err'); return; }
     var code = genCode();
@@ -293,6 +326,8 @@
       var ref = await db().collection('teams').add({
         name: name.slice(0, 30), owner: myUid(), members: [myUid()],
         memberNames: mn, inviteCode: code,
+        /* ☠️ 만들 때 새긴다 — 참여자는 팀장의 플랜을 읽을 수 없다(위 syncMaxMembers 주석 참고) */
+        maxMembers: myMaxMembers() || 2,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       await db().collection('users').doc(myUid()).set(
@@ -311,7 +346,18 @@
       var snap = await db().collection('teams').where('inviteCode', '==', code).limit(1).get();
       if (snap.empty) { toast('해당 코드의 팀을 찾을 수 없습니다', 'err'); return; }
       var t = snap.docs[0];
-      if ((t.data().members || []).indexOf(myUid()) >= 0) { toast('이미 참여 중인 팀입니다', 'ok'); return; }
+      var td = t.data() || {};
+      if ((td.members || []).indexOf(myUid()) >= 0) { toast('이미 참여 중인 팀입니다', 'ok'); return; }
+      /* ★ 2026-09-07 팀 인원 상한 — 팀장 플랜이 정한다(팀장 본인 포함한 수).
+           ⚠️ 여기서 막지 않으면 arrayUnion 이 그냥 들어가 버린다. 상한을 넘긴 뒤에
+              내보내는 것보다 못 들어오게 하는 쪽이 훨씬 낫다.
+           ⚠️ 왜 팀장 플랜 이름을 안 알려주나 — 참여자는 팀장의 플랜을 읽을 수 없고,
+              알려 줄 이유도 없다. 팀장에게 문의하라고만 안내한다. */
+      var _cap = capOf(td);
+      if ((td.members || []).length >= _cap) {
+        toast('이 팀은 인원이 다 찼습니다 (최대 ' + _cap + '명) — 팀장에게 문의해주세요', 'err');
+        return;
+      }
       var upd = { members: firebase.firestore.FieldValue.arrayUnion(myUid()) };
       upd['memberNames.' + myUid()] = displayMyName();
       await db().collection('teams').doc(t.id).update(upd);
@@ -492,7 +538,12 @@
             '<span style="flex:1;font-size:13px;font-weight:700;">' + esc(t.name || '팀') + ' <span style="font-size:10px;color:var(--mu);font-weight:400;">(' + esc(ownerName) + ' 팀장)</span>' + '</span>' +
             '<button class="btn b-ghost b-xs" data-tact="leave" data-id="' + t.id + '">' + (isOwner ? '삭제' : '나가기') + '</button>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--mu);margin-top:4px;">멤버 ' + members.length + '명: ' + esc(names.join(', ')) + '</div>' +
+          /* ★ 2026-09-07 상한을 같이 보여준다 — 팀장이 초대 코드를 뿌리기 전에
+               자리가 남았는지 알아야 한다(다 찬 뒤에 상대가 실패하면 그때 문의가 온다).
+               ⚠️ 이 수는 팀장 본인을 포함한다(members 배열 길이). */
+          '<div style="font-size:11px;color:var(--mu);margin-top:4px;">멤버 ' + members.length + ' / ' + capOf(t) + '명' +
+            (members.length >= capOf(t) ? ' <b style="color:var(--wn);">(다 참)</b>' : '') +
+            ': ' + esc(names.join(', ')) + '</div>' +
           '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">' +
             '<span style="font-size:11px;color:var(--mu);">초대 코드</span>' +
             '<code style="font-size:14px;font-weight:800;letter-spacing:1px;background:var(--sf);padding:2px 8px;border-radius:6px;">' + esc(t.inviteCode || '------') + '</code>' +

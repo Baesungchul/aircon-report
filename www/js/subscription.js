@@ -34,17 +34,22 @@
        ⚠️ 한도·인원은 앱 코드 안의 값이라 Play Console 가격 변경(동의 절차)이 아니다.
           새 버전만 올리면 적용된다. 가격(price)을 건드릴 때만 Play Console 이 필요하다.
 
-       계단 검산 — 가격 2배에 횟수가 2배보다 조금 더 늘어야 위 플랜을 잠식하지 않는다:
-         라이트→베이직 가격 2.02배 / 일정 2.33배 / 글 2.50배
-         베이직→프로   가격 2.01배 / 일정 2.14배 / 글 2.20배
-         프로→마스터   가격 2.51배 / 일정 2.67배 / 글 2.55배               */
+       계단 검산 — 가격이 오른 만큼은 횟수도 늘어야 위 플랜을 잠식하지 않는다:
+         라이트→베이직 가격 2.02배 / 일정 2.33배 / 글 3.00배
+         베이직→프로   가격 2.01배 / 일정 2.14배 / 글 2.00배
+         프로→마스터   가격 2.51배 / 일정 2.67배 / 글 2.50배
+       ⚠️ 2026-09-07 사용자가 글 횟수를 10/30/60/150 의 깔끔한 수로 정했다(그 전 안은
+          10/25/55/140). 그래서 글만 가격 배수에 아주 살짝 못 미치는 구간이 생긴다
+          (베이직→프로 2.00 vs 2.01, 프로→마스터 2.50 vs 2.51 — 단가 차이 0.5% 미만).
+          실질적으로 같은 단가라 잠식 문제가 아니다. tools/test-plans.js 도 이 정도는
+          허용한다(허용치 3%). 이보다 크게 벌어지면 검사가 잡는다.                */
     lite:   { name: '라이트', price: 4900,  sched: 30,  blog: 10,  share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: true, maxMembers: 2 },   /* 원가 1,550원 / 41% */
-    basic:  { name: '베이직', price: 9900,  sched: 70,  blog: 25,  share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: true, maxMembers: 3 },   /* 원가 3,750원 / 49% */
-    pro:    { name: '프로',   price: 19900, sched: 150, blog: 55,  share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, maxMembers: 5 },   /* 원가 8,150원 / 53% */
+    basic:  { name: '베이직', price: 9900,  sched: 70,  blog: 30,  share: true,  snsShare: true, chat: true,  chatMedia: false, teamCreate: true, maxMembers: 3 },   /* 원가 4,150원 / 54% */
+    pro:    { name: '프로',   price: 19900, sched: 150, blog: 60,  share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, maxMembers: 5 },   /* 원가 8,550원 / 56% */
     /* ⚠️ 예전 마스터에는 unlimited:true 가 있어 화면에 "무제한*" 으로 적고 각주로 1,500회
          제한을 달았다. 한도가 400 회로 내려온 지금 그 표기는 과장 광고(표시광고법)에
          가깝다 — 실제 숫자를 그대로 보여준다. */
-    master: { name: '마스터', price: 49900, sched: 400, blog: 140, share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, maxMembers: 10 }  /* 원가 21,200원 / 55% */
+    master: { name: '마스터', price: 49900, sched: 400, blog: 150, share: true,  snsShare: true, chat: true,  chatMedia: true,  teamCreate: true, maxMembers: 10 }  /* 원가 22,000원 / 57% */
   };
   /* ★ 2026-08-24 무료 지급분의 기준을 '설치'에서 '로그인 계정'으로 옮겼다.
        왜: ① 설치 기준이라 앱을 지웠다 깔면 무한히 리셋됐다(기기에만 기록이 남아 막을 방법이 없었다)

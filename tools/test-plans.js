@@ -60,9 +60,9 @@ console.log('\n[1] 정한 값이 그대로 들어가 있는가 (2026-09-07 사�
 chk('한도와 팀 인원', () => {
   const want = {
     lite:   { price: 4900,  sched: 30,  blog: 10,  maxMembers: 2 },
-    basic:  { price: 9900,  sched: 70,  blog: 25,  maxMembers: 3 },
-    pro:    { price: 19900, sched: 150, blog: 55,  maxMembers: 5 },
-    master: { price: 49900, sched: 400, blog: 140, maxMembers: 10 }
+    basic:  { price: 9900,  sched: 70,  blog: 30,  maxMembers: 3 },
+    pro:    { price: 19900, sched: 150, blog: 60,  maxMembers: 5 },
+    master: { price: 49900, sched: 400, blog: 150, maxMembers: 10 }
   };
   ORDER.forEach(k => {
     Object.keys(want[k]).forEach(f => {
@@ -103,14 +103,20 @@ chk('최악(캡처 3장 40원·사진 6장 83원)에도 적자가 아니다', ()
 
 console.log('\n[3] 계단 — 위 플랜을 잠식하면 아무도 안 올린다');
 
-chk('가격이 오른 만큼보다 횟수가 더 늘어난다', () => {
+chk('가격이 오른 만큼 횟수도 늘어난다', () => {
+  /* ⚠️ 허용치 3% — 횟수를 사람이 읽기 좋은 수(10·30·60·150)로 고르면 가격 배수와
+       딱 안 맞는 구간이 생긴다. 예: 베이직→프로는 글이 2.00배인데 가격은 2.01배다.
+       단가 차이가 0.5% 도 안 되니 '올릴 이유가 없다'로 볼 수 없다.
+       ☠️ 다만 허용치를 더 키우지는 말 것 — 이 검사가 막으려는 건 위 플랜이 아래보다
+          **눈에 띄게 손해**여서 아무도 안 올리는 상황이다. */
+  const TOL = 0.97;
   const out = [];
   for (let i = 1; i < ORDER.length; i++) {
     const lo = P[ORDER[i - 1]], hi = P[ORDER[i]];
     const pr = hi.price / lo.price, s = hi.sched / lo.sched, b = hi.blog / lo.blog;
-    must(s >= pr, ORDER[i] + ' 일정이 ' + s.toFixed(2) + '배뿐입니다 (가격은 ' + pr.toFixed(2) + '배) — 올릴 이유가 없습니다');
-    must(b >= pr, ORDER[i] + ' 글작성이 ' + b.toFixed(2) + '배뿐입니다 (가격은 ' + pr.toFixed(2) + '배)');
-    out.push(ORDER[i] + ' 가격' + pr.toFixed(2) + '배/일정' + s.toFixed(2) + '배');
+    must(s >= pr * TOL, ORDER[i] + ' 일정이 ' + s.toFixed(2) + '배뿐입니다 (가격은 ' + pr.toFixed(2) + '배) — 올릴 이유가 없습니다');
+    must(b >= pr * TOL, ORDER[i] + ' 글작성이 ' + b.toFixed(2) + '배뿐입니다 (가격은 ' + pr.toFixed(2) + '배)');
+    out.push(ORDER[i] + ' 가격' + pr.toFixed(2) + '/일정' + s.toFixed(2) + '/글' + b.toFixed(2));
   }
   return out.join(' · ');
 });

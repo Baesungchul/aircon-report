@@ -3520,8 +3520,10 @@
         try {
           if (prefill && prefill.__aiSource && window.ClaudeAI && ClaudeAI.saveCorrection) {
             ClaudeAI.saveCorrection(prefill.__aiSource,
-              { startTime: prefill.startTime, endTime: prefill.endTime, apt: prefill.apt, unit: prefill.unit, target: prefill.target, phone: prefill.phone, address: prefill.address, price: prefill.price, memo: prefill.memo },
-              { startTime: st, endTime: et, apt: apt, unit: unit, target: target, phone: phone, address: addr, price: price, memo: memo });
+              /* ★ 2026-09-07 name(고객명) 도 학습 대상에 넣는다 — 안 넣으면 사용자가 이름을 고쳐도
+                   다음 분석이 같은 실수를 반복한다(ai.js CORR_FIELDS 와 짝을 맞춰야 한다). */
+              { startTime: prefill.startTime, endTime: prefill.endTime, name: prefill.name, apt: prefill.apt, unit: prefill.unit, target: prefill.target, phone: prefill.phone, address: prefill.address, price: prefill.price, memo: prefill.memo },
+              { startTime: st, endTime: et, name: custName, apt: apt, unit: unit, target: target, phone: phone, address: addr, price: price, memo: memo });
           }
         } catch (e) {}
         close();

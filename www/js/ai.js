@@ -23,11 +23,33 @@
   function esc(s) { return String(s || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function today() { return (typeof kstDateStr === 'function') ? kstDateStr() : new Date().toISOString().slice(0, 10); }
 
+  /* ── 고객명 다듬기 (2026-09-07) ───────────────────────────────────────
+     왜 필요한가: 폼에 고객명 칸이 생긴 뒤(2026-08-30)에도 분석 프롬프트에 name 키가 없어서
+     이름이 한 번도 채워지지 않았다. 키를 넣는 김에, AI 가 내놓는 값이 실제로 '사람 이름'인지
+     여기서 한 번 거른다 — 이 칸은 고객 목록·보고서·문자에 그대로 나가는 값이라
+     "010-1234-5678", "행복아파트", "김사장님" 같은 게 들어가면 눈에 띄게 지저분해진다.
+     ☠️ 못 믿을 값은 지어내지 말고 빈 문자열로 — 비어 있으면 사용자가 직접 채운다. */
+  var NAME_NOT = /(아파트|빌라|오피스텔|빌딩|타워|상가|프라자|플라자|맨션|타운|하이츠|캐슬|자이|힐스테이트|래미안|푸르지오|주식회사|㈜)/;
+  function _cleanName(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    if (/\d{3,}/.test(s)) return '';                 // 전화번호·호수 등 숫자 덩어리는 이름이 아니다
+    if (NAME_NOT.test(s)) return '';                 // 건물·업체 이름이 잘못 들어온 경우
+    s = s.replace(/^(고객명|성함|이름|예약자)\s*[:：]?\s*/, '');
+    s = s.replace(/\s*(고객님|사모님|선생님|사장님|기사님|과장님|부장님|실장님|팀장님|대표님|님|씨)$/, '').trim();
+    if (!s || s.length > 12) return '';
+    return s;
+  }
+  ClaudeAI.cleanName = _cleanName;
+  window.__aiCleanName = _cleanName;   /* 검사용 */
+
   // ── 교정 학습 저장소 (사용자가 AI 결과를 고치면 few-shot 예시로 축적) ──
   var CORR_LS = 'ai_schedule_corrections';
   var CORR_MAX = 40;   // 최대 보관 건수
   var CORR_SHOTS = 8;  // 프롬프트에 넣을 최근 예시 수
-  var CORR_FIELDS = ['startTime', 'endTime', 'apt', 'unit', 'target', 'phone', 'address', 'price', 'memo']; // date는 상대적이라 학습 제외
+  /* date는 상대적이라 학습 제외. ★ 2026-09-07 name(고객명) 추가 — 사용자가 고쳐 준 이름 표기가
+     다음 분석의 few-shot 정답이 된다(예: 호칭을 뗀 형태, 성만 쓰는 표기). */
+  var CORR_FIELDS = ['startTime', 'endTime', 'name', 'apt', 'unit', 'target', 'phone', 'address', 'price', 'memo'];
   function learnOff(k){ try{ return localStorage.getItem(k) === '1'; }catch(e){ return false; } }
   function setLearnOff(k, off){ try{ if(off) localStorage.setItem(k,'1'); else localStorage.removeItem(k); }catch(e){} }
   ClaudeAI.learnOff = learnOff; ClaudeAI.setLearnOff = setLearnOff;
@@ -214,7 +236,10 @@
 
   // ── 캡처 이미지 → 정확한 텍스트 전사 (OCR 단계) ──
   async function transcribeImages(images) {
-    var sys = '당신은 정밀 OCR 도구입니다. 제공된 스크린샷(문자메시지·일정 캡처)에 실제로 보이는 텍스트를 오타 없이 그대로 옮겨 적으세요. 화면 상단의 발신자 이름 또는 전화번호(연락처 표시줄)가 보이면 반드시 맨 첫 줄에 [연락처: 010-1234-5678] 형식으로 옮겨 적으세요(저장된 이름 대신 숫자로 표시돼 있으면 그 번호를 그대로 옮깁니다). 그다음 줄부터 대화 말풍선을 시간·순서대로 옮깁니다. 보이는 글자만 정확히 옮기고, 해석·요약·추측·없는 내용 추가는 절대 금지. 설명 없이 옮긴 텍스트만 출력하세요.';
+    /* ⚠️ 연락처 줄과 발신자 줄을 따로 뽑는다(2026-09-07).
+         예전엔 한 줄뿐이라 저장된 이름이 보여도 번호만 옮겨 적게 해서 **고객명이 통째로 사라졌다**.
+         [연락처:] 는 숫자만 — extractSchedule 의 정규식 안전망이 숫자만 받는다. 이름은 [발신자:] 로 분리. */
+    var sys = '당신은 정밀 OCR 도구입니다. 제공된 스크린샷(문자메시지·일정 캡처)에 실제로 보이는 텍스트를 오타 없이 그대로 옮겨 적으세요. 화면 맨 위 연락처 표시줄을 먼저 봅니다: 전화번호가 보이면 첫 줄에 [연락처: 010-1234-5678] 형식으로 숫자만 옮기고, 사람 이름(저장된 이름)이 보이면 그다음 줄에 [발신자: 홍길동] 형식으로 옮깁니다. 번호와 이름이 둘 다 보이면 두 줄 모두 적습니다(하나만 보이면 그 줄만). 그다음 줄부터 대화 말풍선을 시간·순서대로 옮깁니다. 보이는 글자만 정확히 옮기고, 해석·요약·추측·없는 내용 추가는 절대 금지. 설명 없이 옮긴 텍스트만 출력하세요.';
     var content = [];
     images.forEach(function (im) {
       content.push({ type: 'image', source: { type: 'base64', media_type: im.media_type, data: im.data } });
@@ -234,7 +259,18 @@
 
     // ★ 2026-08-16: 역할 문구를 지금 업종으로 (아래 주소 파싱 예시는 업종 무관이라 그대로 둔다)
     var sys = indFill('당신은 {업종} 기사의 일정 비서입니다.') + ' 입력된 문자 텍스트 또는 문자 대화 스크린샷(이미지)에서 작업 일정 정보를 추출해 JSON 객체 하나만 출력하세요.\n' +
-      '키: date(YYYY-MM-DD), startTime(HH:MM 24시간), endTime(HH:MM), apt(현장/건물/아파트명), unit(동호수), target(작업대상 예: 벽걸이 2대), phone, address(도로명/지번 주소), price(숫자만), memo.\n' +
+      '키: date(YYYY-MM-DD), startTime(HH:MM 24시간), endTime(HH:MM), name(고객 이름), apt(현장/건물/아파트명), unit(동호수), target(작업대상 예: 벽걸이 2대), phone, address(도로명/지번 주소), price(숫자만), memo.\n' +
+      '\n' +
+      /* ★ 2026-09-07 name 추가 — 폼에 고객명 칸이 생긴 뒤에도(2026-08-30) 이 프롬프트에 키가 없어
+           AI 가 이름을 아예 안 내놨다(사용자 신고: "분석한 내용에 고객명이 있어도 안 들어간다"). */
+      '[고객명(name) 규칙]\n' +
+      '- 사람 이름만 넣는다. "홍길동님", "김 사장님", "이과장님", "박씨" 처럼 호칭이 붙어 있으면 호칭(님/씨/사장님/과장님/고객님/기사님)을 떼고 이름만 남긴다 → "홍길동", "김", "이과장" 이 아니라 성+이름이 온전할 때만 그대로, 성만 있으면 성만.\n' +
+      '- 텍스트에 "[발신자: 홍길동]" 줄이 있으면 그 이름을 name 으로 쓴다(다른 이름이 본문에 더 뚜렷하게 나오면 그쪽을 우선).\n' +
+      '- 본문에서 "○○○입니다", "저는 ○○○인데요", "예약자 ○○○", "고객명 ○○○" 처럼 스스로 밝힌 이름을 찾는다.\n' +
+      '- 건물·단지·상가·회사 이름(apt 에 들어갈 값)이나 우리 업체 이름·기사 이름은 절대 name 에 넣지 않는다.\n' +
+      '- 사람 이름을 못 찾으면 반드시 빈 문자열("")로 둔다. 지어내지 말 것.\n' +
+      '예시) "[발신자: 김영수] 내일 2시 행복아파트 101동 502호 청소요" → name:"김영수", apt:"행복아파트", unit:"101동 502호"\n' +
+      '예시) "안녕하세요 박민정입니다 우미2차 203동 602호 점검 부탁드려요" → name:"박민정", apt:"우미2차", unit:"203동 602호"\n' +
       '\n' +
       '[apt·unit·address 구분 규칙 — 가장 중요, 4단계로 판단]\n' +
       '1) 먼저 도로명주소·지번주소를 찾는다: "○○로 123", "○○길 45", "○○동 123-4"처럼 "로/길" 또는 "동"+숫자 뒤에 지번이 오는 형태는 address에 넣고, apt·unit에는 포함하지 않는다.\n' +
@@ -291,6 +327,13 @@
         var _pnum = (_pm[1] || _pm[0]).replace(/[^\d]/g, '');
         if (_pnum.length >= 9) obj.phone = _pnum.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3');
       }
+    }
+    /* 고객명 안전망 (2026-09-07) — AI 가 비워도 전사문의 [발신자: ] 줄에서 되살린다.
+       ⚠️ 저장된 이름 대신 번호가 표시된 화면도 있어서, 숫자로만 된 값은 이름이 아니다. */
+    obj.name = _cleanName(obj.name);
+    if (!obj.name) {
+      var _nm = srcText.match(/\[발신자:\s*([^\]\n]{1,20})\]/);
+      if (_nm) obj.name = _cleanName(_nm[1]);
     }
     // 학습 소스: 이미지였으면 전사 텍스트를 원본으로 사용(다음 분석 few-shot 정확도↑)
     if (fromImage && srcText) obj._src = srcText;

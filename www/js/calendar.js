@@ -3130,7 +3130,6 @@
       }
       // ★ 뒷정리는 purgeWorkEverywhere 한 곳에서 (인덱스·캐시·백업거울·클라우드휴지통·화면초기화)
       await window.purgeWorkEverywhere(w.folderName || w.workId, { cloud: true });
-      if (typeof showToast === 'function') showToast('🗑️ 삭제되었습니다', 'ok');
     } catch (e) {
       if (typeof showToast === 'function') showToast('삭제 실패: ' + (e && e.message), 'err');
     } finally {
@@ -3311,7 +3310,6 @@
       if (!confirm('이 리마인더를 삭제할까요?')) return;
       Reminders.remove(cur.id);
       close();
-      if (typeof showToast === 'function') showToast('삭제되었습니다', 'ok');
     };
 
     document.getElementById('remSave').onclick = function () {
@@ -3332,7 +3330,6 @@
         memo: document.getElementById('remMemo').value || ''
       });
       close();
-      if (typeof showToast === 'function') showToast('🔔 리마인더가 저장되었습니다', 'ok');
     };
   };
 
@@ -3563,7 +3560,6 @@
           }
           return;
         }
-        if (typeof showToast === 'function') showToast('✓ 일정이 추가되었습니다', 'ok');
       } catch (e) {
         if (typeof hideOverlay === 'function') hideOverlay();
         if (typeof showToast === 'function') showToast('저장 실패: ' + (e && e.message), 'err');

@@ -141,10 +141,8 @@ function openThemePicker(type) {
       const ttype = btn.dataset.ttype;
       if (ttype === 'app') {
         applyTheme(tid);
-        if (typeof showToast === 'function') showToast('\u2713 \uC571 \uD14C\uB9C8 \uBCC0\uACBD\uB428', 'ok');
       } else {
         applyReportTheme(tid);
-        if (typeof showToast === 'function') showToast('\u2713 \uBCF4\uACE0\uC11C \uD14C\uB9C8 \uBCC0\uACBD\uB428', 'ok');
       }
       closeThemePicker();
     });
@@ -600,7 +598,6 @@ function bindSettings() {
     if (typeof setLanguage === 'function') {
       setLanguage(newLang);
       if (typeof showToast === 'function') {
-        showToast(newLang === 'en' ? '✓ Language: English' : '✓ 언어: 한국어', 'ok');
       }
     }
   });
@@ -611,7 +608,6 @@ function bindSettings() {
     localStorage.setItem(CAM_RES_KEY, camResSel.value);
     const preset = (window.CAM_RES_PRESETS && window.CAM_RES_PRESETS[camResSel.value]) || null;
     if (typeof showToast === 'function') {
-      showToast('✓ 사진 해상도: ' + (preset ? preset.label : camResSel.value), 'ok');
     }
   });
 
@@ -624,7 +620,6 @@ function bindSettings() {
     if (wrap) wrap.style.opacity = on ? '1' : '.45';
     if (window.Notify && Notify.setEnabled) {
       Notify.setEnabled(on).then(() => {
-        if (on && typeof showToast === 'function') showToast('🔔 일정 알림을 켰어요', 'ok');
       });
     }
   });
@@ -659,7 +654,6 @@ function bindSettings() {
     var _pv = document.getElementById('pvResSelect'); if (_pv) _pv.value = reportResSel.value;
     const preset = (window.REPORT_RES_PRESETS && window.REPORT_RES_PRESETS[reportResSel.value]) || null;
     if (typeof showToast === 'function') {
-      showToast('✓ 보고서 해상도: ' + (preset ? preset.label : reportResSel.value), 'ok');
     }
   });
 }

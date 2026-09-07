@@ -236,7 +236,6 @@ function bindAll() {
     try { localStorage.setItem(window.REPORT_RES_KEY || 'ac_report_res_v1', _pvRes.value); } catch (e) {}
     const _ss = document.getElementById('reportResSelect'); if (_ss) _ss.value = _pvRes.value;
     const _p = window.REPORT_RES_PRESETS && window.REPORT_RES_PRESETS[_pvRes.value];
-    if (typeof showToast === 'function') showToast('✓ 보고서 해상도: ' + (_p ? _p.label : _pvRes.value), 'ok');
   });
 
   // ★ 두 손가락 핀치 줌 - CSS transform 사용 (브라우저 viewport 줌 X → 깨끗한 화질)
@@ -746,7 +745,6 @@ function bindAll() {
         u[type].push(p);
         if (u._trash.length === 0) u._trashOpen = false;
         renderAll(); updateStats(); sessionAutoSave();
-        showToast('↩️ 사진 복원됨', 'ok');
       }
       return;
     }
@@ -766,7 +764,7 @@ function bindAll() {
         u._trash = [];
         u._trashOpen = false;
         renderAll(); updateStats(); sessionAutoSave();
-        showToast(`↩️ ${n}장 모두 복원됨`, 'ok');
+        showToast('복원했습니다', 'ok');
       }
       return;
     }
@@ -780,7 +778,6 @@ function bindAll() {
           u._trash = [];
           u._trashOpen = false;
           renderAll();
-          showToast('휴지통을 비웠습니다', 'ok');
         }
       }
       return;
@@ -925,9 +922,8 @@ function bindAll() {
 
         // 마지막 파일 처리 완료 시 토스트
         if (processed === files.length) {
-          const ratio = totalOrig > 0 ? Math.round((1 - totalNew/totalOrig)*100) : 0;
-          const cropNote = wasCropped ? ' · 세로→가로 변환' : '';
-          showToast(`📸 ${files.length}장${cropNote} | ${totalOrig}KB → ${totalNew}KB (${ratio}% 절감)`, 'ok');
+          /* 2026-09-07 — 용량·절감률은 사용자가 쓸 일이 없는 숫자다. 몇 장 넣었는지만 알린다 */
+          showToast(`사진 ${files.length}장을 넣었습니다`, 'ok');
         }
       });
     });
@@ -967,10 +963,7 @@ function addCapturedPhoto(file, uid, type, sid) {
       const label = type === 'before' ? '전' : '후';
       enqueueAutoSave(photo, u.name, label);
     }
-    const ratio = origKB > 0 ? Math.round((1 - newKB/origKB)*100) : 0;
-    if (typeof showToast === 'function') {
-      showToast(`📸 1장 | ${origKB}KB → ${newKB}KB (${ratio}% 절감)`, 'ok');
-    }
+    /* 2026-09-07 — 사진 한 장은 화면에 바로 나타난다. 따로 알리지 않는다 */
     return photo;
   });
 }
@@ -1460,7 +1453,6 @@ function addUnit(name) {
   if (typeof getWorkNumberForUnit === 'function') { try { getWorkNumberForUnit(_newU); } catch(e){} }
   if(name===undefined){ inp.value=''; inp.focus(); }
   renderAll(); updateStats(); sessionAutoSave();
-  showToast(`✅ "${n}" 호수가 추가되었습니다`, 'ok');
 }
 
 function bulkAdd() {
@@ -1483,7 +1475,6 @@ function bulkAdd() {
     if (typeof getWorkNumberForUnit === 'function') { try { getWorkNumberForUnit(_u); } catch(e){} }
   });
   renderAll(); updateStats(); sessionAutoSave();
-  showToast(`${lines.length}개 호수 추가됨`,'ok');
 }
 
 async function deleteUnit(id) {
@@ -1500,7 +1491,6 @@ async function deleteUnit(id) {
     if (!window._borrowedShare && _uname && typeof currentFolderName !== 'undefined' && currentFolderName
         && window.CloudPhotoSync && CloudPhotoSync.deleteUnitCloudPhotos) {
       const _n = await CloudPhotoSync.deleteUnitCloudPhotos(currentFolderName, _uname);
-      if (_n > 0 && typeof showToast === 'function') showToast('공유된 사진 ' + _n + '장도 함께 정리했습니다', 'ok');
     }
   } catch (e) { console.warn('[호수삭제] 클라우드 사진 정리 실패', e); }
   // ★ customers 캐시 무효화 (호수 삭제 시 visits에서 사라지도록)
@@ -1660,7 +1650,6 @@ async function clearAll() {
 
     clearTimeout(safetyTimeout);
     hideOverlay();
-    showToast('✓ 작업 삭제됨', 'ok');
   } catch(e) {
     clearTimeout(safetyTimeout);
     hideOverlay();
@@ -1743,7 +1732,6 @@ async function performDeleteCurrentWork() {
     if (typeof clearIfCurrent === 'function') { try { await clearIfCurrent(folderName); } catch (e) {} }
     // 달력 갱신 (열려 있으면 반영)
     try { if (typeof window !== 'undefined' && window.__calendarRefresh) await window.__calendarRefresh(); } catch (e) {}
-    if (typeof showToast === 'function') showToast('🗑️ 작업이 삭제되었습니다', 'ok');
   } finally {
     try { if (typeof hideOverlay === 'function') hideOverlay(); } catch (e) {}
   }
@@ -1872,7 +1860,6 @@ async function newWork(presetDate) {
     renderAll();
     updateStats();
     try { await sessionAutoSaveNow(); } catch(e) {}
-    showToast('🆕 새 작업', 'ok');
     return;
   }
 
@@ -1949,7 +1936,6 @@ async function newWork(presetDate) {
 
   renderAll();
   updateStats();
-  showToast('🆕 새 작업', 'ok');
 
   // ★ 빈 세션 강제 저장 (백그라운드 저장 시작 전에!) - force로 가드 우회
   //   - 백그라운드 저장이 시작되면 _isSavingInBackground=true 되어 일반 sessionAutoSaveNow는 차단됨
@@ -2026,7 +2012,6 @@ async function _saveInBackground(prevUnits, prevWorkId, prevFolderName, prevWork
     }
 
     console.log('✅ 백그라운드 저장 완료:', prevApt);
-    showToast('✅ 이전 작업 저장 완료', 'ok');
   } catch(e) {
     console.error('백그라운드 저장 실패:', e);
     showToast('⚠️ 이전 작업 백그라운드 저장 실패: ' + e.message, 'err');
@@ -2343,7 +2328,6 @@ function copyCustomerInfo(targetUnit, fromUnit) {
   if (typeof markDataDirty === 'function') markDataDirty();
   if (typeof sessionAutoSave === 'function') sessionAutoSave();
 
-  showToast(`✓ ${fromUnit.name} 정보 복사됨`, 'ok');
 }
 
 // 다른 호수에서 복사 - 선택 다이얼로그
@@ -2678,7 +2662,6 @@ function showHouseholdLimitDialog() {
     if (typeof applyWorkTypeUI === 'function') applyWorkTypeUI();
     renderAll();
     sessionAutoSave();
-    showToast('🏢 공용시설 모드로 변경됨', 'ok');
   });
 
   document.getElementById('hlCancel').addEventListener('click', close);
@@ -2868,7 +2851,6 @@ function initInlineReorder() {
     });
     markResave(arr);
     afterCommit();
-    if (typeof showToast === 'function') showToast('✓ 순서 변경 완료', 'ok');
   }
 
   // 작업 전/후: 순서 + 전↔후 이동 반영 (DOM에서 양쪽 칸 재구성)
@@ -2912,7 +2894,6 @@ function initInlineReorder() {
     if (crossing && !photo._borrowedIncoming) photo.savedToFolder = false;   // 새 위치에 다시 저장
     markResave(u.before); markResave(u.after);
     afterCommit();
-    if (typeof showToast === 'function') showToast(crossing ? '✓ 사진 이동 완료' : '✓ 순서 변경 완료', 'ok');
   }
 
   function end() {

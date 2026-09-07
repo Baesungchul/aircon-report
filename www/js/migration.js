@@ -184,14 +184,12 @@ async function maybeRunMigration() {
 
     // 작업 시작 토스트 (조용히)
     if (typeof showToast === 'function') {
-      showToast('🔄 작업 데이터 정리 중...', 'ok');
     }
 
     const result = await runWorkIdMigration();
 
     if (result.done && (result.folderUpdated > 0 || result.visitUpdated > 0)) {
       if (typeof showToast === 'function') {
-        showToast(`✓ 작업 ${result.folderUpdated}개 정리됨`, 'ok');
       }
     }
   } catch(e) {

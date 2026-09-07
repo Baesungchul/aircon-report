@@ -292,7 +292,6 @@ async function selectPhotoFolder() {
       photoFolderHandle = await NativeFS.getRootHandle();
       try { localStorage.setItem('lastFolderName', photoFolderHandle.name); } catch(e) {}
       updateFolderUI(photoFolderHandle, 'granted');
-      showToast('✅ 저장 폴더 준비 완료', 'ok');
       if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache();
       if (typeof initCustomersCache === 'function') initCustomersCache().catch(()=>{});
       if (typeof maybeRunMigration === 'function') {
@@ -969,7 +968,7 @@ function resetSavedState() {
   _savedPhotoIds.clear();
   sessionAutoSave();
   renderAll();
-  showToast(`↻ ${count}장의 저장 표시를 초기화했습니다`, 'ok');
+  showToast('저장 표시를 초기화했습니다', 'ok');
 }
 
 // 진단 테스트 — 환경에서 어떤 쓰기 방식이 동작하는지 확인
@@ -1194,7 +1193,6 @@ async function saveSinglePhoto(photo, unitName, typeLabel, index) {
     }
     renderAll();
     sessionAutoSave();
-    showToast('✅ 폴더에 저장 완료', 'ok');
   } catch(e) {
     console.warn('개별 저장 실패:', e);
     showToast(`저장 실패: ${e.message}`, 'err');
@@ -1374,11 +1372,8 @@ async function savePhotosToFolder() {
     renderAll();
     if (errors.length > 0) {
       showDebugPanel(`✅ ${saved}장 저장 완료, ⚠️ ${errors.length}장 실패\n\n첫 에러:\n` + errors.slice(0,3).join('\n'));
-    } else if (skipped > 0) {
-      showToast(`✅ ${saved}장 저장 (${skipped}장 이미 저장됨)`, 'ok');
-    } else {
-      showToast(`✅ ${saved}장 저장 완료`, 'ok');
     }
+    /* 2026-09-07 — 저장 성공은 사진 카드의 저장 표시로 이미 보인다. 따로 알리지 않는다 */
   } catch(e) {
     hideOverlay();
     if (e.name !== 'AbortError') showToast('저장 실패: ' + e.message, 'err');

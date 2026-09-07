@@ -908,7 +908,6 @@ async function renderCustomerList(opts) {
         await renderCustomerList();
 
         if (folderFailed === 0) {
-          showToast(`✓ ${folderDeleted}개 폴더 삭제됨`, 'ok');
         } else {
           showToast(`${folderDeleted}개 삭제, ${folderFailed}개 실패`, 'err');
         }
@@ -950,7 +949,6 @@ async function renderCustomerList(opts) {
         card.style.opacity = '0.4';
         card.style.pointerEvents = 'none';
       }
-      showToast('🗑️ 삭제 중...', 'ok');
 
       // ★ 2) 인덱스/캐시에서 즉시 제거 (다음 열기에 안 보이도록)
       if (typeof scheduleIndexDelete === 'function') scheduleIndexDelete(folder);
@@ -1011,7 +1009,6 @@ async function renderCustomerList(opts) {
               await window.purgeWorkEverywhere(folder, { cloud: true, xlsx: true });
             }
             card?.remove();
-            showToast('✓ 작업 삭제 완료', 'ok');
           } else {
             // 삭제 실패 - 카드 복원
             if (card) {
@@ -1159,7 +1156,6 @@ async function openWorkByFolder(folderName, apt, date) {
   // ★ 현재 작업이면 바로 닫기
   if (folderName && currentFolderName === folderName) {
     closeCustomerModal();
-    showToast('이미 현재 작업입니다', 'ok');
     return;
   }
 
@@ -1638,7 +1634,6 @@ function showVisitSelector(customer, visits) {
           //   (대신 visits에서만 제거)
 
           hideOverlay();
-          showToast('✓ 작업 기록 삭제됨', 'ok');
 
           // 5) 모든 visits 삭제됐으면 다이얼로그 닫고 목록 갱신
           if (updatedVisits.length === 0) {
@@ -1689,12 +1684,10 @@ async function loadWorkByVisit(visit) {
   // 현재 작업과 같으면 그냥 닫기
   if (visit.workId && currentWorkId === visit.workId) {
     closeCustomerModal();
-    showToast('이미 현재 작업입니다', 'ok');
     return;
   }
   if (!visit.workId && isSameAsCurrent(visit.apt, visit.date)) {
     closeCustomerModal();
-    showToast('이미 현재 작업입니다', 'ok');
     return;
   }
 
@@ -1872,7 +1865,6 @@ async function openCustomerEdit(phone) {
       closeEdit();
       await renderCustomerList();
       hideOverlay();
-      showToast('✓ 고객 정보 수정됨', 'ok');
     } catch(e) {
       hideOverlay();
       showToast('수정 실패: ' + e.message, 'err');
@@ -2030,7 +2022,7 @@ async function exportCustomersExcel(mode) {
       const extra = (mode === 'share' && !_ccPlugin('Share'))
         ? '\n\n※ 카톡 등으로 바로 공유하려면 공유 기능 추가가 필요해, 우선 파일로 저장했어요.\n\'내 파일\' 앱에서 이 파일을 열어 공유할 수 있어요.'
         : '\n\n\'내 파일\' 앱이나 PC에서 이 파일을 열 수 있어요.';
-      alert('✅ 엑셀 저장 완료\n\n파일: ' + fname + '\n위치: ' + where + extra);
+      showToast('엑셀로 저장했습니다', 'ok');
       return;
     } catch(e) {
       console.error('엑셀 저장 실패:', e);
@@ -2055,7 +2047,7 @@ async function exportCustomersExcel(mode) {
     a.href = url; a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    showToast('📥 다운로드 완료: ' + fname, 'ok');
+    showToast('다운로드했습니다', 'ok');
   } catch(e) {
     showToast('내보내기 실패: ' + (e.message || e), 'err');
   }

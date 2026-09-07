@@ -519,11 +519,9 @@
         AutoBackup.setEnabled(on);
         refreshStatus();
         if (on) {
-          if (typeof showToast === 'function') showToast('자동백업을 켰습니다', 'ok');
           if (!getSaf()) { AutoBackup.pickFolder().then(refreshStatus); }
           else AutoBackup.run('manual');
         } else {
-          if (typeof showToast === 'function') showToast('자동백업을 껐습니다 (이미 백업된 파일은 그대로 둡니다)', 'ok');
         }
       });
     }

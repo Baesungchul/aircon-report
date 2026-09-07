@@ -725,7 +725,7 @@ async function exportPDF(){
       pdf.save(fileName);
     }
 
-    showToast(savedToFolder ? `✓ PDF 저장됨 (${folderInfo.folderName} 폴더)` : '✓ PDF 다운로드 완료', 'ok');
+    showToast('PDF를 저장했습니다', 'ok');
     /* ★ 2026-08-27 별점 — 보고서가 손에 잡히는 순간이 이 앱에서 가장 좋은 자리다.
          아무것도 묻지 않고 조건이 맞을 때만 조용히 뜬다(js/review.js). 토스트와 겹치지 않게 살짝 늦춘다. */
     try { window.Review && Review.maybeAskSoon('pdf'); } catch(e2) {}

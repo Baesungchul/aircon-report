@@ -449,7 +449,6 @@
     var _running = false;
     async function runDownload() {
       if (_running) return; _running = true;
-      if (typeof showToast === 'function') showToast('📥 이번 달 사진을 백그라운드로 받는 중… (' + cur.length + '개 작업)', 'ok');
       var total = 0;
       for (var i = 0; i < cur.length; i++) {
         try {
@@ -458,7 +457,6 @@
           try { if (window.__calendarRefresh) window.__calendarRefresh(); } catch (e) {}
         } catch (e) { console.warn('[CloudBackup] 이번달 사진 실패', cur[i].workId, e && e.message); }
       }
-      if (typeof showToast === 'function') showToast('✓ 이번 달 사진 ' + total + '장 받기 완료 (나머지는 작업 열 때 받아옴)', 'ok');
       try { if (window.__calendarRefresh) window.__calendarRefresh(); } catch (e) {}
     }
 
@@ -742,7 +740,7 @@
       missing = missing.filter(function (w) { return !okIds[wKey(w)]; });
       var okCount = Object.keys(okIds).length;
       if (typeof showToast === 'function') {
-        if (okCount === list.length) showToast(okCount + '개 삭제됨', 'ok');
+        if (okCount === list.length) showToast('삭제했습니다', 'ok');
         else showToast(okCount + '/' + list.length + '개 삭제됨(일부 실패)', okCount ? 'ok' : 'err');
       }
     }
@@ -754,7 +752,7 @@
       try {
         var res = await restoreWorks(list, function (i, t) { if (typeof showOverlay === 'function') showOverlay('작업 복구 중 ' + i + '/' + t); });
         if (typeof hideOverlay === 'function') hideOverlay();
-        if (typeof showToast === 'function') showToast('✓ 작업 ' + res.done + '개 복구됨', 'ok');
+        if (typeof showToast === 'function') showToast('복구했습니다', 'ok');
         try { if (window.__calendarRefresh) window.__calendarRefresh(); } catch (e) {}
         try { if (typeof invalidateRecordsCache === 'function') invalidateRecordsCache(); } catch (e) {}
         // ★ 서버 복구 완료 알림 → 온보딩(재설치 복구)에서 다음 단계로 자동 진행

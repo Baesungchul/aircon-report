@@ -151,7 +151,7 @@ window.promptPWAInstall = async function() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                        || window.navigator.standalone;
     if (isStandalone) {
-      alert('✅ 이미 앱으로 설치되어 있어요');
+      if (typeof showToast === 'function') showToast('이미 앱으로 설치되어 있어요', 'ok');
     } else {
       alert('이 브라우저에서는 설치 버튼을 사용할 수 없어요.\n\n' +
             'Chrome 메뉴(⋮) → "홈 화면에 추가" 를 선택해주세요.');

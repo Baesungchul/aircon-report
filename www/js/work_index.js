@@ -370,7 +370,7 @@ window.rebuildWorkIndex = async function() {
     if (result) {
       // 메모리 캐시도 무효화
       if (typeof invalidateRecordsCache === 'function') invalidateRecordsCache();
-      alert(`✅ 작업기록 재생성 완료!\n\n총 ${result.works.length}개 작업이 등록되었습니다.`);
+      if (typeof showToast === 'function') showToast('작업기록을 다시 만들었습니다', 'ok');
     } else {
       alert('재생성 실패. 다시 시도해주세요.');
     }

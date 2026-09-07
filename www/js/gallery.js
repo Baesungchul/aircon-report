@@ -133,8 +133,7 @@
       }
 
       if (typeof hideOverlay === 'function') hideOverlay();
-      alert('✅ 갤러리 내보내기 완료\n\n' + ok + '장 저장' + (fail ? (' (실패 ' + fail + ')') : '') +
-            '\n\n저장 위치: 갤러리 → 사진/Pictures/' + ALBUM);
+      _toast(fail ? ('갤러리에 저장했습니다 (' + fail + '장 실패)') : '갤러리에 저장했습니다', fail ? 'err' : 'ok');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
       _toast('갤러리 내보내기 실패: ' + e.message, 'err');
@@ -203,8 +202,7 @@
       }
 
       if (typeof hideOverlay === 'function') hideOverlay();
-      alert('✅ 갤러리 저장 완료\n\n' + ok + '장 저장' + (fail ? (' (실패 ' + fail + ')') : '') +
-            '\n\n저장 위치: 갤러리 → 사진/Pictures/' + album);
+      _toast(fail ? ('갤러리에 저장했습니다 (' + fail + '장 실패)') : '갤러리에 저장했습니다', fail ? 'err' : 'ok');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
       _toast('갤러리 저장 실패: ' + e.message, 'err');
@@ -246,8 +244,7 @@
         for (let pi = 0; pi < ph.length; pi++) await one(ph[pi], 'S' + (si + 1) + '_', pi + 1);
       }
       if (typeof hideOverlay === 'function') hideOverlay();
-      alert('✅ 갤러리 저장 완료\n\n' + u.name + ' · ' + ok + '장' + (fail ? (' (실패 ' + fail + ')') : '') +
-            '\n\n저장 위치: 갤러리 → 사진/Pictures/' + album);
+      _toast(fail ? ('갤러리에 저장했습니다 (' + fail + '장 실패)') : '갤러리에 저장했습니다', fail ? 'err' : 'ok');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
       _toast('갤러리 저장 실패: ' + e.message, 'err');

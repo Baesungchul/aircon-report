@@ -190,7 +190,6 @@ async function init() {
         ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
         coIconData = canvas.toDataURL('image/jpeg', 0.85);
         applyCoIcon();
-        showToast('✅ 아이콘 업로드 완료', 'ok');
       };
       img.src = reader.result;
     };
@@ -610,7 +609,6 @@ function setupBackButtonHandler() {
       // ★ 변경 있을 때만 저장 완료를 기다림 (변경 없으면 즉시 종료)
       const needsSave = (typeof _dataDirty === 'undefined' || _dataDirty);
       if (needsSave) {
-        if (typeof showToast === 'function') showToast('저장 후 종료합니다...', 'ok');
         try {
           if (typeof sessionAutoSaveNow === 'function') await sessionAutoSaveNow();
         } catch(e) { console.warn('종료 저장 실패:', e); }

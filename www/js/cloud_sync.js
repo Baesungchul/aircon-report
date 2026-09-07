@@ -363,7 +363,7 @@
       setSyncedIds(uid, currentIds);
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
       try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: removed }); } catch (e) {}
-      if (!silent && typeof showToast==='function') showToast('✓ 동기화 완료 (' + items.length + '건)','ok');
+      /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
     } catch (e) {
       console.warn('[CloudSync] 동기화 오류', e);
       if (!silent && typeof showToast==='function') showToast('동기화 오류: ' + (e && e.message), 'err');

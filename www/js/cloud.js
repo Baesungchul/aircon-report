@@ -316,7 +316,7 @@
       if (failed.length) {
         alert('일부 항목(' + failed.length + '개)은 삭제하지 못했습니다.\n설정 > 작업기록 재생성 후, 남은 항목은 목록에서 직접 삭제해주세요.');
       } else {
-        alert('✅ 이전 데이터 삭제가 완료되었습니다. 이제부터는 이 계정 데이터만 사용됩니다.');
+        if (typeof showToast === 'function') showToast('이전 데이터를 지웠습니다', 'ok');
       }
       return true;
     } catch (e) {

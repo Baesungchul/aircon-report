@@ -69,7 +69,6 @@
         updateResBtn();
         // 설정 화면의 셀렉트도 동기화 (열려 있을 수 있음)
         try { var sel = document.getElementById('camResSelect'); if (sel) sel.value = k; } catch (e) {}
-        if (typeof showToast === 'function') showToast('📐 ' + preset.label, 'ok');
         closeResMenu();
         startStream();  // 캡처 스트림도 새 해상도로 재시작
       };

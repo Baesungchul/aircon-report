@@ -130,7 +130,7 @@
           if (Share && uri) { try { await Share.share({ title: title, text: title, files: [uri], dialogTitle: title + ' 공유' }); return; } catch (e) { if (e && /cancel/i.test(e.message || '')) return; } }
         }
         var where = (dir === 'DOCUMENTS') ? '내장메모리 > Documents > 작업보고서' : '앱 전용 폴더 > 작업보고서';
-        alert('✅ 엑셀 저장 완료\n\n파일: ' + fname + '\n위치: ' + where + '\n\n\'내 파일\' 앱에서 열거나 공유할 수 있어요.');
+        toast('엑셀로 저장했습니다', 'ok');
         return;
       } catch (e) { console.error(e); toast('저장 실패: ' + (e.message || e), 'err'); return; }
     }

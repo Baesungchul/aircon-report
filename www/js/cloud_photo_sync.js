@@ -1075,7 +1075,7 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       if (typeof renderAll === 'function') renderAll();
       if (typeof updateStats === 'function') updateStats();
       if (typeof startLazyPhotoLoading === 'function') setTimeout(function(){ try{ startLazyPhotoLoading(); }catch(e){} }, 300);
-      if (typeof showToast === 'function') showToast('📥 상대가 추가한 사진 ' + pulled + '장을 받았습니다', 'ok');
+      if (typeof showToast === 'function') showToast('상대가 추가한 사진을 받았습니다', 'ok');
     }
     return { pulled: pulled };
   };
@@ -1853,7 +1853,6 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
         if (!ok) { console.log('[CloudPhotoSync] 사용자가 모바일 데이터 다운로드 거부'); return; }
       }
 
-      if (pending.length >= 5 && typeof showToast === 'function') showToast('📥 공유 사진 ' + pending.length + '장을 백그라운드로 받는 중…', 'ok');
 
       var okCount = 0, failCount = 0, lastRefresh = 0;
       for (var i = 0; i < pending.length; i++) {
@@ -1872,7 +1871,6 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       }
       console.log('[CloudPhotoSync] 다운로드 완료: ' + okCount + '장 성공, ' + failCount + '장 실패 (전체 ' + pending.length + '장 중)');
       try { if (window.__calendarRefresh) window.__calendarRefresh(); } catch (e3) {}
-      if (okCount > 0 && typeof showToast === 'function') showToast('✓ 공유 사진 ' + okCount + '장 받기 완료', 'ok');
     } catch (e) {
       console.warn('[CloudPhotoSync] 다운로드 확인 실패', e);
     } finally {
@@ -2783,7 +2781,7 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
         reuploadRequestedBy: firebase.firestore.FieldValue.delete()
       });
       if (reuploaded > 0 && typeof showToast === 'function') {
-        showToast('📤 요청받은 원본 사진 ' + reuploaded + '장을 다시 올렸습니다', 'ok');
+        showToast('요청받은 원본을 다시 올렸습니다', 'ok');
       }
     } catch (e) {
       console.warn('[CloudPhotoSync] 원본요청 처리 실패', e);

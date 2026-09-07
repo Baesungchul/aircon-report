@@ -118,7 +118,6 @@ async function handleSaveClick() {
   }
 
   // ★ 즉시 피드백 - 사용자가 저장 클릭 시 바로 알림
-  showToast('💾 저장 중...', 'ok');
 
   // 폴더가 설정되어 있으면 → 폴더 저장 (사진 + 세션)
   if (photoFolderHandle) {
@@ -166,7 +165,6 @@ async function saveToFolder(opts) {
     const currentSnap = quickSnapshot();
     if (!_dataDirty && currentSnap === _lastSaveSnapshot) {
       console.log('✓ 변경 없음 - 저장 스킵');
-      if (!isAutoSave) showToast('✓ 이미 저장됨', 'ok');
       return { skipped: true, reason: 'no_changes' };
     }
   }
@@ -618,13 +616,8 @@ async function saveToFolder(opts) {
     if (isAutoSave) {
       console.log(`💾 자동 저장 완료 - 신규 ${saved}장 저장, ${skippedPhotos}장 스킵`);
     } else if (failed > 0) {
-      showToast(`💾 ${saved}장 저장 완료 (${failed}장 실패)`, 'ok');
-    } else if (saved === 0 && skippedPhotos > 0) {
-      showToast(`💾 저장 완료 (사진 ${skippedPhotos}장은 이미 저장됨)`, 'ok');
-    } else if (saved === 0) {
-      showToast(`💾 작업 정보 저장 완료`, 'ok');
-    } else {
-      showToast(`💾 ${saved}장 저장 완료 ✓`, 'ok');
+      /* 실패만 알린다 — 성공은 화면이 이미 보여준다 (2026-09-07 사용자 지시) */
+      showToast(`사진 ${failed}장을 저장하지 못했습니다`, 'err');
     }
 
     if (typeof flushCustomersXlsx === 'function') {
@@ -732,7 +725,7 @@ async function doSave() {
     } catch(e) { console.warn('고객 저장 루프 실패:', e); }
 
     hideOverlay();
-    showToast(`"${name}" 저장 완료 ✓${savedCustomers ? ` (고객 ${savedCustomers}명)` : ''}`,'ok');
+    showToast('저장했습니다', 'ok');
     // 저장으로 일정/시작시간이 바뀌었을 수 있으니 알림 재예약
     try { if (window.Notify && Notify.refresh) setTimeout(function(){ Notify.refresh(); }, 1200); } catch(e) {}
   } catch(e) {
@@ -1119,7 +1112,6 @@ async function deleteDateFolder(target) {
       await window.purgeWorkEverywhere(target.name, { cloud: true });
     }
 
-    showToast(`✓ "${apt}" 삭제됨`, 'ok');
 
     // 목록 새로고침
     await renderLoadList();
@@ -1291,7 +1283,6 @@ async function loadFromDateFolder(dateDir, data) {
     if (data.workId && currentWorkId && data.workId === currentWorkId) {
       document.getElementById('slModal')?.classList.remove('open');
       document.getElementById('customerModal')?.classList.remove('open');
-      showToast('이미 현재 작업입니다', 'ok');
       return;
     }
     // workId가 양쪽 다 없을 때만 apt+date 폴백
@@ -1301,7 +1292,6 @@ async function loadFromDateFolder(dateDir, data) {
       if (curApt === (data.apt || '').trim() && curDate === (data.date || '').trim()) {
         document.getElementById('slModal')?.classList.remove('open');
         document.getElementById('customerModal')?.classList.remove('open');
-        showToast('이미 현재 작업입니다', 'ok');
         return;
       }
     }
@@ -1937,7 +1927,7 @@ async function _restoreFromDataInner(data, dateDir) {
   }
 
   hideOverlay();
-  showToast(`✓ 불러오기 완료 (${units.length}호수)`, 'ok');
+  showToast('불러왔습니다', 'ok');
 
   // ★ 공유 상대의 "원본 요청"에 응답 - 만료된 사진 재업로드 (백그라운드, 안전: 이미 로드된 _workDir만 사용)
   if (window.CloudPhotoSync && CloudPhotoSync.fulfillReuploadRequest) {
@@ -2100,7 +2090,7 @@ async function doLoad(saveId) {
     renderAll(); updateStats();
     document.getElementById('slModal').classList.remove('open');
     hideOverlay();
-    showToast(`"${s.label}" 불러오기 완료`,'ok');
+    showToast('불러왔습니다', 'ok');
   } catch(e) {
     hideOverlay(); showToast('불러오기 실패: '+e.message,'err');
   }
@@ -2112,7 +2102,6 @@ async function doDelSave(saveId) {
   if(!s||!confirm(`"${s.label}"\n삭제할까요?`)) return;
   await dbDelete(saveId);
   await openLoadList();
-  showToast('삭제됨','ok');
 }
 
 /* ═══════════════════════════════
@@ -2206,7 +2195,6 @@ function saveCoInfo() {
     }
     updateCoHdrBtn();
     closeCoModal();
-    showToast('업체 정보 저장됨 ✓', 'ok');
     sessionAutoSave();
     // 업종별 호칭 즉시 적용
     if (typeof applyCustomLabels === 'function') applyCustomLabels();
@@ -2612,7 +2600,6 @@ function bindReorderDrag(body) {
         fromArr.forEach(p => { if (!p._borrowedIncoming) p.savedToFolder = false; });
         toArr.forEach(p => { if (!p._borrowedIncoming) p.savedToFolder = false; });
         renderReorderList();
-        showToast(`${fromSide === 'before' ? '작업 전→후' : '작업 후→전'} 이동`, 'ok');
       }
     }
 
@@ -2760,7 +2747,6 @@ function saveReorder() {
   closeReorderModal(true);  // 저장 후 닫으니 confirm 생략
   renderAll();
   updateStats();
-  showToast('✓ 순서 변경 완료', 'ok');
 
   // 자동저장 (세션)
   if (typeof sessionAutoSaveNow === 'function') sessionAutoSaveNow();

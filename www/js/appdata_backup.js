@@ -167,7 +167,9 @@
       try { if (typeof updateCoHdrBtn === 'function') updateCoHdrBtn(); } catch (e) {}
       try { if (typeof applyCoIcon === 'function') applyCoIcon(); } catch (e) {}
       try { if (typeof applyCustomLabels === 'function') applyCustomLabels(); } catch (e) {}
-      if (typeof showToast === 'function') showToast('⚙️ 설정 · 지침 · 학습기록 ' + r.applied + '건도 함께 되살렸어요', 'ok');
+      /* ☠️ 2026-09-07 사용자 지시 — '설정 N건 되살림' 을 알리지 않는다. 그 숫자로 할 일이 없다.
+         되살아났는지는 설정 화면을 열면 바로 보인다. 진단은 콘솔 로그로 충분하다. */
+      console.log('[설정복원] ' + r.applied + '건 적용');
     }
     return r;
   };

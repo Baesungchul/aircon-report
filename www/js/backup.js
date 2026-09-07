@@ -127,12 +127,9 @@
       } catch (e) { console.warn('[복원] 스냅샷 적용 실패:', name, e && e.message); }
       try { await FS.deleteFile({ path: p + '.mine', directory: 'EXTERNAL' }); } catch (e) {}
     }
-    var msg = [];
-    if (out.reminders) msg.push('리마인더 ' + out.reminders + '건');
-    if (out.settings) msg.push('설정 · 지침 ' + out.settings + '건');
-    if (msg.length && typeof showToast === 'function') {
-      showToast('🔔 ' + msg.join(' · ') + '도 함께 되살렸어요', 'ok');
-    }
+    /* ☠️ 2026-09-07 사용자 지시 — 여기서 '리마인더 N건 · 설정 N건' 을 알리지 않는다.
+       사용자가 그 숫자로 할 일이 없다. 되살아났는지는 달력·설정 화면에서 바로 보인다.
+       진단이 필요하면 콘솔 로그(Reminders.mergeSnapshot)에 남는다. */
     return out;
   }
 
@@ -195,12 +192,11 @@
 
       if (typeof hideOverlay === 'function') hideOverlay();
       if (copied === 0) { _toast('백업할 사진이 없습니다', 'err'); return; }
-      var label = (destDir === 'DOCUMENTS')
-        ? '내장메모리 > Documents > ' + dest
-        : '앱 전용 폴더(파일앱에서 안 보일 수 있음) > ' + dest;
-      alert('✅ 백업 완료\n\n사진/파일 ' + copied + '개 복사' + (failed ? (' (실패 ' + failed + ')') : '') +
-            '\n저장 위치:\n' + label +
-            '\n\n\'내 파일\' 앱에서 이 폴더를 드라이브/PC로 복사해두면 앱을 지워도 안전합니다.');
+      /* ★ 2026-09-07 사용자 지시: 팝업으로 알리는 정보를 최소화.
+         예전엔 alert 로 화면을 막고 복사 개수·저장 경로·안내문까지 늘어놓았다.
+         오래 걸리는 작업이라 '끝났다'는 신호는 남기되, 그 한 줄로 줄인다.
+         저장 위치는 설정 화면에서 언제든 볼 수 있다. */
+      _toast('백업했습니다', 'ok');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
       _toast('백업 실패: ' + (e && e.message), 'err');
@@ -468,8 +464,8 @@
          예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
          읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
       try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
-      alert('✅ 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' · 그대로 둠 ' + skip + '개') : '') + (fail ? (' · 실패 ' + fail + '개' ) : '') +
-            '\n\n스케줄/작업기록을 열어 확인하세요.');
+      /* ★ 2026-09-07 사용자 지시 — 팝업 정보 최소화. 개수 나열 대신 끝났다는 한 줄만 */
+      _toast(fail ? ('복원했습니다 (' + fail + '개 실패)') : '복원했습니다', fail ? 'err' : 'ok');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
       try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
@@ -530,8 +526,8 @@
          예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
          읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
       try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
-      alert('\u2705 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' \u00b7 그대로 둠 ' + skip + '개') : '') + (fail ? (' \u00b7 실패 ' + fail + '개') : '') +
-              '\n\n스케줄/작업기록을 열어 확인하세요.');
+      /* ★ 2026-09-07 사용자 지시 — 팝업 정보 최소화. 개수 나열 대신 끝났다는 한 줄만 */
+      _toast(fail ? ('복원했습니다 (' + fail + '개 실패)') : '복원했습니다', fail ? 'err' : 'ok');
         return;
       } catch (e) {
         if (typeof hideOverlay === 'function') hideOverlay();
@@ -621,8 +617,8 @@
          예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
          읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
       try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
-      alert('\u2705 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' \u00b7 그대로 둠 ' + skip + '개') : '') + (fail ? (' \u00b7 실패 ' + fail + '개') : '') +
-            '\n\n스케줄/작업기록을 열어 확인하세요.');
+      /* ★ 2026-09-07 사용자 지시 — 팝업 정보 최소화. 개수 나열 대신 끝났다는 한 줄만 */
+      _toast(fail ? ('복원했습니다 (' + fail + '개 실패)') : '복원했습니다', fail ? 'err' : 'ok');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
       try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */
@@ -682,8 +678,8 @@
          예전엔 AppData.autoApply() 였는데, 그건 앱 폴더의 (복원에서 건너뛴) 제 사본을
          읽어 늘 0건이었다. _snapStash/_snapMerge 주석 참고. */
       try { await _snapMerge(); } catch (e) { console.warn('[복원] 스냅샷 합치기:', e && e.message); }
-      alert('✅ 복원 완료\n\n새로 채운 파일 ' + ok + '개' + (skip ? (' · 그대로 둠 ' + skip + '개') : '') + (fail ? (' · 실패 ' + fail + '개') : '') +
-            '\n\n스케줄/작업기록을 열어 확인하세요.');
+      /* ★ 2026-09-07 사용자 지시 — 팝업 정보 최소화. 개수 나열 대신 끝났다는 한 줄만 */
+      _toast(fail ? ('복원했습니다 (' + fail + '개 실패)') : '복원했습니다', fail ? 'err' : 'ok');
     } catch (e) {
       if (typeof hideOverlay === 'function') hideOverlay();
       try { await _snapMerge(); } catch (e2) {}   /* 실패해도 치워 둔 스냅샷은 반드시 되돌린다 */

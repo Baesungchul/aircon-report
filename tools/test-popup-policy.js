@@ -112,5 +112,46 @@ chk('오래 걸리는 일은 끝났다는 신호를 남긴다', () => {
   return '백업 · 복원';
 });
 
+console.log('\n[4] 글 생성 진행 문구 — 너무 빨리 지나가지 않는가');
+
+/* 2026-09-07 사용자 요청: "진행 문구가 너무 빨리 지나가고 '거의 다 됐어요'에서 한참 기다린다.
+   지금보다 2배 느리게." — startBusyProgress 의 실제 로직을 그대로 돌려 시간을 잰다.
+   숫자를 눈으로만 고치면 다시 빨라지기 쉬운 자리라 실제로 재 본다. */
+function runProgress(msgCount) {
+  const src = fs.readFileSync(path.join(JS, 'folder.js'), 'utf8');
+  const m = src.match(/function startBusyProgress\(messages, opts\) \{[\s\S]*?\n\}/);
+  must(m, 'startBusyProgress 를 찾지 못했습니다 — 검사 기준이 낡았습니다');
+  /* setInterval 을 가로채 손으로 돌리고, setProg 로 흘러나오는 진행률을 받는다 */
+  let pct = 0, timer = null;
+  const start = new Function('setInterval', 'clearInterval', 'setProg', 'Math',
+    m[0] + '; return startBusyProgress;')(
+      (f, ms) => (timer = { f: f, ms: ms }),
+      () => {},
+      (p) => { pct = p; },
+      Math);
+  start(Array.from({ length: msgCount }, (_, i) => 'msg' + i));
+  must(timer, 'setInterval 을 쓰지 않습니다 — 검사 기준이 낡았습니다');
+  let ticks = 0;
+  while (pct < 92 && ticks < 2000) { timer.f(); ticks++; }
+  return (ticks * timer.ms) / 1000;
+}
+
+chk('상한(92%)까지 30초 이상 걸린다', () => {
+  let sum = 0;
+  for (let i = 0; i < 60; i++) sum += runProgress(4);
+  const sec = sum / 60;
+  must(sec >= 28, '상한까지 ' + sec.toFixed(1) + '초 — 예전(약 16초)만큼 빨라졌습니다');
+  must(sec <= 45, '상한까지 ' + sec.toFixed(1) + '초 — 너무 느려 멈춘 것처럼 보입니다');
+  return sec.toFixed(1) + '초 (예전 약 16초)';
+});
+
+chk('막대는 촘촘히 움직인다 (틱 간격을 늘려 늦추지 않았다)', () => {
+  const src = fs.readFileSync(path.join(JS, 'folder.js'), 'utf8');
+  const m = src.match(/opts\.interval \|\| (\d+)/);
+  must(m, '틱 간격을 찾지 못했습니다');
+  must(+m[1] <= 800, '틱 간격이 ' + m[1] + 'ms — 막대가 뚝뚝 끊겨 보입니다. 올리는 폭을 줄이세요');
+  return m[1] + 'ms';
+});
+
 console.log('\n' + (fails ? '❌ 실패 ' + fails + '건 / ' : '✅ ') + '통과 ' + oks + '건');
 process.exit(fails ? 1 : 0);

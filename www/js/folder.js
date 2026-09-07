@@ -1411,6 +1411,16 @@ function startBusyProgress(messages, opts) {
   var cap = 92; // 완료 전엔 100%를 보여주지 않고 여기서 대기
   var seg = cap / msgs.length; // 문구 하나가 담당하는 진행률 구간
   var pct = Math.min(4, seg * 0.3);
+  /* ★ 2026-09-07 사용자 요청 — 지금보다 2배 느리게.
+       "진행 텍스트가 너무 빨리 지나가고 '거의 다 됐어요'에서 한참 기다린다."
+       예전엔 700ms 마다 구간의 12~22%씩 올려 **약 16초**면 상한(92%)에 닿았다.
+       실제 글 생성은 그보다 오래 걸려서, 남은 시간 내내 마지막 문구만 떠 있었다.
+       그래서 '상한까지 걸리는 시간'을 눈금이 아니라 초로 직접 정한다 — 기본 32초.
+       진행이 덜 찬 채로 실제 생성이 끝나 완료로 넘어가도 괜찮다고 사용자가 확인함.
+     ☠️ 늦추려고 tickMs 를 키우지 말 것 — 막대가 뚝뚝 끊겨 보인다. 한 번에 올리는 폭을 줄인다. */
+  var runSec = opts.runSec || 32;
+  var ticks = Math.max(1, Math.round(runSec * 1000 / tickMs));
+  var step = (cap - pct) / ticks;   // 한 틱에 올릴 평균 폭
   function paint() {
     var idx = Math.min(msgs.length - 1, Math.floor(pct / seg));
     if (typeof setProg === 'function') setProg(Math.round(pct), msgs[idx]);
@@ -1418,7 +1428,7 @@ function startBusyProgress(messages, opts) {
   paint();
   var timer = setInterval(function () {
     if (pct >= cap) return; // 상한 도달 후엔 문구도 진행률도 그대로 — 반복 없이 실제 완료를 기다림
-    pct = Math.min(pct + seg * (0.12 + Math.random() * 0.1), cap);
+    pct = Math.min(pct + step * (0.75 + Math.random() * 0.5), cap);  // 평균은 step, 조금씩 들쭉날쭉하게
     paint();
   }, tickMs);
   var stopped = false;

@@ -2947,6 +2947,14 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .cal-grid.cal-swapping .cal-ag-day,
 .cal-grid.cal-swapping .cal-bars{opacity:0;}
 .cal-grid.cal-swapping .cal-ag-day{transform:translateY(-10px);}
+/* ═══ 달 이동을 부드럽게 (2026-09-07) ═══════════════════════════════════════
+   사용자 신고: "달력 이동할 때 깨끗하게 안 넘어가고 프레임이 적은 것처럼 버벅인다"
+   달력 격자는 칸 42개에 점·막대·아이콘까지 들어 있어 그리는 값이 비싸다. 레이어로
+   승격시켜 두면 옮기는 동안 다시 그리지 않고 **이미 그려 둔 그림을 밀기만** 한다.
+   ☠️ will-change 를 항상 켜 두지 말 것 — 레이어를 계속 물고 있어 메모리를 먹고,
+      기기에 따라 글자가 뿌옇게 보인다. 움직이는 동안에만 .cal-anim 을 붙였다 뗀다
+      (calendar.js 의 _navAnimating · snapBack · 가로 드래그 판정 세 곳에서 관리). */
+.cal-grid.cal-anim{will-change:transform,opacity;backface-visibility:hidden;}
 .cal-expanded .cal-revenue,
 .cal-expanded .cal-detail,
 .cal-expanded .cal-swipe-hint{display:none!important;}

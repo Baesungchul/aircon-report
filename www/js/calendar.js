@@ -769,6 +769,8 @@
         grid.style.transition = 'transform .18s ease-out, opacity .18s ease-out';
         grid.style.transform = 'none';
         grid.style.opacity = '1';
+        /* 되돌아가는 동안까지만 레이어를 물고 있다가 놓는다 (2026-09-07) */
+        setTimeout(function () { if (!_navAnimating) grid.classList.remove('cal-anim'); }, 200);
       }
       function onStart(e) {
         if (!e.touches || e.touches.length !== 1) { mode = 3; return; }
@@ -783,7 +785,10 @@
         var dx = t.clientX - sx, dy = t.clientY - sy;
         if (mode === 1) {
           // 방향 판별: 가로가 확실하면 월 이동, 세로가 먼저 크면 확장/접힘 또는 스크롤에 양보
-          if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) mode = 2;
+          /* ★ 2026-09-07 가로 드래그로 확정되는 이 순간 레이어 승격을 켠다.
+               ☠️ transform 을 이미 움직이기 시작한 뒤에 will-change 를 붙이면 늦다 —
+                  브라우저는 그 프레임에 레이어를 못 만들고 첫 몇 프레임을 그대로 다시 그린다. */
+          if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) { mode = 2; grid.classList.add('cal-anim'); }
           else if (Math.abs(dy) > 12) {
             // 아래로 당겨 확장은 '맨 위까지 올라와 있을 때'만 — 아니면 평소 스크롤을 뺏는다
             var atTop = !body || body.scrollTop <= 0;
@@ -989,6 +994,34 @@
   }
 
   /* ★ 달 이동 공통 (버튼/스와이프에서 사용) — 페이지 넘기듯 슬라이드 전환 */
+  /* ── 달 이동 애니메이션 잠금 (2026-09-07) ────────────────────────────────
+     사용자 신고: "달력 이동할 때 깨끗하게 안 넘어가고 프레임이 적은 것처럼 버벅인다"
+
+     원인은 두 가지였다.
+       ① 격자(칸 42개 + 점·막대)를 옮기는 동안 **레이어 승격이 없어** 매 프레임마다
+          통째로 다시 그렸다 → styles.css 의 .cal-anim 으로 해결.
+       ② loadCalendarData() 가 병렬로 돌다가 **미끄러지는 도중에** 끝나면
+          renderCalendarGrid() 가 격자를 innerHTML 로 새로 만든다. 42칸을 다시
+          파싱·레이아웃하는 일이 애니메이션 한복판에 끼어들면 그 프레임이 통째로
+          밀린다 → 여기서 미뤄 뒀다가 끝난 뒤 한 번만 그린다.
+
+     ☠️ 잠금이 안 풀리면 달력에 점이 영영 안 찍힌다. 푸는 길을 두 개 둔다
+        (transitionend + 안전 타이머). 하나가 안 와도 다른 하나가 푼다. */
+  var _navAnimating = false;
+  var _gridRenderPending = false;
+  /* ☠️ 세대 번호가 필요한 이유: 빠르게 두 번 넘기면 첫 번째 이동의 안전 타이머가
+       **두 번째 이동 한복판에** 잠금을 풀어 버린다. 그러면 그 순간 격자를 새로 그려
+       고치려던 버벅임이 그대로 돌아온다. 자기 세대일 때만 푼다. */
+  var _navToken = 0;
+  function _unlockGrid(token) {
+    if (token != null && token !== _navToken) return;
+    if (!_navAnimating) return;
+    _navAnimating = false;
+    var g = document.getElementById('calGrid');
+    if (g) g.classList.remove('cal-anim');
+    if (_gridRenderPending) { _gridRenderPending = false; renderCalendarGrid(); }
+  }
+
   function _navMonth(dir, selDate) {
     _calMonth += dir;
     if (_calMonth < 0) { _calMonth = 11; _calYear--; }
@@ -1000,37 +1033,54 @@
     _dateMap = {}; _calItems = null;   // ★ 이전 달 점 즉시 제거 → 달력 뼈대만 남김
     var lb = document.getElementById('calNavLabel');
     if (lb) lb.textContent = _calYear + '년 ' + (_calMonth + 1) + '월';
+    /* 밀려나는 거리를 75% → 32% 로 줄였다 (2026-09-07).
+       갈 길이 짧을수록 프레임이 몇 장 빠져도 '건너뛴' 티가 덜 난다.
+       사라지는 느낌은 어차피 투명도가 맡고 있어서 거리를 줄여도 어색하지 않다. */
+    var OUT = 130, IN = 190, DIST = 32;
+    var g0 = document.getElementById('calGrid');
+    var myNav = ++_navToken;
+    if (g0) {
+      _navAnimating = true;
+      _gridRenderPending = false;
+      g0.classList.add('cal-anim');   // ★ 트랜지션을 걸기 '전에' 붙여야 레이어가 생긴다
+    }
+
     // 1) 현재 달력이 민 방향으로 밀려 나감
     var outDone = new Promise(function (res) {
       try {
-        var g = document.getElementById('calGrid');
-        if (!g) { res(); return; }
-        g.style.transition = 'transform .15s ease-in, opacity .15s ease-in';
-        g.style.transform = 'translateX(' + (dir > 0 ? '-75%' : '75%') + ')';
-        g.style.opacity = '0';
-        setTimeout(res, 150);
+        if (!g0) { res(); return; }
+        g0.style.transition = 'transform ' + OUT + 'ms cubic-bezier(.4,0,1,1), opacity ' + OUT + 'ms linear';
+        g0.style.transform = 'translateX(' + (dir > 0 ? -DIST : DIST) + '%)';
+        g0.style.opacity = '0';
+        setTimeout(res, OUT);
       } catch (e) { res(); }
     });
     // 2) 나가는 애니메이션이 끝나면 → 새 달 '뼈대'를 즉시 그려(점 없이) 반대편에서 들여옴
     //    일정(점)은 loadCalendarData 가 끝나는 대로 채워짐 → 달력은 끊기지 않음
     outDone.then(function () {
+      if (myNav !== _navToken) return;   // 그 사이에 또 넘겼다 — 이 회차는 버린다
       try {
-        renderCalendarGrid();  // ★ 새 달 날짜 칸 즉시 표시 (dateMap 비어 있어 점은 아직 없음)
+        _renderCalendarGridNow();  // ★ 새 달 날짜 칸 즉시 표시 (잠금 중이라 여기서는 직접 그린다)
         var g2 = document.getElementById('calGrid');
-        if (!g2) return;
+        if (!g2) { _unlockGrid(myNav); return; }
+        g2.classList.add('cal-anim');
         g2.style.transition = 'none';
-        g2.style.transform = 'translateX(' + (dir > 0 ? '75%' : '-75%') + ')';
+        g2.style.transform = 'translateX(' + (dir > 0 ? DIST : -DIST) + '%)';
         g2.style.opacity = '0';
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () {
-            g2.style.transition = 'transform .2s ease-out, opacity .2s ease-out';
-            g2.style.transform = 'none';
-            g2.style.opacity = '1';
-          });
-        });
-      } catch (e) {}
+        /* ☠️ 이 한 줄을 빼면 안 된다 — 시작 위치가 스타일 계산에 반영되기 전에 목표값을
+             덮어써서, 들어오는 애니메이션이 통째로 사라지거나 반대쪽에서 오는 것처럼 보인다.
+             requestAnimationFrame 으로는 못 막는다(rAF 는 스타일 계산 앞에서 돈다).
+             찍고쓰다 viewer.js 사진 넘김에서 똑같은 함정을 밟은 적이 있다. */
+        void g2.offsetWidth;
+        g2.style.transition = 'transform ' + IN + 'ms cubic-bezier(0,0,.2,1), opacity ' + IN + 'ms linear';
+        g2.style.transform = 'none';
+        g2.style.opacity = '1';
+        var done = function () { g2.removeEventListener('transitionend', done); _unlockGrid(myNav); };
+        g2.addEventListener('transitionend', done);
+        setTimeout(function () { _unlockGrid(myNav); }, IN + 140);   // 안전망 — transitionend 가 안 오는 경우가 있다
+      } catch (e) { _unlockGrid(myNav); }
     });
-    // 3) 데이터는 병렬 로드 → 완료되면 점이 채워짐
+    // 3) 데이터는 병렬 로드 → 완료되면 점이 채워짐(애니메이션이 끝난 뒤에)
     loadCalendarData();
     hideDayDetail();
   }
@@ -1291,7 +1341,15 @@
     finally { _boundaryBusy = false; }
   }
 
+  /* ★ 2026-09-07 달 이동 중에는 다시 그리기를 미룬다 — 위 _navAnimating 주석 참고.
+       격자를 innerHTML 로 새로 만드는 일이 미끄러지는 도중에 끼어들면 그 프레임이 밀린다.
+       ⚠️ _navMonth 안에서 '새 달 뼈대'를 그릴 때는 이 관문을 지나면 안 된다
+          (자기가 잠가 놓고 자기가 막힌다) → 거기서는 _renderCalendarGridNow 를 직접 부른다. */
   function renderCalendarGrid() {
+    if (_navAnimating) { _gridRenderPending = true; return; }
+    return _renderCalendarGridNow();
+  }
+  function _renderCalendarGridNow() {
     var grid = document.getElementById('calGrid');
     if (!grid) return;
     _pfIconMemo = {};         // ★ 이번 렌더 동안만 쓰는 업종 아이콘 캐시 (localStorage 재파싱 방지)

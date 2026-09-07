@@ -10,6 +10,9 @@
          → 사용자는 본문 칸에 붙여넣기(길게 눌러 붙여넣기)만 하면 끝.
    ⚠️ 캡션(글) 자동 채움은 어느 앱도 지원하지 않는다 — 글은 항상 클립보드다.
    ⚠️ 당근마켓은 공유 시트에 뜨지 않는다 → 갤러리 저장 + 수동 첨부로 대체.
+   ☠️ 2026-09-08 **네이버도 갤러리 저장 방식으로 바꿨다**(사용자 결정). 공유로 사진을
+      넘기면 글쓰기 화면 맨 위에 다 몰려서, 결국 하나씩 끌어 내려야 했다. 이제 갤러리에
+      저장해 두고 마커 자리에서 [사진] 으로 꺼내 넣는다. 채널의 gallery:true 가 그 표시다.
    ⚠️ 공유 순서가 보장되지 않는 기기가 있어 파일명에 순번(01_,02_)을 박는다.
    의존: @capacitor/share(설치·등록 완료), @capacitor/filesystem, window.Gallery
 ═══════════════════════════════════════════════════════════ */
@@ -32,12 +35,19 @@
             그래서 사진(공유)과 글(붙여넣기)이 따로 들어갈 수밖에 없다 —
             이 사실을 앞에서 못 박아야 뒤 단계가 이해된다.
          · 한 번에 넣고 싶으면 네이버는 <b>💻 PC 블로그에 올리기</b> 가 답이다(아래 안내줄). */
-    naver:  { label: '네이버 블로그', pick: '네이버 블로그', max: 30,
-              steps: ['공유 목록에서 <b>네이버 블로그</b>를 고르세요',
-                      '<b>사진만</b> 들어간 글쓰기 화면이 열립니다 — 글은 아직 비어 있어요',
+    /* ☠️ 2026-09-08 (사용자 결정) 네이버는 **사진을 공유 시트로 안 보낸다.**
+         공유로 넘기면 사진이 글쓰기 화면 맨 위에 다 몰려 버려서, 결국 하나씩 끌어
+         내려야 했다 — 그게 제일 번거로운 단계였다.
+         이제 갤러리에 저장해 두고, 마커 자리에서 [사진] 으로 꺼내 넣는다.
+         ⚠️ 인스타·페이스북은 그대로 공유 시트를 쓴다. 거기선 사진이 게시물 자체라
+            '자리'라는 개념이 없어 몰려도 문제가 안 된다. */
+    naver:  { label: '네이버 블로그', pick: '네이버 블로그', max: 30, gallery: true,
+              steps: ['<b>1️⃣ 갤러리에 저장</b>을 누르세요 — 사진이 현장매니저 앨범에 담깁니다',
+                      '<b>2️⃣ 글 복사 + 공유</b>를 누르고, 공유 목록에서 <b>네이버 블로그</b>를 고르세요',
                       '본문 칸을 길게 눌러 <b>붙여넣기</b> 하세요 (글은 이미 복사해 뒀어요)',
-                      '이제 <b>사진은 위에 모여 있고 글은 그 아래</b> 있습니다. 글 속 <b>🔴 작업 전 1</b> · <b>🟢 작업 후 1</b> 표시가 그 사진의 자리예요 — 사진을 하나씩 그 자리로 끌어 옮기고, 옮긴 표시 줄은 지우세요',
-                      '사진은 <b>작업 전 → 작업 후 → 특이사항</b> 순서로 첨부되니 표시의 번호와 그대로 맞물립니다'] },
+                      '글 속 <b>🔴 작업 전 1</b> · <b>🟢 작업 후 1</b> 표시를 <b>지우고</b>, 그 자리에 <b>[사진]</b> 으로 갤러리의 같은 번호 사진을 넣으세요',
+                      '어느 사진인지 헷갈리면 <b>최근앱 버튼</b>으로 돌아오세요 — 현장매니저에 <b>참고 화면</b>이 떠 있습니다',
+                      '사진을 다 넣은 뒤 발행하세요'] },
     insta:  { label: '인스타그램', pick: '인스타그램', max: 20,
               steps: ['공유 목록에서 <b>인스타그램</b>을 고르세요 (피드/스토리 선택)',
                       '<b>사진만</b> 들어간 게시물 작성 화면이 열립니다 — 캡션은 아직 비어 있어요',
@@ -48,7 +58,7 @@
               steps: ['공유 목록에서 <b>페이스북</b>을 고르세요',
                       '<b>사진만</b> 첨부된 게시물 작성 화면이 열립니다 — 내용은 아직 비어 있어요',
                       '내용 칸을 길게 눌러 <b>붙여넣기</b> 하세요'] },
-    carrot: { label: '당근', pick: null, max: 10,
+    carrot: { label: '당근', pick: null, max: 10, gallery: true,
               steps: ['사진을 <b>갤러리에 저장</b>했습니다 — 당근은 공유 시트를 안 받아서 갤러리를 거칩니다',
                       '당근 앱에서 글쓰기 → 사진 추가를 누르세요',
                       '방금 저장된 사진을 <b>번호 순서대로</b> 고르세요',
@@ -160,6 +170,90 @@
     return uris;
   }
 
+  /* ── ① 갤러리에 저장 ──────────────────────────────────────────────────────
+     이 작업 사진을 전부 갤러리(현장매니저 앨범)로 내보낸다.
+     ⚠️ 고르는 칸이 없는 이유는 open() 주석 참고 — 여기는 전부 저장이다. */
+  async function saveGallery() {
+    if (!(window.Gallery && Gallery.exportCurrentWorkPhotosToGallery)) {
+      toast('갤러리 저장을 쓸 수 없습니다', 'err');
+      return false;
+    }
+    try {
+      await Gallery.exportCurrentWorkPhotosToGallery();
+      return true;
+    } catch (e) {
+      toast('갤러리 저장 실패: ' + ((e && e.message) || ''), 'err');
+      return false;
+    }
+  }
+
+  /* ── ② 글 복사 + 공유 ─────────────────────────────────────────────────────
+     사진은 ① 에서 이미 갤러리로 갔다. 여기서는 **글만** 넘긴다.
+     앱이 텍스트를 받아 주면 본문에 바로 들어가고, 안 받아도 클립보드에 남아 있다. */
+  /* ── 참고 화면 ─────────────────────────────────────────────────────────────
+     ☠️ 2026-09-08 사용자 지적: "모바일은 글 속 마커만 있어서 갤러리 속 사진이
+        어떤 건지 판단하기 어렵다."
+        맞는 말이다. 갤러리는 **썸네일만** 보여 준다 — 파일명을 아무리 잘 지어도
+        고르는 화면에서는 안 보이니 실익이 없다.
+     → 그래서 공유 시트를 열기 **직전에** 이 화면을 깔아 둔다. 사용자가 네이버에서
+        사진을 고르다 최근앱으로 돌아오면, 앱에는 이 화면이 그대로 떠 있다.
+        사진마다 글에 박힌 마커((사진: 🔴 작업 전 1) …)가 **글자 그대로** 붙어 있어
+        짝을 맞출 수 있다(라벨만 적던 것을 사용자 요청으로 마커 원문으로 바꿨다 — 2026-09-08).
+     ⚠️ 스스로 닫히면 안 된다. 사용자가 [닫기] 를 누를 때까지 남아 있어야 한다. */
+  function openRefScreen(text) {
+    if (!(window.Preview && Preview.renderRef)) return;
+    var old = document.getElementById('snsRefOv');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+
+    var ov = document.createElement('div');
+    ov.id = 'snsRefOv';
+    ov.style.cssText = 'position:fixed;inset:0;background:var(--bg,#0F141A);z-index:2600;' +
+      'display:flex;flex-direction:column;';
+    ov.innerHTML =
+      '<div style="flex:none;padding:calc(10px + var(--sa-top,0px)) 14px 10px;border-bottom:1px solid var(--bd);background:var(--sf);">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div style="flex:1;font-size:15px;font-weight:800;">🖼 참고용 — 사진 자리 미리보기</div>' +
+          '<button class="btn b-ghost b-xs" id="snsRefClose">닫기</button>' +
+        '</div>' +
+        '<div style="font-size:11.5px;color:var(--mu);line-height:1.6;margin-top:6px;">' +
+          '블로그에 올라가는 화면이 아닙니다. 네이버에서 사진을 고르다 헷갈리면 ' +
+          '<b>최근앱 버튼</b>으로 돌아와 이 화면을 보세요.<br>' +
+          '사진 밑 <b>(사진: …)</b> 는 붙여넣은 글에 그대로 적혀 있는 표시입니다 — 같은 표시를 찾아 그 자리에 넣으세요.' +
+        '</div>' +
+      '</div>' +
+      '<div id="snsRefBody" class="post-pv" style="flex:1;min-height:0;overflow-y:auto;border:0;border-radius:0;">' +
+        '<div class="pv-empty">사진 불러오는 중…</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.querySelector('#snsRefClose').onclick = function () {
+      if (ov.parentNode) ov.parentNode.removeChild(ov);
+      try { if (window.Preview && Preview.release) Preview.release(); } catch (e) {}
+    };
+    Preview.renderRef(text || '').then(function (html) {
+      var b = document.getElementById('snsRefBody');
+      if (b) b.innerHTML = html;
+    }).catch(function () {
+      var b = document.getElementById('snsRefBody');
+      if (b) b.innerHTML = '<div class="pv-empty">미리보기를 만들지 못했습니다.</div>';
+    });
+  }
+
+  async function shareTextOnly(chId, text) {
+    var ch = CH[chId] || CH.naver;
+    var okCopy = copyText(text || '');
+    /* ☠️ 공유 시트를 열기 전에 깐다 — 시트가 닫힌 뒤 앱에 남아 있어야 참고가 된다 */
+    openRefScreen(text);
+    try {
+      await _Share().share({ text: text || '', dialogTitle: ch.label + '에 올리기' });
+      if (!okCopy) toast('글 복사가 안 됐어요 — 결과 화면에서 다시 복사해주세요', 'err');
+      try { window.Review && Review.maybeAskSoon('sns-mobile', 2500); } catch (e) {}
+    } catch (e) {
+      var m = (e && (e.message || e.code)) || '';
+      if (/cancel|abort|Share canceled/i.test(m)) return;   // 그냥 닫은 것은 오류가 아니다
+      toast('공유 실패: ' + m, 'err');
+    }
+  }
+
   /* ── 실행 ── */
   /* ☠️ 2026-09-01 글은 **마커를 지우지 않고 그대로** 클립보드에 넣는다 (사용자 결정).
        모바일 앱은 본문 중간에 사진을 자동으로 못 넣는다 → 사용자가 손으로 끼워 넣어야 하고,
@@ -170,11 +264,17 @@
     var okCopy = copyText(text || '');
     try {
       if (typeof showOverlay === 'function') showOverlay('사진 준비 중...');
-      if (chId === 'carrot') {
-        /* 당근은 공유 시트에 안 뜬다 → 갤러리 저장으로 대체 */
+      /* ☠️ 갤러리 채널 — 사진을 공유 시트로 보내지 않고 갤러리에 저장한다.
+           · 당근: 공유 시트에 아예 안 뜬다
+           · 네이버: 공유로 보내면 사진이 글 맨 위에 다 몰려, 하나씩 끌어 내려야 했다
+             (2026-09-08 사용자 결정 — 마커 자리에서 [사진] 으로 꺼내 넣는 쪽이 쉽다)
+         ⚠️ 저장이 끝난 뒤에 공유 시트를 연다. 순서가 바뀌면 사용자가 블로그로 넘어간
+            뒤에 저장이 돌아 '갤러리에 아직 없는' 상태가 된다. */
+      if (ch.gallery) {
+        /* 버튼이 ①②로 나뉜 채널은 여기 안 온다(각각 saveGallery / shareTextOnly 를 부른다).
+           당근처럼 공유 시트가 없는 채널만 이 갈래로 들어온다. */
         if (typeof hideOverlay === 'function') hideOverlay();
-        if (window.Gallery && Gallery.exportCurrentWorkPhotosToGallery) await Gallery.exportCurrentWorkPhotosToGallery();
-        else toast('갤러리 저장을 쓸 수 없습니다', 'err');
+        await saveGallery();
         return;
       }
       var uris = await stage(list);
@@ -226,25 +326,51 @@
       /* ⭐ 2026-09-07 (사용자 요청) 사진과 글이 '따로' 들어간다는 걸 맨 앞에서 말한다.
            이걸 모르면 붙여넣은 뒤 사진이 위에 몰려 있는 걸 보고 잘못된 줄 안다. */
       '<div style="font-size:12px;color:var(--mu);margin-bottom:10px;line-height:1.6;">' +
-        '사진과 글은 <b>따로 들어갑니다</b> — 사진은 <b>공유 시트</b>로 넘기고, 글은 <b>클립보드에 복사</b>해 두었다가 직접 붙여넣습니다.<br>' +
-        '글 사이사이에 사진을 자동으로 끼워 넣는 건 모바일 앱에서 안 됩니다. 그래서 글에 남겨 둔 <b>사진 표시</b>를 보고 자리를 옮기시면 됩니다.' +
-        (chId === 'naver' ? '<br><span style="color:var(--ac);">한 번에 넣고 싶으시면 <b>💻 PC 블로그에 올리기</b>를 쓰세요 — 글과 사진이 붙어 있는 그대로 들어갑니다.</span>' : '') +
+        (ch.gallery
+          /* 갤러리 방식 — 사진을 고르거나 공유로 넘기지 않는다(2026-09-08 사용자 결정) */
+          ? '사진과 글은 <b>따로 들어갑니다</b> — 사진은 <b>갤러리에 저장</b>하고, 글은 <b>클립보드에 복사</b>해 두었다가 직접 붙여넣습니다.<br>' +
+            '글 사이사이에 사진을 자동으로 끼워 넣는 건 모바일 앱에서 안 됩니다. 글에 남겨 둔 <b>사진 표시</b>가 어느 사진을 어디에 넣을지 알려 줍니다.'
+          : '사진과 글은 <b>따로 들어갑니다</b> — 사진은 <b>공유 시트</b>로 넘기고, 글은 <b>클립보드에 복사</b>해 두었다가 직접 붙여넣습니다.<br>' +
+            '글 사이사이에 사진을 자동으로 끼워 넣는 건 모바일 앱에서 안 됩니다. 그래서 글에 남겨 둔 <b>사진 표시</b>를 보고 자리를 옮기시면 됩니다.') +
+        (chId === 'naver' ? '<br><span style="color:var(--ac);">PC 에서 하실 거면 <b>💻 PC 블로그에 올리기</b> 가 더 빠릅니다 — 글과 사진이 자리를 잡은 채로 들어갑니다.</span>' : '') +
       '</div>' +
-      '<div style="border:1px solid var(--bd);border-radius:10px;padding:8px 12px;margin-bottom:10px;">' +
-        chk('before', '작업 전', c.before) + chk('after', '작업 후', c.after) + chk('special', '특이사항', c.special) +
-      '</div>' +
+      /* ☠️ 갤러리 방식에서는 종류 고르기를 띄우지 않는다 — 갤러리 저장은 이 작업 사진을
+           전부 내보내므로(Gallery.exportCurrentWorkPhotosToGallery), 고르게 해 놓고 다
+           저장하면 화면이 거짓말을 한다. */
+      (ch.gallery ? '' :
+        '<div style="border:1px solid var(--bd);border-radius:10px;padding:8px 12px;margin-bottom:10px;">' +
+          chk('before', '작업 전', c.before) + chk('after', '작업 후', c.after) + chk('special', '특이사항', c.special) +
+        '</div>') +
       '<div id="snsCnt" style="font-size:12px;color:var(--ac);font-weight:700;margin-bottom:10px;"></div>' +
       '<ol style="font-size:12px;color:var(--tx);line-height:1.9;margin:0 0 4px 18px;padding:0;">' +
         ch.steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') +
       '</ol>' +
       '<div style="font-size:11px;color:var(--mu);margin-top:8px;line-height:1.6;">캡션 자동 입력은 네이버·인스타·페이스북·당근 어느 앱도 지원하지 않습니다. 이건 현장매니저의 한계가 아니라 그 앱들이 받는 방식이라, 글은 붙여넣기로 넣으셔야 합니다.</div>' +
-      '<div style="display:flex;gap:8px;margin-top:14px;">' +
-        '<button class="btn b-blue" id="snsGo" style="flex:2;justify-content:center;">' + (chId === 'carrot' ? '갤러리에 저장' : '글 복사 + 사진 공유') + '</button>' +
-        '<button class="btn b-ghost" id="snsCancel" style="flex:1;justify-content:center;">취소</button>' +
-      '</div></div>';
+      /* ☠️ 2026-09-08 (사용자 결정) 갤러리 방식은 버튼을 **둘로 나누고 번호를 붙인다.**
+           한 버튼이 저장과 공유를 같이 하면, 블로그로 넘어간 뒤에야 '사진이 갤러리에
+           들어갔나' 를 확인하게 된다. ① 저장 → 눈으로 확인 → ② 공유 순서로 끊어 준다.
+         ⚠️ 당근은 공유 시트가 없으니(pick:null) 저장 하나뿐이다 — 번호를 붙이지 않는다. */
+      (ch.gallery && ch.pick
+        ? '<button class="btn b-blue" id="snsSave" style="width:100%;justify-content:center;margin-top:14px;">1️⃣ 갤러리에 저장 (' + all.length + '장)</button>' +
+          '<div style="display:flex;gap:8px;margin-top:8px;">' +
+            '<button class="btn b-ghost" id="snsGo" style="flex:2;justify-content:center;">2️⃣ 글 복사 + 공유</button>' +
+            '<button class="btn b-ghost" id="snsCancel" style="flex:1;justify-content:center;">닫기</button>' +
+          '</div>'
+        : '<div style="display:flex;gap:8px;margin-top:14px;">' +
+            '<button class="btn b-blue" id="snsGo" style="flex:2;justify-content:center;">' +
+              (!ch.pick ? '갤러리에 저장' : '글 복사 + 사진 공유') + '</button>' +
+            '<button class="btn b-ghost" id="snsCancel" style="flex:1;justify-content:center;">취소</button>' +
+          '</div>') +
+      '</div>';
     document.body.appendChild(ov);
 
     function refresh() {
+      if (ch.gallery) {
+        /* 갤러리 방식은 이 작업 사진을 전부 저장한다 — 고르는 칸이 없으니 장수만 알린다 */
+        document.getElementById('snsCnt').innerHTML = '갤러리에 저장할 사진 ' + all.length + '장';
+        document.getElementById('snsGo').disabled = (all.length === 0);
+        return;
+      }
       var l = picked();
       var over = all.filter(function (x) { return sel[x.kind]; }).length - l.length;
       document.getElementById('snsCnt').innerHTML = '보낼 사진 ' + l.length + '장' +
@@ -259,10 +385,27 @@
     Array.prototype.forEach.call(ov.querySelectorAll('.snsChk'), function (b) {
       b.onchange = function () { sel[b.getAttribute('data-k')] = b.checked; refresh(); };
     });
+    /* ① 갤러리에 저장 — 시트를 닫지 않는다. 저장이 끝난 걸 보고 ② 로 넘어가야 한다. */
+    var saveBtn = ov.querySelector('#snsSave');
+    if (saveBtn) saveBtn.onclick = function () {
+      var old = saveBtn.textContent;
+      saveBtn.disabled = true;
+      saveBtn.textContent = '저장 중…';
+      saveGallery().then(function (ok) {
+        saveBtn.textContent = ok ? '✅ 갤러리에 저장했습니다' : old;
+        saveBtn.disabled = !ok;
+        if (!ok) return;
+        /* 다음 차례를 눈에 보이게 — ② 를 주 버튼으로 올린다 */
+        var g = ov.querySelector('#snsGo');
+        if (g) { g.className = 'btn b-blue'; }
+      });
+    };
     ov.querySelector('#snsGo').onclick = function () {
-      var l = picked();
+      var l = ch.gallery ? all : picked();
       close();
-      run(chId, text, l);
+      /* ② 는 글만 넘긴다 — 사진은 ① 에서 이미 갤러리로 갔다 */
+      if (saveBtn) shareTextOnly(chId, text);
+      else run(chId, text, l);
     };
   }
 
@@ -393,14 +536,24 @@
         '<button class="btn b-ghost" id="snsLinkSend" style="flex:2;justify-content:center;">보내기</button>' +
       '</div>' +
       '<ol style="font-size:12px;color:var(--tx);line-height:1.9;margin:14px 0 0 18px;padding:0;">' +
+        /* ☠️ 2026-09-08 단계 전면 수정 (사용자 신고: 발행 24시간 뒤 블로그 글의 사진이
+             전부 "존재하지 않는 이미지입니다" 로 바뀌었다)
+             예전 3단계는 "전체 복사 → Ctrl+V — 사진까지 한 번에 들어갑니다" 였다.
+             네이버가 사진을 안 가져가고 링크만 걸어 두는 경우가 있어, 링크가 만료되면
+             발행된 글의 사진이 통째로 깨진다.
+           ⚠️ '한 번에 들어간다'고 다시 쓰지 말 것 — 붙여넣기는 자리만 잡아 줄 뿐,
+              **사진은 사용자가 교체해야** 자기 블로그에 남는다(사용자가 정한 방법 2026-09-08). */
         '<li>이 링크를 <b>PC에서</b> 여세요 (카톡으로 나에게 보내면 편해요)</li>' +
-        '<li>페이지의 <b>글+사진 전체 복사</b>를 누르세요</li>' +
-        '<li>네이버 블로그 글쓰기 본문에 <b>Ctrl+V</b> — 사진까지 한 번에 들어갑니다</li>' +
+        '<li><b>사진을 내려받고</b>, <b>글+사진 전체 복사</b>로 블로그에 붙여넣으세요</li>' +
+        '<li>붙여넣은 <b>사진을 클릭 → 교체</b>로 내려받은 같은 사진으로 바꾸세요</li>' +
+        '<li>사진을 다 바꾼 뒤 발행하세요</li>' +
       '</ol>' +
       '<div style="border:1.5px solid var(--wn);background:rgba(240,180,41,.12);border-radius:10px;padding:10px 12px;margin-top:12px;">' +
-        '<div style="font-size:12px;color:var(--tx);line-height:1.6;">⏳ 링크는 <b>24시간 뒤 자동으로 사라집니다</b>' +
-        ' (' + new Date(res.exp).toLocaleString('ko-KR') + ').<br>주소를 아는 사람은 누구나 볼 수 있으니 아무 데나 올리지 마세요.' +
-        ' 붙여넣고 나면 사진은 네이버 쪽에 남으니 지워져도 괜찮습니다.</div>' +
+        '<div style="font-size:12px;color:var(--tx);line-height:1.6;">' +
+        '⚠️ <b>사진을 교체하지 않으면</b> 링크가 사라질 때 블로그 글의 사진이 ' +
+        '<b>“존재하지 않는 이미지입니다”</b> 로 바뀌고, 외부 링크 사진은 <b>저품질의 원인</b>이 됩니다.<br>' +
+        '⏳ 링크는 <b>24시간 뒤 자동으로 사라집니다</b>' +
+        ' (' + new Date(res.exp).toLocaleString('ko-KR') + ').<br>주소를 아는 사람은 누구나 볼 수 있으니 아무 데나 올리지 마세요.</div>' +
       '</div>' +
       '<button class="btn b-ghost" id="snsLinkClose" style="width:100%;justify-content:center;margin-top:12px;">닫기</button>' +
       '</div>';

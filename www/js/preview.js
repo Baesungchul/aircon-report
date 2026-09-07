@@ -83,10 +83,35 @@
     }).catch(function () { return ''; });
   }
 
+  /* 사진마다 '글에 적힌 마커' — 참고 화면에서 이걸로 짝을 맞춘다 (2026-09-08).
+     ☠️ 번호는 종류별 통산이다. ai.js photoMarkGuide 가 (사진: 🔴 작업 전 1) 처럼
+        종류별로 1부터 세고, collect() 순서가 그 순서다 — 둘이 어긋나면 참고표가 거짓말이 된다.
+     ⚠️ 2026-09-08 사용자 요청: 라벨만 적지 말고 **마커 원문 그대로** 적는다.
+        붙여넣은 글에 (사진: 🔴 작업 전 1) 라고 박혀 있으므로, 참고 화면도 글자 그대로
+        같아야 눈으로 대조가 된다. 라벨은 마커 안에 이미 들어 있어 따로 또 적지 않는다.
+        → 표기를 바꿀 땐 ai.js 의 mk() 도 같이 볼 것. */
+  var KIND_LB = { before: '🔴 작업 전', after: '🟢 작업 후', special: '⚠️ 특이사항' };
+  function captionsOf(kinds) {
+    var ord = {}, out = [];
+    (kinds || []).forEach(function (k) {
+      k = k || 'etc';
+      ord[k] = (ord[k] || 0) + 1;
+      var lb = KIND_LB[k];
+      out.push(lb ? '(사진: ' + lb + ' ' + ord[k] + ')' : '사진 ' + ord[k]);
+    });
+    return out;
+  }
+
   /* ═══ 아래 build() 는 site/post.html 의 render() 를 그대로 옮긴 것이다.
-         ☠️ 고칠 일이 생기면 두 곳을 같이 고칠 것 (위 머리말 참고). ═══ */
-  function build(text, photos, kinds) {
+         ☠️ 고칠 일이 생기면 두 곳을 같이 고칠 것 (위 머리말 참고).
+         ⚠️ 딱 하나 다른 점: opts.captions 를 주면 사진 밑에 마커 이름을 적는다.
+            참고 화면 전용이라 post.html 에는 없어도 된다(PC 는 [교체] 로 자리가 이미 맞다). ═══ */
+  function build(text, photos, kinds, opts) {
     kinds = kinds || [];
+    opts = opts || {};
+    var caps = opts.captions ? captionsOf(kinds) : null;
+    var capByUrl = {};
+    if (caps) photos.forEach(function (u, i) { if (u && capByUrl[u] == null) capByUrl[u] = caps[i]; });
     var used = photos.map(function () { return false; });
 
     function poolOf(k) {
@@ -124,6 +149,12 @@
     function para(t) {
       t = t.trim();
       if (!t) return '';
+      /* ☠️ 2026-09-08 마크다운 구분선(---, ***, ___)은 버린다.
+           AI 가 문단 사이에 넣는데, 예전엔 그대로 <p>---</p> 가 되어 블로그 본문에
+           "---" 라는 글자로 발행됐다(사용자 실제 피해). 네이버 에디터는 이걸 선으로
+           바꿔 주지 않는다.
+         ⚠️ www/js/preview.js 와 site/post.html 두 곳에 같은 코드가 있다 — 같이 고칠 것. */
+      if (/^([-*_])\1{2,}$/.test(t.replace(/\s/g, ''))) return '';
       return '<p>' + esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</p>';
     }
 
@@ -180,29 +211,34 @@
     }
 
     var html = blocks.map(function (b) {
-      return b.t === 'img'
-        ? '<img src="' + esc(b.url) + '" alt="" loading="lazy">'
-        : b.html;
+      if (b.t !== 'img') return b.html;
+      var img = '<img src="' + esc(b.url) + '" alt="" loading="lazy">';
+      if (!caps) return img;
+      var c = capByUrl[b.url] || '사진';
+      return '<figure class="pv-fig">' + img +
+             '<figcaption><span class="pv-mk">' + esc(c) + '</span></figcaption></figure>';
     }).join('');
     return html || '<div class="pv-empty">아직 글이 없습니다.</div>';
   }
 
   /* 글 → 사진이 박힌 HTML.
      ⚠️ 이 화면은 **결과 미리보기**다. 복사되는 글은 여전히 마커 그대로다. */
-  P.render = function (text) {
+  P.render = function (text, opts) {
     var list = collect();
     if (!list.length) {
       return Promise.resolve(
         '<div class="pv-empty">이 작업에 담긴 사진이 없어 글만 보여줍니다.</div>' +
-        build(text, [], [])
+        build(text, [], [], opts)
       );
     }
     return Promise.all(list.map(function (x) { return toUrl(x.p); })).then(function (urls) {
       var photos = [], kinds = [];
       urls.forEach(function (u, i) { if (u) { photos.push(u); kinds.push(list[i].kind); } });
-      return build(text, photos, kinds);
+      return build(text, photos, kinds, opts);
     });
   };
+  /* 참고 화면용 — 사진 밑에 글에 적힌 마커 원문((사진: 🔴 작업 전 1) …)을 그대로 적어 준다 */
+  P.renderRef = function (text) { return P.render(text, { captions: true }); };
 
   console.log('[Preview] 로드됨');
 })();

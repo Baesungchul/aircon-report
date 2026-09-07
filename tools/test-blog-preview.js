@@ -214,10 +214,200 @@ const imgs = (h) => (h.match(/<img[^>]*src="([^"]*)"/g) || [])
 });
 
   await chk('네이버는 한 번에 넣는 길(PC 링크)도 알려 준다', () => {
-  must(/PC 블로그에 올리기<\/b>를 쓰세요/.test(snsSrc),
-       '따로 넣기가 번거로운 사람에게 PC 링크를 안내하지 않습니다');
+  must(/PC 블로그에 올리기<\/b> 가 더 빠릅니다/.test(snsSrc),
+       'PC 에서 할 때 더 빠른 길(PC 링크)을 안내하지 않습니다');
   return '안내함';
 });
+
+  /* ═══════════════════════════════════════════════════════════
+     [6] 2026-09-08 — 발행 24시간 뒤 블로그 글의 사진이 전부
+         "존재하지 않는 이미지입니다" 로 바뀐 사고에서 나온 검사들.
+
+     ☠️ 사고의 뿌리는 코드가 아니라 **문구가 한 약속**이었다.
+        "붙여넣으면 사진은 네이버가 자동으로 받아 옮깁니다" 라고 적어 둬서,
+        사장님은 붙여넣기만 하고 발행했다. 네이버는 안 가져갔고, 24시간 뒤
+        우리가 원본을 지우자 발행된 글이 통째로 깨졌다.
+        → 남의 서버가 사진을 가져가 줄 거라는 약속을 **다시 쓰지 못하게** 막는다.
+     ═══════════════════════════════════════════════════════════ */
+  console.log('\n[6] 사진은 직접 넣어야 한다고 말하는가 (2026-09-08 사고 재발 방지)');
+
+  await chk('"네이버가 자동으로 옮겨 준다"는 약속이 없다', () => {
+    [['post.html', postSrc], ['sns_share.js', snsSrc]].forEach(([n, src]) => {
+      const body = src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      must(!/사진은 네이버가 자동으로/.test(body), n + ' 이 아직 "네이버가 자동으로 옮긴다"고 약속합니다');
+      must(!/사진까지 한 번에 들어갑니다/.test(body), n + ' 이 아직 "한 번에 들어간다"고 약속합니다');
+      must(!/사진은 네이버 쪽에 남으니/.test(body), n + ' 이 아직 "지워져도 괜찮다"고 말합니다');
+    });
+    return '두 곳 다 지워짐';
+  });
+
+  await chk('붙여넣은 사진을 "교체"하라고 단계로 알려 준다', () => {
+    /* 사용자가 정한 방법(2026-09-08): 붙여넣기가 사진 자리를 잡아 주므로,
+       그 뒤 사진을 하나씩 눌러 [교체] 로 내 사진으로 바꾸면 위치를 다시 잡을 일이 없다. */
+    must(/사진만 내 것으로 교체/.test(postSrc), 'PC 링크 페이지가 교체를 앞에서 말하지 않습니다');
+    must(/<b>교체<\/b>를 눌러/.test(postSrc), '교체 단계가 번호 목록에 없습니다');
+    must(/사진을 클릭 → 교체/.test(snsSrc), '앱 안내에 교체 단계가 없습니다');
+    must(/모든 사진을 교체한 뒤<\/b> 발행/.test(postSrc), '"다 바꾼 뒤 발행" 이 빠졌습니다');
+    return '두 곳 다 있음';
+  });
+
+  await chk('교체하지 않으면 어떻게 되는지 두 가지를 다 말한다', () => {
+    [['post.html', postSrc], ['sns_share.js', snsSrc]].forEach(([n, src]) => {
+      must(/존재하지 않는 이미지입니다/.test(src), n + ' 이 "사진이 깨진다"를 안 말합니다');
+      must(/저품질의 원인/.test(src), n + ' 이 "저품질의 원인" 을 안 말합니다 (사용자 요청 2026-09-08)');
+    });
+    return '깨짐 + 저품질';
+  });
+
+  await chk('사진을 낱장으로 받을 수 있다 (ZIP 만 있으면 또 풀어야 한다)', () => {
+    must(/function saveOne\(url, name\)/.test(postSrc), '한 장 저장 기능이 없습니다');
+    must(/function saveAllOneByOne\(\)/.test(postSrc), '전부 낱장으로 받기가 없습니다');
+    must(/id="saveAll">⬇ 사진 내려받기 \(/.test(postSrc), '사진 내려받기 버튼이 없습니다');
+    /* 버튼은 단계 순서와 같아야 한다 — ① 사진 내려받기 ② 글+사진 전체 복사 */
+    must(postSrc.indexOf('id="saveAll"') < postSrc.indexOf('id="copyAll"'),
+         '사진 내려받기가 전체 복사보다 아래 있습니다 — 1번 단계가 위에 있어야 합니다');
+    must(postSrc.indexOf('id="saveAll"') < postSrc.indexOf('id="zipAll"'),
+         '낱장 받기가 ZIP 보다 아래 있습니다');
+    must(!/사진 깨질 수 있음/.test(postSrc),
+         '전체 복사에 아직 경고 딱지가 붙어 있습니다 — 교체 단계가 생겨 정상 경로가 됐습니다');
+    return '낱장 + ZIP';
+  });
+
+  await chk('사진 목록이 복사 영역(#post) 밖에 있다', () => {
+    const cardAt = postSrc.indexOf('id="photoCard"');
+    const postAt = postSrc.indexOf('<div id="post">');
+    must(cardAt > 0 && postAt > 0, '사진 카드나 본문 영역을 못 찾았습니다');
+    must(cardAt < postAt, '사진 목록이 #post 안에 있습니다 — 전체 복사에 버튼 글자가 섞입니다');
+    return '밖에 있음';
+  });
+
+  await chk('모바일 네이버는 사진을 공유로 안 보내고 갤러리에 저장한다', () => {
+    /* 2026-09-08 사용자 결정 — 공유로 넘기면 사진이 글쓰기 화면 맨 위에 다 몰려,
+       결국 하나씩 끌어 내려야 했다. 갤러리에 저장해 두고 마커 자리에서 꺼내 넣는다. */
+    const m = snsSrc.match(/naver:\s*\{([^}]*)\}/);
+    must(m, 'naver 채널 설정을 못 찾았습니다 (검사 기준이 낡았습니다)');
+    must(/gallery: true/.test(m[1]), '네이버가 아직 공유 시트로 사진을 보냅니다');
+    must(/async function saveGallery\(\)/.test(snsSrc), '갤러리 저장 동작이 따로 없습니다');
+    must(/async function shareTextOnly\(chId, text\)/.test(snsSrc), '글만 공유하는 동작이 없습니다');
+    must(!/_Share\(\)\.share\(\{ files: uris[\s\S]{0,400}exportCurrentWorkPhotosToGallery/.test(snsSrc),
+         '네이버가 아직 사진을 공유 시트로 보냅니다');
+    return '갤러리 저장 + 글만 공유';
+  });
+
+  await chk('갤러리 방식에서는 사진 고르는 칸을 안 띄운다', () => {
+    /* 갤러리 저장은 이 작업 사진을 전부 내보낸다 — 고르게 해 놓고 다 저장하면 화면이 거짓말이 된다 */
+    must(/\(ch\.gallery \? '' :/.test(snsSrc), '갤러리 방식에도 종류 체크박스가 뜹니다');
+    must(/갤러리에 저장할 사진 ' \+ all\.length/.test(snsSrc), '저장할 장수를 안 알려 줍니다');
+    return '체크박스 없음';
+  });
+
+  await chk('버튼이 1️⃣2️⃣ 로 나뉘어 순서가 보인다', () => {
+    /* 사용자 결정 2026-09-08 — 한 버튼이 저장과 공유를 같이 하면, 블로그로 넘어간 뒤에야
+       사진이 갤러리에 들어갔는지 알게 된다. ① 저장 → 확인 → ② 공유 로 끊는다. */
+    must(/id="snsSave"[^>]*>1️⃣ 갤러리에 저장/.test(snsSrc), '① 갤러리에 저장 버튼이 없습니다');
+    must(/id="snsGo"[^>]*>2️⃣ 글 복사 \+ 공유/.test(snsSrc), '② 글 복사 + 공유 버튼이 없습니다');
+    /* ⚠️ '2️⃣ 글 복사' 는 단계 안내(CH.naver.steps)에도 나온다 — 버튼 구간만 잘라서 본다 */
+    const btnAt = snsSrc.indexOf('id="snsSave"');
+    const btnBlk = snsSrc.slice(btnAt, btnAt + 600);
+    must(btnBlk.indexOf('1️⃣ 갤러리에 저장') < btnBlk.indexOf('2️⃣ 글 복사'), '①② 순서가 뒤바뀌었습니다');
+    must(/saveBtn\.textContent = ok \? '✅ 갤러리에 저장했습니다'/.test(snsSrc),
+         '저장이 끝난 걸 버튼이 안 알려 줍니다 — ② 로 넘어갈 시점을 모릅니다');
+    must(/if \(saveBtn\) shareTextOnly\(chId, text\)/.test(snsSrc),
+         '② 가 사진까지 다시 공유합니다 — 사진은 ① 에서 이미 갤러리로 갔습니다');
+    return '① 저장 → ② 공유';
+  });
+
+  await chk('공유 직전에 참고 화면을 깔아 둔다', () => {
+    /* ☠️ 사용자 지적 2026-09-08: 갤러리는 썸네일만 보여 줘서 어느 사진인지 알 수 없다.
+       공유 시트를 열기 **전에** 참고 화면을 깔아야, 네이버에서 최근앱으로 돌아왔을 때
+       앱에 그 화면이 남아 있다. 순서가 바뀌면 아무 소용이 없다. */
+    must(/function openRefScreen\(text\)/.test(snsSrc), '참고 화면이 없습니다');
+    const at = snsSrc.indexOf('async function shareTextOnly');
+    const blk = snsSrc.slice(at, at + 900);
+    must(blk.indexOf('openRefScreen(text)') < blk.indexOf('_Share().share'),
+         '공유 시트를 연 뒤에 참고 화면을 깝니다 — 돌아왔을 때 안 보입니다');
+    must(/id="snsRefClose"/.test(snsSrc), '참고 화면에 닫기 버튼이 없습니다');
+    must(!/setTimeout\([^)]*snsRefOv/.test(snsSrc), '참고 화면이 스스로 닫힙니다 — 사용자가 닫을 때까지 남아야 합니다');
+    return '공유 전에 깔림';
+  });
+
+  await chk('참고 화면의 사진에 마커가 붙는다', () => {
+    /* 사진과 '(사진: 🔴 작업 전 1)' 을 나란히 보여 주는 게 짝을 맞추는 유일한 단서다 */
+    must(/P\.renderRef = function/.test(prevSrc), '참고용 렌더가 없습니다');
+    must(/KIND_LB = \{ before: '🔴 작업 전', after: '🟢 작업 후', special: '⚠️ 특이사항' \}/.test(prevSrc),
+         '마커 이름이 ai.js 의 표기와 다릅니다 — 참고표가 거짓말이 됩니다');
+    must(/<figcaption><span class="pv-mk">/.test(prevSrc), '사진 밑에 마커를 안 적습니다');
+    must(/\.post-pv \.pv-fig figcaption\{/.test(css), '참고 화면 캡션 스타일이 없습니다');
+    must(/\.post-pv \.pv-fig \.pv-mk\{/.test(css), '마커 상자 스타일이 없습니다');
+    return '마커 표기';
+  });
+
+  /* ☠️ 2026-09-08 사용자 요청 — 캡션은 라벨이 아니라 **마커 원문**이어야 한다.
+       "예시화면의 사진에 마커도 같이 표시해주면 사용자가 구분하기 쉬울것 같아"
+       글에 박힌 글자와 한 글자라도 다르면 눈으로 대조하는 의미가 사라진다.
+       그래서 ai.js 가 실제로 만드는 마커와 화면에 찍히는 캡션을 맞대 본다. */
+  await chk('캡션이 ai.js 가 글에 박는 마커와 글자까지 같다', () => {
+    const mkAi = (emo, label, n) => {
+      const out = [];
+      for (let i = 1; i <= n; i++) out.push('(사진: ' + emo + ' ' + label + ' ' + i + ')');
+      return out;
+    };
+    /* ai.js 의 mk() 가 이 조립식 그대로인지부터 — 형식이 바뀌면 아래 기대값이 거짓이 된다 */
+    must(/out\.push\('\(사진: ' \+ emo \+ ' ' \+ label \+ ' ' \+ i \+ '\)'\)/.test(aiSrc),
+         'ai.js 의 마커 조립식이 바뀌었습니다 — 참고 화면 캡션도 같이 고쳐야 합니다');
+    const want = {
+      B1: mkAi('🔴', '작업 전', 2)[0], B2: mkAi('🔴', '작업 전', 2)[1],
+      A1: mkAi('🟢', '작업 후', 2)[0], A2: mkAi('🟢', '작업 후', 2)[1],
+      S1: mkAi('⚠️', '특이사항', 1)[0]
+    };
+    return P.renderRef('제목\n\n(사진: 🔴 작업 전 1)\n\n본문입니다.\n\n(사진: 🟢 작업 후 1)\n\n끝.')
+      .then(h => {
+        const figs = h.match(/<figure class="pv-fig">[\s\S]*?<\/figure>/g) || [];
+        must(figs.length === 5, '사진 5장에 캡션이 다 안 붙었습니다 (' + figs.length + '개)');
+        const pair = {};
+        figs.forEach(f => {
+          const src = (f.match(/src="([^"]*)"/) || [])[1];
+          const cap = (f.match(/<span class="pv-mk">([^<]*)<\/span>/) || [])[1];
+          pair[src] = cap;
+        });
+        Object.keys(want).forEach(k => {
+          must(pair[k] === want[k],
+               k + ' 의 캡션이 글의 마커와 다릅니다 — 글: ' + want[k] + ' / 화면: ' + pair[k]);
+        });
+        return Object.keys(want).map(k => pair[k]).join(' ');
+      });
+  });
+
+  await chk('인스타·페이스북은 그대로 공유 시트를 쓴다', () => {
+    /* 거기선 사진이 게시물 자체라 '자리' 개념이 없다 — 몰려도 문제가 안 된다 */
+    ['insta', 'facebook'].forEach(k => {
+      const b = snsSrc.match(new RegExp(k + ':\\s*\\{([^}]*)\\}'));
+      must(b, k + ' 채널 설정을 못 찾았습니다');
+      must(!/gallery: true/.test(b[1]), k + ' 까지 갤러리 방식으로 바뀌었습니다');
+    });
+    return '공유 시트 유지';
+  });
+
+  await chk('모바일 안내에는 저품질 경고를 넣지 않는다', () => {
+    /* 링크가 안 들어가는 방식이라 저품질과 무관하다(사용자 2026-09-08).
+       PC 링크 안내(openPc)에만 있어야 한다. */
+    const at = snsSrc.indexOf('var CH = {');
+    const end = snsSrc.indexOf('function isNative()');
+    must(at > 0 && end > at, '채널 안내 구간을 못 찾았습니다');
+    must(!/저품질/.test(snsSrc.slice(at, end)), '모바일 채널 단계에 저품질 경고가 들어갔습니다');
+    must(/저품질의 원인/.test(snsSrc), 'PC 링크 안내의 저품질 경고까지 사라졌습니다');
+    return '모바일 없음 · PC 링크만';
+  });
+
+  await chk('마크다운 구분선(---)이 글자로 남지 않는다', () => {
+    const rule = /\^\(\[-\*_\]\)\\1\{2,\}\$/;
+    [['preview.js', prevSrc], ['post.html', postSrc]].forEach(([n, src]) => {
+      must(/\[-\*_\]\)\\1\{2,\}/.test(src), n + ' 의 para() 가 구분선을 안 거릅니다');
+    });
+    must(/마크다운 구분선\(---, \*\*\*, ___\)을 쓰지 마세요/.test(aiSrc),
+         'AI 에게 구분선을 쓰지 말라고 안 합니다 — 매번 걸러내는 건 뒷수습입니다');
+    return '프롬프트 + 두 화면';
+  });
 
   console.log('\n' + (fails ? '❌ 실패 ' + fails + '건 / ' : '✅ ') + '통과 ' + oks + '건');
   process.exit(fails ? 1 : 0);

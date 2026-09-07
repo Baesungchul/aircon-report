@@ -4,7 +4,7 @@
   "description": "",
   "main": "sw.js",
   "scripts": {
-    "test": "node tools/test-restore-snapshot.js"
+    "test": "node tools/test-restore-snapshot.js && node tools/test-gallery-nomedia.js"
   },
   "keywords": [],
   "author": "",

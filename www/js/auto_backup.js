@@ -81,6 +81,38 @@
     return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BackupFolder) || null;
   }
 
+  /* ── 백업 폴더를 갤러리에서 숨기기 (2026-09-07) ──
+     사용자 신고: "자동백업과 갤러리저장을 같이 쓰면 갤러리에 사진이 중복으로 보인다".
+     「갤러리 저장」은 Pictures/작업보고서 앨범에 **일부러** 넣는 것이라 보여야 맞다.
+     백업 폴더는 '앱이 관리하는 사본'인데, 미디어 스캐너가 폴더 용도를 안 가리고 사진이면 다
+     색인해서 같은 사진이 두 번 보였다. 폴더 맨 위에 빈 .nomedia 하나면 그 아래가 색인에서
+     빠진다 — 파일은 그대로 남아 복원에는 영향이 없다.
+     실제 작업(파일 만들기 + 이미 색인된 것 정리 + 재스캔)은 BackupFolderPlugin.hideFromGallery.
+     ☠️ 폴더를 바꾸면 새 폴더에 다시 넣어야 한다. 사용자가 .nomedia 를 지웠을 수도 있어서
+        앱을 켤 때마다 한 번은 다시 확인한다(있으면 네이티브가 그냥 넘어간다). */
+  var NOMEDIA_LS = 'auto_backup_nomedia_for';
+  var _nomediaTried = false;
+  function docsBackupPath() { return '/storage/emulated/0/Documents/' + DEST_BASE.split('/')[0]; }
+  async function hideBackupFromGallery(force) {
+    var bf = BF();
+    if (!bf || !bf.hideFromGallery) return;          // 옛 빌드 — 조용히 넘어간다
+    if (!force && _nomediaTried) return;
+    _nomediaTried = true;
+    var saf = getSaf();
+    try {
+      /* 둘 다 넘긴다 — SAF 폴더를 쓰다가도 공용 문서 쪽에 예전 백업이 남아 있을 수 있다.
+         없는 쪽은 네이티브가 조용히 넘어간다. */
+      var r = await bf.hideFromGallery({ uri: saf || '', path: docsBackupPath() });
+      try { localStorage.setItem(NOMEDIA_LS, saf || 'docs'); } catch (e) {}
+      console.log('[자동백업] 갤러리 숨김 ' + (r && r.created ? '적용' : (r && r.existed ? '이미 되어 있음' : '대상 없음')) +
+                  ' · ' + ((r && r.scanned) || '(경로 미확인)'));
+    } catch (e) {
+      console.warn('[자동백업] 갤러리 숨김 실패(백업 자체엔 영향 없음):', e && (e.message || e));
+    }
+  }
+  /* 설정 화면에서 손으로 다시 시킬 수 있게 열어 둔다 */
+  AutoBackup.hideFromGallery = function () { return hideBackupFromGallery(true); };
+
   // 사용자가 백업 폴더를 한 번 지정 (읽기+쓰기 영구 권한). 재설치 후 재지정하면 옛 파일까지 자유롭게 갱신/삭제됨.
   AutoBackup.pickFolder = async function () {
     var bf = BF();
@@ -93,6 +125,8 @@
       if (!r || r.cancelled || !r.uri) return false;
       setSaf(r.uri);
       if (typeof showToast === 'function') showToast('백업 폴더가 지정되었습니다', 'ok');
+      /* 새 폴더에도 .nomedia 를 넣는다 — 안 넣으면 백업 사진이 갤러리에 또 쌓인다 */
+      await hideBackupFromGallery(true);
       AutoBackup.run('manual');
       return true;
     } catch (e) {
@@ -358,6 +392,10 @@
       //   localStorage 값들은 파일이 아니라 백업에서 통째로 빠져 있었다.
       //   여기서 _appdata.json 으로 떨궈두면 아래 거울 백업이 자동으로 함께 복사한다.
       try { if (window.AppData && AppData.write) await AppData.write(); } catch (e) {}
+
+      /* ★ 2026-09-07 — 백업 폴더를 갤러리에서 숨긴다(.nomedia). 앱을 켜고 처음 백업할 때 한 번.
+         백업보다 먼저 해야 새로 복사되는 사진이 애초에 색인되지 않는다. */
+      try { await hideBackupFromGallery(false); } catch (e) {}
 
       // ── 우선: 사용자가 지정한 SAF 폴더로 네이티브 거울 백업 (재설치 후에도 쓰기/삭제 자유) ──
       var saf = getSaf();

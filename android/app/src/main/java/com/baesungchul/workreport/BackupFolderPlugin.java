@@ -232,6 +232,110 @@ public class BackupFolderPlugin extends Plugin {
         } catch (Exception e) { return null; }
     }
 
+    /**
+     * 3-0) 백업 폴더를 갤러리(사진앱)에서 숨긴다.
+     *
+     *  왜 필요한가 (2026-09-07 사용자 신고: "자동백업과 갤러리저장을 같이 쓰면 갤러리에 사진이 중복으로 보인다"):
+     *    「갤러리 저장」은 Pictures/작업보고서 앨범에 **일부러** 넣는 것이라 보여야 맞다.
+     *    반면 자동백업 폴더는 '앱이 관리하는 사본'인데, 안드로이드 미디어 스캐너는 폴더 용도를
+     *    구분하지 않고 사진이면 다 색인해서 백업본까지 갤러리에 뜬다 → 같은 사진이 두 번 보인다.
+     *
+     *  방법: 폴더 맨 위에 빈 `.nomedia` 파일을 하나 둔다. 안드로이드는 그 폴더(와 하위)를
+     *        미디어 색인에서 제외한다. 파일 자체는 그대로 남아 복원에는 영향이 없다.
+     *
+     *  ☠️ .nomedia 를 만들어도 **이미 색인된 사진은 바로 안 사라진다** — "앞으로 색인하지 마라"는
+     *     표시일 뿐이다. 그래서 만든 직후 그 폴더를 다시 훑으라고 스캐너에 신호를 보내고,
+     *     이미 등록된 줄도 지워 본다(남의 앱 소유면 예외가 나므로 조용히 넘어간다).
+     *  ☠️ 삼성 갤러리처럼 자체 색인을 쓰는 앱은 반영이 한 박자 늦을 수 있다.
+     */
+    @PluginMethod
+    public void hideFromGallery(final PluginCall call) {
+        final String uriStr = call.getString("uri");      // SAF 백업 폴더 (선택)
+        final String absPath = call.getString("path");    // 절대경로 폴더 (선택)
+        new Thread(new Runnable() {
+            public void run() {
+                JSObject ret = new JSObject();
+                boolean created = false, existed = false;
+                List<String> scanned = new ArrayList<>();
+                try {
+                    ContentResolver resolver = getContext().getContentResolver();
+
+                    // ── SAF 폴더 ──
+                    if (uriStr != null && !uriStr.isEmpty()) {
+                        Uri treeUri = Uri.parse(uriStr);
+                        String rootId = DocumentsContract.getTreeDocumentId(treeUri);
+                        if (findChildByName(resolver, treeUri, rootId, ".nomedia") != null) existed = true;
+                        else {
+                            // 일부 제공자는 확장자를 덧붙이므로 만든 뒤 이름을 다시 확인한다
+                            createFile(resolver, treeUri, rootId, "application/octet-stream", ".nomedia");
+                            if (findChildByName(resolver, treeUri, rootId, ".nomedia") != null) created = true;
+                        }
+                        String p = pathFromTreeUri(treeUri);
+                        if (p != null) scanned.add(p);
+                    }
+
+                    // ── 절대경로 폴더 (공용 문서 쪽 백업) ──
+                    if (absPath != null && !absPath.isEmpty()) {
+                        File dir = new File(absPath);
+                        if (dir.isDirectory()) {
+                            File nm = new File(dir, ".nomedia");
+                            if (nm.exists()) existed = true;
+                            else { try { if (nm.createNewFile()) created = true; } catch (Exception ignored) {} }
+                            if (!scanned.contains(absPath)) scanned.add(absPath);
+                        }
+                    }
+
+                    // ── 이미 색인된 것 정리 + 다시 훑기 ──
+                    List<String> toScan = new ArrayList<>();
+                    for (String p : scanned) {
+                        purgeMediaStore(resolver, p);
+                        toScan.add(p);
+                        toScan.add(p + "/.nomedia");
+                    }
+                    if (!toScan.isEmpty()) {
+                        try {
+                            android.media.MediaScannerConnection.scanFile(
+                                    getContext(), toScan.toArray(new String[0]), null, null);
+                        } catch (Exception ignored) {}
+                    }
+
+                    ret.put("created", created);
+                    ret.put("existed", existed);
+                    ret.put("scanned", android.text.TextUtils.join(", ", scanned));
+                    call.resolve(ret);
+                } catch (Exception e) {
+                    call.reject("갤러리 숨기기 실패: " + e.getMessage(), e);
+                }
+            }
+        }).start();
+    }
+
+    /** SAF 트리 uri → 내장저장소 절대경로 (기본 저장소일 때만, 아니면 null) */
+    private String pathFromTreeUri(Uri treeUri) {
+        try {
+            String docId = DocumentsContract.getTreeDocumentId(treeUri);
+            String[] split = docId.split(":");
+            if (split.length >= 1 && "primary".equalsIgnoreCase(split[0])) {
+                String tail = (split.length > 1 && split[1] != null && !split[1].isEmpty()) ? ("/" + split[1]) : "";
+                return android.os.Environment.getExternalStorageDirectory().getAbsolutePath() + tail;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /** 그 폴더 아래로 이미 등록된 미디어 줄을 지운다. 남의 앱이 등록한 줄은 못 지우므로 조용히 넘어간다. */
+    private int purgeMediaStore(ContentResolver resolver, String absDir) {
+        try {
+            return resolver.delete(
+                    android.provider.MediaStore.Files.getContentUri("external"),
+                    android.provider.MediaStore.MediaColumns.DATA + " LIKE ?",
+                    new String[]{ absDir + "/%" });
+        } catch (Exception e) {
+            // SecurityException(소유권) 등 — .nomedia 와 재스캔만으로도 결국 빠진다
+            return 0;
+        }
+    }
+
     /** 3-1) 지정 백업 폴더(uri) 안의 상대경로 문서를 즉시 삭제 (작업 삭제 시 백업 부활 방지) */
     @PluginMethod
     public void deletePath(final PluginCall call) {

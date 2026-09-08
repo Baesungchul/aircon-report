@@ -51,9 +51,9 @@
   function check() {
     if (!(window.Cloud && Cloud.db)) { setTimeout(check, 1500); return; }
     try {
-      Cloud.db.collection('config').doc('app').get().then(function (doc) {
-        if (!doc.exists) return;
-        var d = doc.data() || {};
+      /* config/app 은 notice.js 와 함께 쓴다 — Cloud.appConfig 가 한 번만 읽는다(2026-09-08) */
+      Cloud.appConfig().then(function (d) {
+        d = d || {};
         if (d.minVersion && cmp(cur(), d.minVersion) < 0) { showGate(true, d.updateNote); return; }
         if (d.latestVersion && cmp(cur(), d.latestVersion) < 0) {
           var today = new Date().toISOString().slice(0, 10);

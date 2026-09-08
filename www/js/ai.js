@@ -89,6 +89,7 @@
   ClaudeAI.setCorrectionsRaw = function (a) { setCorrections(a); };  // 클라우드 병합 결과 반영용
   ClaudeAI.clearCorrections = clearCorrections;
   // 최근 교정들을 few-shot 프롬프트 블록으로 (빈 값은 생략)
+  var SHOT_MAX = 1200;   // 프롬프트에 싣는 교정 예시 1건의 최대 글자 수 (저장은 원문 그대로)
   function buildFewShot() {
     if (learnOff('ai_schedule_learn_off')) return '';
     var list = getCorrections();
@@ -98,7 +99,14 @@
     recent.forEach(function (c) {
       var out = {};
       CORR_FIELDS.forEach(function (k) { if (c.out && c.out[k]) out[k] = c.out[k]; });
-      lines.push('입력: ' + JSON.stringify(c.in));
+      /* ☠️ 2026-09-08 (리소스 점검) — 입력 원문을 자르지 않고 그대로 싣고 있었다.
+           캡처에서 읽어낸 전문이 들어오면 건당 수백~수천 자다. 예시 8건이면 그것만으로
+           본 지침(2,300자)의 몇 배가 되고, 일정 분석을 부를 때마다 매번 다시 나간다
+           (네이버 캘린더 일괄 가져오기는 건수만큼 곱해진다).
+         → 앞 SHOT_MAX 자만 싣는다. 예시는 '패턴'을 보여 주려는 것이라 뒤쪽 긴 꼬리는
+           필요 없다. 저장은 원문 그대로 두므로(아래 saveCorrection) 값을 늘리면 즉시 복구된다.
+         ⚠️ 찍고쓰다는 예전부터 1,200자로 자르고 있었다 — 같은 값으로 맞춘다. */
+      lines.push('입력: ' + JSON.stringify(String(c.in || '').slice(0, SHOT_MAX)));
       lines.push('정답: ' + JSON.stringify(out));
     });
     return lines.join('\n');
@@ -191,6 +199,23 @@
     return { headers: h, hadUser: hadUser };
   }
 
+  /* ── 요청 중단·시간제한 (2026-09-08 리소스 점검) ─────────────────────────────
+     ☠️ 예전에는 fetch 에 signal 도 타임아웃도 없었다. 사용자가 화면을 닫거나 앱을 나가도
+        요청은 끝까지 진행되고 **토큰은 전액 과금**됐다. 응답이 영영 안 오면 진행 표시가
+        멈춘 채로 남았다.
+     → 찍고쓰다 ai.js 에 이미 있던 방식을 그대로 가져왔다.
+     ⚠️ 취소는 '지금 도는 요청 하나' 만 끊는다. 요청이 끝나면 컨트롤러를 놓는다.
+     ⚠️ 중단·시간초과는 오류로 던지되 code 를 붙여, 부르는 쪽이 실패 토스트를 띄울지
+        조용히 넘어갈지 가릴 수 있게 한다. */
+  var AI_TIMEOUT_MS = 90000;      // 90초. 사진 6장짜리 글도 이 안에 끝난다
+  var _abortCtl = null;
+  ClaudeAI.cancel = function () {
+    if (!_abortCtl) return false;
+    try { _abortCtl.abort(); } catch (e) {}
+    _abortCtl = null;
+    return true;
+  };
+
   async function callClaude(opts) {
     var body = {
       model: opts.model || getModel(),
@@ -200,15 +225,32 @@
     if (opts.system) body.system = opts.system;
     var res;
     var _hp = await _proxyHeaders();
+    var ctl = null, timer = null, timedOut = false;
+    try { ctl = new AbortController(); } catch (e) {}
+    if (ctl) {
+      _abortCtl = ctl;
+      timer = setTimeout(function () { timedOut = true; try { ctl.abort(); } catch (e) {} }, AI_TIMEOUT_MS);
+    }
     try {
       res = await fetch(PROXY_URL, {
         method: 'POST',
         headers: _hp.headers,
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: ctl ? ctl.signal : undefined
       });
     } catch (e) {
+      if (timer) clearTimeout(timer);
+      if (_abortCtl === ctl) _abortCtl = null;
+      var aborted = e && (e.name === 'AbortError' || /abort/i.test(e.message || ''));
+      if (aborted) {
+        var err = new Error(timedOut ? 'AI 응답이 너무 오래 걸려 멈췄습니다. 다시 시도해 주세요.' : '취소했습니다');
+        err.code = timedOut ? 'TIMEOUT' : 'CANCELLED';
+        throw err;
+      }
       throw new Error('네트워크 오류: ' + (e && e.message));
     }
+    if (timer) clearTimeout(timer);
+    if (_abortCtl === ctl) _abortCtl = null;
     var data = null;
     try { data = await res.json(); } catch (e) {}
     if (res.status === 401) {
@@ -228,9 +270,16 @@
       throw new Error('AI 서버 오류: ' + String(msg).slice(0, 180));
     }
     try { if (data && data.usage) _recordUsage(body.model, data.usage); } catch (e) {}
+    /* ☠️ 2026-09-08 — 글이 상한(max_tokens)에 걸려 잘렸는지 기록한다.
+         예전엔 이걸 안 봐서, 끊긴 글을 그대로 내보내고 사장님이 통째로 다시 만들었다
+         (요금 2배). 찍고쓰다가 이미 같은 방식으로 잡고 있다.
+       ⚠️ 여기서 알아만 두고 던지지는 않는다 — 잘린 글도 대부분은 쓸 만해서,
+          버리는 것보다 "뒷부분이 잘렸다" 고 알려 주는 쪽이 낫다. */
+    try { ClaudeAI.lastTruncated = !!(data && data.stop_reason === 'max_tokens'); } catch (e) {}
     return ((data && data.content) || []).filter(function (b) { return b.type === 'text'; })
       .map(function (b) { return b.text; }).join('\n');
   }
+  ClaudeAI.wasTruncated = function () { return !!ClaudeAI.lastTruncated; };
   ClaudeAI.callClaude = callClaude;
   ClaudeAI.getKey = getKey;
 
@@ -923,10 +972,13 @@
     var recent = list.slice(-QCORR_SHOTS);
     var lines = ['', '[과거 교정 예시 — 아래는 사용자가 최종 확정한 견적서다. 형식·말투·가격 산정 방식을 반드시 이 정답 패턴에 맞춰라]'];
     recent.forEach(function (c) {
+      /* ☠️ 2026-09-08 — 견적서 전문을 자르지 않고 3건 통째로 싣고 있었다.
+           견적서는 원래 긴 글이라 여기가 프롬프트에서 제일 무거웠다.
+           형식·말투를 보여 주는 게 목적이므로 앞부분이면 충분하다. */
       lines.push('--- 고객 요청 ---');
-      lines.push(c.in);
+      lines.push(String(c.in || '').slice(0, SHOT_MAX));
       lines.push('--- 확정 견적서 ---');
-      lines.push(c.out);
+      lines.push(String(c.out || '').slice(0, SHOT_MAX));
     });
     return lines.join('\n');
   }
@@ -1508,6 +1560,10 @@
         close();
         var pid = hasPhotosInWork() ? savePostToWork(chId, t) : null;
         showBlogResult(t, chId, pid);
+        /* ☠️ 2026-09-08 — 상한에 걸려 뒷부분이 잘렸으면 알려 준다.
+             예전엔 조용히 넘어가서, 사장님이 끊긴 글을 보고 통째로 다시 만들었다(요금 2배).
+             글 자체는 대부분 쓸 만하므로 버리지 않고 알리기만 한다. */
+        try { if (ClaudeAI.wasTruncated()) toast('글이 길어 뒷부분이 잘렸습니다 — 마지막 문단을 확인해 주세요', 'err'); } catch (e) {}
       } catch (e) {
         if (_stopBusy1) _stopBusy1();
         if (typeof hideOverlay === 'function') hideOverlay();

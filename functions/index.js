@@ -458,10 +458,47 @@ exports.cleanupAccounts = onSchedule(
   async () => {
     const db = admin.firestore();
     const now = Date.now();
-    const usersSnap = await db.collection('users').get();
+
+    /* ☠️ 2026-09-08 (리소스 점검) — 예전엔 여기서 users 컬렉션을 통째로 읽었다.
+         `await db.collection('users').get()`
+       아무 일도 일어나지 않는 날에도 **사용자 수만큼 읽기**를 매일 지불했다.
+       사용자 1만 명이면 하루 1만, 한 달 30만 읽기다.
+
+       그런데 아래 반복문이 실제로 하는 일이 있는 문서는 네 종류뿐이고, 나머지는
+       전부 continue 로 빠진다. 그 네 종류만 골라 오면 결과가 같다.
+       (바로 위 cleanupSnsPosts 가 이미 where + limit 을 쓰고 있다 — 같은 방식이다)
+
+       ⚠️ orderBy('필드') 는 그 필드가 **있는 문서만** 돌려준다. '존재하는가' 를 묻는
+          쿼리로 이걸 쓴다. Firestore 는 단일 필드 색인을 자동으로 만들어 두므로
+          색인을 따로 만들 필요가 없다.
+       ⚠️ 한 번에 다 못 가져오면 다음 날 이어서 처리된다(매일 도는 작업이라 안전).
+          상한에 걸리면 로그로 알린다. */
+    const CAND_LIMIT = 500;
+    const cands = new Map();
+    const _add = (snap) => { snap.docs.forEach((d) => { if (!cands.has(d.id)) cands.set(d.id, d); }); };
+    /* 경고를 보내야 하는 시점(삭제 30일 전)부터가 대상이다 */
+    const subCutoff = admin.firestore.Timestamp.fromMillis(now - (UNSUB_LIMIT_MS - WARN_LEAD_MS));
+    const _q = (b) => b.limit(CAND_LIMIT).get().catch((e) => {
+      console.warn('[cleanupAccounts] 후보 조회 실패:', e && e.message);
+      return { docs: [] };
+    });
+    const users = db.collection('users');
+    const parts = await Promise.all([
+      _q(users.orderBy('deletionRequestedAt')),                       // (1) 직접 삭제 요청
+      _q(users.orderBy('pendingDeletionAt')),                         // (2) 예약 취소 대상
+      _q(users.orderBy('deletionWarnedAt')),                          // (2) 경고 기록 취소 대상
+      _q(users.where('subscriptionEndedAt', '<=', subCutoff)),        // (3) 구독 끝난 지 오래
+      _q(users.where('subscriptionExpiresAt', '<=', subCutoff))       // (3) 위 필드가 없는 옛 문서
+    ]);
+    parts.forEach(_add);
+    parts.forEach((snap, i) => {
+      if (snap.docs.length >= CAND_LIMIT) console.warn('[cleanupAccounts] 후보 쿼리 ' + i + ' 가 상한(' + CAND_LIMIT + ')에 걸렸습니다 — 나머지는 다음 실행에서 처리됩니다');
+    });
+    console.log('[cleanupAccounts] 후보 ' + cands.size + '명 (예전에는 전체 사용자를 읽었다)');
+
     let warned = 0, purged = 0, cleared = 0;
 
-    for (const doc of usersSnap.docs) {
+    for (const doc of cands.values()) {
       const u = doc.data() || {};
       const uid = doc.id;
       const explicit = !!u.deletionRequestedAt;

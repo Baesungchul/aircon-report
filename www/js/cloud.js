@@ -14,6 +14,23 @@
   Cloud.auth  = null;
   Cloud.db    = null;
 
+  /* ── config/app 한 번만 읽기 (2026-09-08 리소스 점검) ─────────────────────
+     ☠️ version_gate.js 와 notice.js 가 **같은 문서를 각자 읽고 있었다.**
+        앱을 켤 때마다 읽기 2회, 로그인 안 한 사람도 포함이라 DAU × 2 다.
+        둘 다 앱 시작 몇 초 안에 도는 것이라 한 번 읽어 나눠 쓰면 된다.
+     ⚠️ 실패는 캐시하지 않는다 — 네트워크가 잠깐 끊긴 것뿐인데 그 앱 실행 내내
+        공지·업데이트 안내가 영영 안 뜨면 안 된다. 다음 호출이 다시 시도한다.
+     ⚠️ 성공은 이 앱 실행 동안 유지한다. 공지가 바뀌어도 다음에 앱을 켤 때 보이면 된다. */
+  var _appCfgP = null;
+  Cloud.appConfig = function () {
+    if (_appCfgP) return _appCfgP;
+    if (!Cloud.db) return Promise.reject(new Error('아직 준비되지 않았습니다'));
+    _appCfgP = Cloud.db.collection('config').doc('app').get()
+      .then(function (doc) { return (doc && doc.exists) ? (doc.data() || {}) : {}; })
+      .catch(function (e) { _appCfgP = null; throw e; });
+    return _appCfgP;
+  };
+
   /* ★ 2026-08-31 로그인 세션 "복원 완료" 신호 — AI 글쓰기 등에서 Cloud.user 를 읽기 전에
        기다리는 용도. 앱을 막 연 직후엔 Firebase 가 저장된 로그인 세션을 아직 복원 중일 수
        있어서, 그 사이 Cloud.user 는 실제로는 로그인된 사용자인데도 null 이다. 이 시점에

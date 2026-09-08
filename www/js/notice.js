@@ -145,9 +145,9 @@
   var tries = 0;
   function check() {
     if (!(window.Cloud && Cloud.db)) { if (++tries < MAX_TRY) setTimeout(check, 1500); return; }
-    Cloud.db.collection('config').doc('app').get().then(function (doc) {
-      if (!doc.exists) return;
-      var n = (doc.data() || {}).notice;
+    /* config/app 은 version_gate.js 와 함께 쓴다 — Cloud.appConfig 가 한 번만 읽는다(2026-09-08) */
+    Cloud.appConfig().then(function (d) {
+      var n = (d || {}).notice;
       if (!shouldShow(n, { seen: get(SEEN_KEY), paid: paid() })) return;
       if (busy()) { if (++tries < MAX_TRY) setTimeout(check, 1200); return; }
       show(n);

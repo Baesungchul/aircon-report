@@ -6,19 +6,22 @@
        · 그룹(3명+) 방은 자동 생성 id
    - rooms/{roomId}/messages/{msgId}: text, senderUid, senderName, createdAt
    - 메시지 옆에 "이 메시지를 아직 안 읽은 인원 수"를 표시(카카오톡 방식) → room.lastRead와 members로 계산
-   - users/{uid}.lastActive: 하트비트로 갱신 → 참가자 접속 중 표시
+   - (2026-09-08 폐지) users/{uid}.lastActive 하트비트 → 참가자 '접속중' 표시. 아래 머리말 참고
    - 탭 안에서 목록 → (새 대화 상대 선택) / 대화 상세 화면을 전환한다.
 ═══════════════════════════════════════════════ */
 (function () {
   'use strict';
   window.CloudChat = window.CloudChat || {};
 
-  // ★ 2026-08-08 배터리 개선: '접속중' 표시 하나 때문에 25초마다 Firestore write가 나가던 것을 완화.
-  //   HEARTBEAT_MS를 늘리면 ONLINE_MS(접속중으로 간주하는 시간)도 함께 늘려야 한다.
-  //   그러지 않으면 beat 사이 간격에 '접속중'이 꺼졌다 켜졌다 깜빡인다(여유 2.4배로 잡음).
-  //   대가: 상대가 앱을 닫은 뒤 '접속중'이 사라지기까지 최대 2분(기존 45초) 걸린다.
-  var ONLINE_MS = 120000;      // 2분
-  var HEARTBEAT_MS = 50000;    // 50초 (기존 25초 → write 절반)
+  /* ☠️ 2026-09-08 '접속중' 표시 폐지 (사용자 결정 — 리소스 점검 결과)
+       무엇이 문제였나: 앱이 켜져 있는 동안 50초마다 users/{uid}.lastActive 에 write 가
+       나갔다. 그런데 그 문서는 파트너·팀원이 모두 구독하고 있고, 업종 아이콘이
+       최대 300KB 같이 들어 있다(cloud_share.js pushMyProfileIcons).
+       → 한 사람이 앱을 1시간 켜두면 write 72회 + 사람 수 × 72 문서읽기 + 그만큼의 전송량.
+         사람이 늘수록 곱으로 커지는, 이 앱에서 유일한 그런 항목이었다.
+       얻는 것은 이름 옆의 🟢/⚫ 점 하나뿐이라 없애기로 했다.
+     ⚠️ 되살리지 말 것. 꼭 필요해지면 users/{uid} 가 아니라 **아무도 구독하지 않는
+        별도 문서**(예: presence/{uid})에 쓰고, 볼 때만 읽는 방식으로 만들 것. */
   var FILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;   // ★ 파일 보관 1주일 (지나면 다운로드 불가)
   var FILE_MAX = 30 * 1024 * 1024;             // ★ 사진/문서 최대 30MB
   var FILE_MAX_VIDEO = 100 * 1024 * 1024;      // ★ 동영상 최대 100MB
@@ -28,16 +31,13 @@
   var _roomsUnsub = null;
   var _msgUnsubs = {};        // roomId -> unsub
   var _roomDocUnsubs = {};    // roomId -> unsub
-  var _presenceUnsubs = {};   // uid -> unsub
   var _messages = {};         // roomId -> [{...}]
   var _pending = {};          // roomId -> [보내는 중/실패한 임시 메시지] (낙관적 표시)
   var _rooms = {};            // roomId -> {members, memberNames, lastRead, lastMessage, lastMessageAtMs, isGroup}
   var _partners = {};         // uid -> name  (일정 공유 accepted 상대 = 새 대화 시작 가능한 사람들)
-  var _presence = {};         // uid -> ms(lastActive)
   var _openRoomId = null;
   var _renderedRoomId = null;   // 현재 대화창 HTML이 그려진 방 (입력창 재생성 방지)
   var _viewMode = 'list';     // 'list' | 'picker' | 'chat'
-  var _heartbeatTimer = null;
   var _tickTimer = null;
   var _msgPollTimer = null;
   // ★ 적응형 폴링(배터리 절약): 대화가 오갈 땐 5초, 조용하면 최대 30초까지 늘린다.
@@ -89,10 +89,7 @@
       }
     });
     _partners = accepted;
-    Object.keys(accepted).forEach(function(uid){ subscribePresence(uid); });
-    Object.keys(_presenceUnsubs).forEach(function(uid){
-      if (!accepted[uid]) { try { _presenceUnsubs[uid](); } catch(e){} delete _presenceUnsubs[uid]; }
-    });
+    /* 접속중 표시를 없애면서(2026-09-08) 여기서 하던 presence 구독/해지도 사라졌다 */
     updateTabVisibility();
     if (tabOpen()) renderChatTabBody();
     notifyBadge();
@@ -143,7 +140,6 @@
           teamName: d.teamName || '', teamId: d.teamId || ''
         };
         subscribeMessages(roomId);
-        (d.members || []).forEach(function(pu){ if (pu !== myUid()) subscribePresence(pu); });
       });
       Object.keys(_rooms).forEach(function(roomId){
         if (!seen[roomId]) {
@@ -168,7 +164,7 @@
     });
   } catch (e) {}
   CloudChat.ensure = function(){
-    if (loggedIn()) { subscribeShares(); subscribeRooms(); startHeartbeat(); startTick(); startMsgPoll(); }
+    if (loggedIn()) { subscribeShares(); subscribeRooms(); startTick(); startMsgPoll(); }
   };
 
   /* ★ 2026-08-12 배터리 개선 — 앱이 백그라운드일 땐 채팅 실시간 리스너를 모두 끊는다.
@@ -184,7 +180,7 @@
        끊어도 안전한 이유: 새 메시지 알림은 리스너가 아니라 FCM 푸시(push.js + Cloud Functions)로
        오므로 알림을 놓치지 않는다. 복귀 시 재구독하면서 최초 스냅샷으로 최신 메시지를 즉시 받는다.
 
-       rooms 리스너는 messages/presence 구독의 시발점(발견 즉시 subscribeMessages/subscribePresence 호출)이라
+       rooms 리스너는 messages 구독의 시발점(발견 즉시 subscribeMessages 호출)이라
        이것만 끊으면 나머지도 자동으로 따라붙지 않는다. 재개 시 rooms 스냅샷이 다시 fan-out 해준다. */
   var _chatPaused = false;
   function pauseChatSync(){
@@ -207,7 +203,7 @@
     _chatPaused = false;
     if (!loggedIn()) return;
     subscribeShares();
-    subscribeRooms();   // 스냅샷이 오면 방마다 subscribeMessages/subscribePresence 재부착
+    subscribeRooms();   // 스냅샷이 오면 방마다 subscribeMessages 재부착
     startTick();
     startMsgPoll();
     bumpPoll();         // 복귀 직후엔 폴링 간격을 최소로 → 밀린 메시지를 빨리 따라잡음
@@ -265,86 +261,8 @@
       }).catch(function(e){ console.warn('[CloudChat] 메시지 재읽기 실패', roomId, e && e.code); });
   }
 
-  /* ════════ 접속 상태(presence) ════════ */
-  function startHeartbeat(){
-    if (_heartbeatTimer) return;
-    function beat(){
-      if (!loggedIn()) return;
-      if (document.hidden) return;
-      db().collection('users').doc(myUid()).set(
-        { lastActive: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }
-      ).catch(function(){});
-    }
-    beat();
-    _heartbeatTimer = setInterval(beat, HEARTBEAT_MS);
-    document.addEventListener('visibilitychange', function(){ if (!document.hidden) beat(); });
-  }
-  function subscribePresence(uid){
-    if (_presencePaused) return;   // ★ 백그라운드 동안엔 구독하지 않음(shares/rooms 스냅샷이 도착해도 되살아나지 않게)
-    if (!uid || _presenceUnsubs[uid]) return;
-    /* ★ 2026-08-24 같은 users/{uid} 문서를 cloud_share._subProfile 도 듣고 있었다.
-         한 문서를 두 번 구독하면 갱신 때마다 문서 전체가 두 번 내려온다(심박 50초 + 업종아이콘 최대 300KB).
-         → CloudShare 의 공용 구독에 얹어 uid 당 하나만 쓴다. CloudShare 가 없으면 예전처럼 직접 구독한다. */
-    var handler = function(d){
-      d = d || {};
-      var t = d.lastActive && d.lastActive.toMillis ? d.lastActive.toMillis() : 0;
-      _presence[uid] = t;
-      if (document.hidden) return;   // ★ 화면에 안 보이면 그릴 필요 없음
-      if (_viewMode === 'chat' && _openRoomId) renderParticipants(_openRoomId);
-      if (tabOpen() && _viewMode === 'list') renderChatTabBody();
-    };
-    _presenceUnsubs[uid] = function(){};   // 재진입 가드
-    if (window.CloudShare && CloudShare.subscribeUserDoc) {
-      _presenceUnsubs[uid] = CloudShare.subscribeUserDoc(uid, handler);
-    } else {
-      _presenceUnsubs[uid] = db().collection('users').doc(uid).onSnapshot(function(doc){
-        handler((doc && doc.data()) || {});
-      }, function(){});
-    }
-  }
-
-  /* ★ 2026-08-08 배터리 개선 — presence(접속중 표시) 구독을 백그라운드에서만 잠시 끊는다.
-       왜 필요한가: 상대는 앱이 켜져 있는 동안 HEARTBEAT_MS(50초)마다 users/{uid}.lastActive 를 쓴다.
-       그 쓰기 하나하나가 나에게 푸시되어 폰을 깨우는데, 내 앱이 백그라운드면 그 초록불은 보이지도 않는다.
-       상대가 3명이면 평균 17초마다 헛되이 깨어나는 셈(LTE는 패킷 하나에도 라디오가 수 초간 고전력 유지).
-       왜 이것만 끊나: presence는 순수 장식이라 끊겨도 잃는 데이터가 없고, 복귀 시 재구독 한 줄로 즉시 복구된다.
-       일정/메시지 리스너는 그대로 두므로 공유 데이터가 늦게 들어올 위험이 없고,
-       채팅 알림은 어차피 리스너가 아니라 FCM 푸시(push.js)로 오므로 알림도 놓치지 않는다. */
-  var _presencePaused = false;
-  function pausePresence(){
-    if (_presencePaused) return;
-    _presencePaused = true;
-    Object.keys(_presenceUnsubs).forEach(function(uid){ try { _presenceUnsubs[uid](); } catch(e){} });
-    _presenceUnsubs = {};
-  }
-  function resumePresence(){
-    if (!_presencePaused) return;
-    _presencePaused = false;
-    if (!loggedIn()) return;
-    // 구독 대상 복원: 공유 상대 + 내가 속한 방의 멤버 (구독 시점에 최신 상태를 즉시 받아옴)
-    Object.keys(_partners).forEach(function(uid){ subscribePresence(uid); });
-    Object.keys(_rooms).forEach(function(rid){
-      var mem = (_rooms[rid] && _rooms[rid].members) || [];
-      mem.forEach(function(pu){ if (pu !== myUid()) subscribePresence(pu); });
-    });
-    if (tabOpen()) renderChatTabBody();
-  }
-  document.addEventListener('visibilitychange', function(){
-    if (document.hidden) pausePresence(); else resumePresence();
-  });
-  // Capacitor 네이티브에서 visibilitychange가 안 오는 경우 대비(이중 안전망)
-  try {
-    var _AppP = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
-    if (_AppP && _AppP.addListener) {
-      _AppP.addListener('appStateChange', function(st){
-        if (st && st.isActive === false) pausePresence(); else resumePresence();
-      });
-    }
-  } catch(e){}
-  function isOnline(uid){
-    var t = _presence[uid] || 0;
-    return t > 0 && (Date.now() - t) < ONLINE_MS;
-  }
+  /* ════════ 접속 상태(presence) — 2026-09-08 폐지 ════════
+     심박(50초 write)·구독·일시정지·재개가 모두 여기 있었다. 위 머리말 참고. */
   function startTick(){
     if (_tickTimer) return;
     _tickTimer = setInterval(function(){
@@ -403,25 +321,8 @@
       }).catch(function(){});
   }
 
-  // 접속상태(presence)도 서버에서 직접 확인 → 실시간 스트림 멈춰도 상대 접속표시 갱신
-  //   ★ 2026-08-13: 폴링이 5초까지 빨라지면 인원수만큼 읽기가 곱해지므로 30초에 한 번으로 제한.
-  //     (접속중 표시는 분 단위 정보라 더 자주 볼 이유가 없다)
-  var _lastPresencePoll = 0;
-  var PRESENCE_MIN_MS = 30000;
-  function pollPresence(roomId){
-    var now = Date.now();
-    if (now - _lastPresencePoll < PRESENCE_MIN_MS) return;
-    _lastPresencePoll = now;
-    var room = _rooms[roomId] || {};
-    (room.members || []).forEach(function(uid){
-      if (uid === myUid()) return;
-      db().collection('users').doc(uid).get({ source: 'server' }).then(function(doc){
-        var d = doc.data() || {};
-        var t = (d.lastActive && d.lastActive.toMillis) ? d.lastActive.toMillis() : 0;
-        if (t && t !== _presence[uid]) { _presence[uid] = t; if (_openRoomId === roomId && _viewMode === 'chat') renderParticipants(roomId); }
-      }).catch(function(){});
-    });
-  }
+  /* 접속상태 폴링(방 인원 수만큼 30초마다 users 읽기)도 2026-09-08 에 함께 없앴다.
+     '접속중' 표시를 안 하니 읽을 이유가 없다. */
   // 대화가 살아있다는 신호 → 폴링 간격을 최소(5초)로 되돌리고 즉시 재예약
   //   (setInterval로 1초마다 '지금인가?'를 확인하면 헛깨움이 생기므로,
   //    setTimeout 자기재예약 방식으로 '실제 폴링할 때만' CPU를 깨운다)
@@ -436,7 +337,6 @@
     // 화면에 안 보이거나 채팅방이 열려있지 않으면 이번 회차는 건너뛴다(다음 회차는 계속 예약)
     if (!document.hidden && tabOpen() && _viewMode === 'chat' && _openRoomId) {
       pollMessagesLight(_openRoomId);
-      pollPresence(_openRoomId);
       // 빈손이면 간격을 늘린다(5→10→20→30초). 새 메시지가 오면 pollMessagesLight가 bumpPoll로 되돌림.
       _pollMs = Math.min(POLL_MAX_MS, _pollMs * 2);
     } else {
@@ -489,7 +389,7 @@
     var room = _rooms[roomId];
     if (!room) return [];
     return (room.members || []).map(function(uid){
-      return { uid: uid, name: nameOf(room, uid), online: uid === myUid() ? true : isOnline(uid) };
+      return { uid: uid, name: nameOf(room, uid) };
     });
   }
   // 이 메시지를 아직 안 읽은 인원 수 (보낸 사람 본인 제외)
@@ -988,7 +888,7 @@
     if (!box) return;
     var list = participantsOf(roomId);
     var h = '👥 참가자 ' + list.length + '명&nbsp; ';
-    h += list.map(function(u){ return (u.online ? '🟢' : '⚫') + ' ' + esc(u.name); }).join(' &nbsp;·&nbsp; ');
+    h += list.map(function(u){ return esc(u.name); }).join(' &nbsp;·&nbsp; ');
     box.innerHTML = h;
   }
   function _isEmojiOnly(t){
@@ -1089,11 +989,9 @@
     if (_roomsUnsub) { try { _roomsUnsub(); } catch(e){} _roomsUnsub = null; }
     Object.keys(_msgUnsubs).forEach(function(k){ try { _msgUnsubs[k](); } catch(e){} });
     Object.keys(_roomDocUnsubs).forEach(function(k){ try { _roomDocUnsubs[k](); } catch(e){} });
-    Object.keys(_presenceUnsubs).forEach(function(k){ try { _presenceUnsubs[k](); } catch(e){} });
-    _msgUnsubs = {}; _roomDocUnsubs = {}; _presenceUnsubs = {}; _presencePaused = false; _chatPaused = false;
-    _messages = {}; _pending = {}; _rooms = {}; _partners = {}; _presence = {};
+    _msgUnsubs = {}; _roomDocUnsubs = {}; _chatPaused = false;
+    _messages = {}; _pending = {}; _rooms = {}; _partners = {};
     _viewMode = 'list'; _openRoomId = null;
-    if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
     if (_tickTimer) { clearInterval(_tickTimer); _tickTimer = null; }
     if (_msgPollTimer) { clearTimeout(_msgPollTimer); _msgPollTimer = null; }
     updateTabVisibility();

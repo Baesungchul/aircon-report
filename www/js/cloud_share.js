@@ -107,7 +107,11 @@
   function subscribeShares() {
     if (!loggedIn()) { _shares = []; renderArea(); return; }
     if (_sharesUnsub) return;  // ★ 이미 구독 중이면 아무것도 다시 하지 않음 (성능)
-    pullShares();   // 최초 1회 즉시 읽기
+    /* ☠️ 2026-09-08 (리소스 점검) — 여기 있던 pullShares() 를 뺐다.
+         바로 아래 onSnapshot 이 같은 쿼리라 붙자마자 같은 결과를 준다. 그런데 이 함수는
+         앱을 켤 때뿐 아니라 **다른 앱 갔다 돌아올 때마다** 다시 도므로(resumeShareSync),
+         복귀할 때마다 공유 목록을 통째로 한 번 더 읽고 있었다.
+       ⚠️ 오프라인 캐시가 켜져 있어(cloud.js enablePersistence) 화면이 늦어지지 않는다. */
     subscribeOwn(); // 최초 1회 (내 일정에 대한 상대 수정 오버레이)
     _sharesUnsub = db().collection('shares').where('members','array-contains', myUid())
       .onSnapshot(function (snap) { processShares(snap.docs); },

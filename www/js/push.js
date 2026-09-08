@@ -19,16 +19,30 @@
   function safeId(name){ return String(name||'').replace(/[\/\.\#\$\[\]]/g, '_').slice(0, 200); }
   function PN(){ return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications; }
 
+  /* ☠️ 2026-09-08 (리소스 점검) — 앱을 켤 때마다 조건 없이 users 문서에 write 가 나갔다.
+       토큰은 웬만해선 안 바뀌는데, arrayUnion 은 값이 이미 있어도 쓰기 1회로 과금된다.
+       이 문서는 파트너·팀원이 구독 중이라 쓸 때마다 그쪽 읽기까지 딸려온다.
+     → 마지막으로 올린 토큰을 기기에 적어 두고, 같으면 건너뛴다.
+     ⚠️ 로그아웃/계정 변경으로 uid 가 달라지면 다시 올려야 하므로 uid 를 함께 적는다.
+     ⚠️ 실패했을 때는 표시를 지워, 다음 실행에서 다시 시도하게 한다. */
+  var TOK_KEY = 'ac_push_token_pushed';
   function saveToken(token){
     if (!loggedIn() || !token) return;
     _lastToken = token;
+    var mark = myUid() + '|' + token;
+    try { if (localStorage.getItem(TOK_KEY) === mark) return; } catch (e) {}
+    try { localStorage.setItem(TOK_KEY, mark); } catch (e) {}
     db().collection('users').doc(myUid()).set(
       { fcmTokens: firebase.firestore.FieldValue.arrayUnion(token) },
       { merge: true }
-    ).catch(function(e){ console.warn('[Push] 토큰 저장 실패', e); });
+    ).catch(function(e){
+      try { localStorage.removeItem(TOK_KEY); } catch (e2) {}   // 실패 → 다음 실행에서 다시 올린다
+      console.warn('[Push] 토큰 저장 실패', e);
+    });
   }
   function removeToken(token){
     if (!loggedIn() || !token) return;
+    try { localStorage.removeItem(TOK_KEY); } catch (e) {}
     db().collection('users').doc(myUid()).set(
       { fcmTokens: firebase.firestore.FieldValue.arrayRemove(token) },
       { merge: true }

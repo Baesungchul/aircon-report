@@ -225,13 +225,16 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       }, { merge: true });
 
       photo._cloudUploaded = true;
+      /* ☠️ 2026-09-08 — 올린 문서 이름을 돌려준다(문서 id = cloudName).
+           호출부가 이걸 모아 두면 '지금 서버에 뭐가 있나' 를 알려고 컬렉션을 다시 읽을 필요가 없다.
+           호출부는 results.filter(Boolean) 로 개수를 세므로 문자열을 돌려줘도 그대로 동작한다. */
 
       // 목록용 썸네일(부가) - 사진 저장/동기화를 절대 막지 않도록 백그라운드로 처리
       _cpsUploadThumb(myUid(), workId, cloudName, blob).then(function (thumbPath) {
         if (thumbPath) itemPhotosCol(workId).doc(photoId).set({ thumbPath: thumbPath }, { merge: true }).catch(function () {});
       }).catch(function () {});
 
-      return true;
+      return cloudName;
     } catch (e) {
       console.warn('[CloudPhotoSync] 업로드 실패', photo && photo.fileName, e && (e.code || e.message));
       return false;
@@ -288,7 +291,8 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
           _borrowedDocs[dd.cloudName || d.id] = { ref: d.ref, role: dd.role || '', unitName: dd.unitName || '' };
           return;
         }
-        var rec = { ref: d.ref, name: dd.cloudName || d.id, pid: dd.pid || '', role: dd.role || '', unitName: dd.unitName || '', sp: dd.storagePath || '' };
+        /* fname·tp 는 아래 정리 단계에서 쓴다 — 컬렉션을 다시 읽지 않으려고 여기서 같이 담는다(2026-09-08) */
+        var rec = { ref: d.ref, name: dd.cloudName || d.id, pid: dd.pid || '', role: dd.role || '', unitName: dd.unitName || '', sp: dd.storagePath || '', fname: dd.fname || '', tp: dd.thumbPath || '' };
         _docByName[rec.name] = rec;
         if (rec.pid) _docByPid[rec.pid] = rec;
       });
@@ -359,6 +363,8 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
     });
     var results = await Promise.all(jobs);
     var uploadedCount = results.filter(Boolean).length;
+    /* 방금 올린 문서 이름 — 아래 정리 단계가 컬렉션을 다시 읽지 않기 위해 쓴다(2026-09-08) */
+    var _uploadedNames = results.filter(function (r) { return typeof r === 'string' && r; });
 
     // ★★ 편집(삭제/이동/순서변경) 반영: 지금 로컬에 없는 "내가 올린" 사진을 클라우드에서도 제거
     //    - 상대가 보탠(addedBy 있음) 사진은 절대 건드리지 않음
@@ -379,16 +385,30 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
         mark(u.after, 'after');
         (u.specials || []).forEach(function (s, si) { mark(s.photos, 'special' + (si + 1)); });
       });
-      var recSnap = await itemPhotosCol(workId).get();
+      /* ☠️ 2026-09-08 (리소스 점검) — 여기서 같은 컬렉션을 **두 번째로** 통째 읽고 있었다.
+           `await itemPhotosCol(workId).get()`
+           저장 한 번에 읽기가 사진 수의 2배씩 나갔다(사진 100장이면 저장당 200 읽기).
+
+         이제 다시 읽지 않는다. 필요한 정보를 이미 다 들고 있기 때문이다.
+           · _docByName — 위에서 읽은 문서들(ref 포함). 자리 변경·pid 물려주기는
+             **그 자리에서 rec 객체에 반영**되므로(위 _fixJobs 블록) 다시 읽은 것과 값이 같다.
+           · _borrowedDocs — 상대가 보탠 문서. 어차피 삭제 대상에서 제외되지만
+             '새 이름이 서버에 있나' 판단에는 들어가야 한다.
+           · _uploadedNames — 방금 이 실행에서 올린 문서 이름(uploadOnePhoto 가 돌려준다).
+             두 번째 읽기가 잡아내던 것이 정확히 이것뿐이었다.
+         ⚠️ 삭제 후보는 _docByName 만 본다. 방금 올린 것은 화면에 있는 사진이라 keep 에 들어가고,
+            상대 기여분은 원래 건드리지 않는다 — 두 번째 읽기 때와 대상이 같다. */
       var existing = {};      // 지금 서버에 실제로 있는 문서 이름
-      recSnap.forEach(function (d) {
-        var dd = d.data() || {};
-        existing[dd.cloudName || d.id] = 1;
-      });
+      Object.keys(_docByName).forEach(function (nm) { existing[nm] = 1; });
+      Object.keys(_borrowedDocs).forEach(function (nm) { existing[nm] = 1; });
+      _uploadedNames.forEach(function (nm) { existing[nm] = 1; });
       var dels = [];
-      recSnap.forEach(function (d) {
-        var data = d.data() || {};
-        if (data.addedBy) return; // 상대 기여분 보존
+      Object.keys(_docByName).forEach(function (nm) {
+        var rec0 = _docByName[nm];
+        var d = { ref: rec0.ref };
+        var data = { cloudName: rec0.name, pid: rec0.pid, role: rec0.role,
+                     unitName: rec0.unitName, storagePath: rec0.sp,
+                     fname: rec0.fname, thumbPath: rec0.tp };
         var cn = data.cloudName || _cpsCloudName(data.unitName, data.role, data.fname);
         /* ★ 3단계: 고유번호가 화면에 살아 있으면 무조건 보존.
            자리를 옮겼어도 pid 는 안 바뀌므로 **이동한 사진이 삭제 후보가 되는 일 자체가 없어진다.** */

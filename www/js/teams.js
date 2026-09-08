@@ -269,7 +269,12 @@
   function subscribe() {
     if (!loggedIn()) { _teams = []; return; }
     if (_teamsUnsub) return;
-    pull();
+    /* ☠️ 2026-09-08 (리소스 점검) — 여기서 pull() 로 같은 쿼리를 한 번 더 읽고 있었다.
+         바로 아래 onSnapshot 이 붙자마자 같은 결과를 그대로 준다. 앱을 켤 때뿐 아니라
+         다른 앱 갔다 돌아올 때마다(resume) 이 함수가 다시 도는 구조라, 매번 팀 목록을
+         통째로 한 번 더 읽고 있었다.
+       ⚠️ 첫 화면이 늦어지지 않는다 — 오프라인 캐시가 켜져 있어(cloud.js enablePersistence)
+          onSnapshot 이 캐시본을 먼저 즉시 내려준 뒤 서버본으로 갱신한다. */
     _teamsUnsub = db().collection('teams').where('members', 'array-contains', myUid())
       .onSnapshot(function (s) { processTeams(s.docs); },
         function (e) { console.warn('[CloudTeams] 구독 오류', e && e.code); });

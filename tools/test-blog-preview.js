@@ -204,13 +204,21 @@ const imgs = (h) => (h.match(/<img[^>]*src="([^"]*)"/g) || [])
 });
 
   await chk('각 채널 단계에서도 "사진만" 열린다고 알려 준다', () => {
-  ['naver', 'insta', 'facebook'].forEach(k => {
+  /* ⚠️ 네이버는 빠졌다 — 갤러리 방식이라 '사진만 들어간 화면' 자체가 없다.
+       (예전엔 목록에 있었는데, 900자 창이 우연히 인스타 단계까지 닿아서 통과하고 있었다.
+        2026-09-08 네이버 단계가 길어지면서 들통났다 — 기준을 바로잡는다.) */
+  ['insta', 'facebook'].forEach(k => {
     const at = snsSrc.indexOf(k + ':');
     const blk = snsSrc.slice(at, at + 900);
     must(/<b>사진만<\/b>/.test(blk), k + ' 단계에 "사진만 들어간 화면" 설명이 없습니다');
   });
+  /* 네이버는 '사진은 갤러리로, 글은 공유로' 라는 두 갈래를 단계가 보여 줘야 한다 */
+  const nvAt = snsSrc.indexOf('naver:  {');
+  const nvBlk = snsSrc.slice(nvAt, nvAt + 1600);
+  must(/갤러리에 저장<\/b>/.test(nvBlk) && /글 복사 \+ 공유<\/b>/.test(nvBlk),
+       '네이버 단계에 사진(갤러리) · 글(공유) 두 갈래가 안 보입니다');
   must(/사진과 글은 따로 들어갑니다/.test(snsSrc), '당근 단계에 따로 들어간다는 설명이 없습니다');
-  return '4개 채널';
+  return '인스타·페이스북 + 네이버(갤러리) + 당근';
 });
 
   await chk('네이버는 한 번에 넣는 길(PC 링크)도 알려 준다', () => {
@@ -425,13 +433,19 @@ const imgs = (h) => (h.match(/<img[^>]*src="([^"]*)"/g) || [])
     const blk = snsSrc.slice(at, at + 1800);
     must(/_payload\.title = _ti/.test(blk),
          '공유에 제목을 안 넘깁니다 (네이버는 무시하지만 티스토리 등은 이 값을 씁니다)');
-    /* ☠️ 2026-09-08 2차 — 네이버는 title(EXTRA_SUBJECT)을 안 읽고 **본문 앞부분**으로
-         제목을 만든다. 그래서 네이버에는 본문을 공유로 넘기지 않는다(클립보드로 간다).
-         이 한 줄이 되돌아가면 "[공유] …" 제목이 그대로 되살아난다. */
-    must(/ch\.noShareBody \? ' '/.test(blk), '네이버에 본문을 그대로 넘깁니다 — 제목이 지저분해집니다');
-    const nv = snsSrc.match(/naver:\s*\{[^}]*\}/);
-    must(nv && /noShareBody: true/.test(nv[0]), '네이버 채널에 noShareBody 표시가 없습니다');
-    must(/제목 칸<\/b>에는 글의 <b>첫 줄/.test(snsSrc), '제목을 직접 넣으라는 안내가 없습니다');
+    /* ☠️ 2026-09-08 3차 (사용자 결정) — 본문은 **그대로 넘긴다.**
+         한때 제목을 깨끗이 하려고 본문을 안 넘겨 봤는데, 제목은 "[공유]" 만 남고
+         본문이 통째로 비었다("본문은 왜 비어있는거야??").
+         네이버가 붙이는 "[공유]" 말머리는 어차피 못 없애므로 제목은 손을 대야 한다.
+         그렇다면 본문이라도 자동으로 채워지는 쪽이 손이 덜 간다. */
+    must(/text: text \|\| ''/.test(blk), '본문을 안 넘깁니다 — 블로그 본문이 텅 빕니다');
+    must(!/noShareBody/.test(snsSrc), '본문을 안 넘기던 코드가 남아 있습니다');
+    /* 제목을 옮겨 담는 법을 안내가 알려 줘야 한다 — 안 알려 주면 "[공유]…" 를 보고 막힌다 */
+    must(/제목 칸의 글자를 모두 지우고<\/b> 거기에 <b>붙여넣기/.test(snsSrc),
+         '제목을 지우고 붙여넣으라는 안내가 없습니다');
+    must(/네이버가 붙인 것/.test(snsSrc), '"[공유]" 가 네이버가 붙인 말이라는 설명이 없습니다');
+    must(/본문에 남은 <b>추천 제목 줄<\/b>을 지우세요/.test(snsSrc),
+         '본문에 남는 추천 제목을 지우라는 안내가 없습니다');
 
     const m = snsSrc.match(/function firstLine\(text\)[\s\S]*?\n  \}/);
     must(m, 'firstLine 본문을 못 찾았습니다');

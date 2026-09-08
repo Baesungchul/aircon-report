@@ -165,6 +165,12 @@ async function saveToFolder(opts) {
     const currentSnap = quickSnapshot();
     if (!_dataDirty && currentSnap === _lastSaveSnapshot) {
       console.log('✓ 변경 없음 - 저장 스킵');
+      /* ☠️ 2026-09-08 — 손으로 누른 저장은 반드시 답이 있어야 한다.
+           팝업을 줄이면서 여기 토스트까지 뺐더니, 버튼을 눌러도 아무 반응이 없어
+           저장이 됐는지 알 수 없었다(사용자 지적). 저장은 '화면을 보면 아는 것'이
+           아니다 — 폴더 저장은 화면이 하나도 안 바뀐다.
+           자동·조용한 저장은 그대로 말없이 넘어간다. */
+      if (!isAutoSave && !isSilent) showToast('이미 저장되어 있습니다', 'ok');
       return { skipped: true, reason: 'no_changes' };
     }
   }
@@ -616,8 +622,13 @@ async function saveToFolder(opts) {
     if (isAutoSave) {
       console.log(`💾 자동 저장 완료 - 신규 ${saved}장 저장, ${skippedPhotos}장 스킵`);
     } else if (failed > 0) {
-      /* 실패만 알린다 — 성공은 화면이 이미 보여준다 (2026-09-07 사용자 지시) */
       showToast(`사진 ${failed}장을 저장하지 못했습니다`, 'err');
+    } else if (!isSilent) {
+      /* ☠️ 2026-09-08 — 손으로 누른 저장에는 반드시 답을 준다(사용자 지적).
+           2026-09-07 팝업 정리 때 "성공은 화면이 보여준다"는 기준으로 뺐는데,
+           폴더 저장은 화면이 하나도 안 바뀌어서 그 기준이 맞지 않았다.
+           숫자(몇 장·몇 KB)는 그대로 빼 둔다 — 필요한 건 '됐다'는 신호 하나다. */
+      showToast('저장했습니다', 'ok');
     }
 
     if (typeof flushCustomersXlsx === 'function') {

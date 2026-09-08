@@ -239,13 +239,43 @@
     });
   }
 
+  /* 글의 첫 줄 = 제목 (2026-09-08 사용자 요청) ─────────────────────────────
+     ☠️ 제목을 안 넘기면 네이버 블로그 앱이 본문 앞부분을 잘라 제목을 만든다.
+        실제로 이렇게 나왔다:
+          "[공유] 삼원빌딩 에어컨 청소 — 곰팡이가 이 정도면 … 필요가 있습니다. 삼원"
+        문장이 중간에서 끊기고 앞에 [공유] 가 붙는다. 사용자 지적:
+        "제목은 본문 내용의 첫줄이 적당해 보여. [공유] 이거 없이 첫줄만 제목에 넣어줘"
+     → 첫 줄을 뽑아 title 로 넘긴다. 안드로이드에서 title 은 EXTRA_SUBJECT 로 가고
+       네이버 블로그가 그걸 제목 칸에 넣는다.
+     ⚠️ 본문(text)에서는 첫 줄을 빼지 않는다 — 붙여넣은 글의 제목 줄까지 사라지면
+        사장님이 지운 줄 알고 다시 적게 된다. 제목 칸이 채워질 뿐이다. */
+  var TITLE_MAX = 100;                     // 네이버 블로그 제목 칸 상한
+  function firstLine(text) {
+    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      if (!t) continue;
+      t = t.replace(/^#{1,6}\s*/, '')          // 마크다운 제목 기호
+           .replace(/^\[공유\]\s*/, '')        // 어디선가 붙은 [공유]
+           .replace(/\*\*(.+?)\*\*/g, '$1')   // 굵게 표시
+           .trim();
+      if (!t) continue;
+      if (/^[\(（]\s*(?:사진|이미지)/.test(t)) continue;   // 사진 마커 줄은 제목이 아니다
+      return t.length > TITLE_MAX ? t.slice(0, TITLE_MAX).trim() : t;
+    }
+    return '';
+  }
+
   async function shareTextOnly(chId, text) {
     var ch = CH[chId] || CH.naver;
     var okCopy = copyText(text || '');
     /* ☠️ 공유 시트를 열기 전에 깐다 — 시트가 닫힌 뒤 앱에 남아 있어야 참고가 된다 */
     openRefScreen(text);
     try {
-      await _Share().share({ text: text || '', dialogTitle: ch.label + '에 올리기' });
+      var _ti = firstLine(text);
+      var _payload = { text: text || '', dialogTitle: ch.label + '에 올리기' };
+      if (_ti) _payload.title = _ti;
+      await _Share().share(_payload);
       if (!okCopy) toast('글 복사가 안 됐어요 — 결과 화면에서 다시 복사해주세요', 'err');
       try { window.Review && Review.maybeAskSoon('sns-mobile', 2500); } catch (e) {}
     } catch (e) {
@@ -608,7 +638,8 @@
     openPc: openPc,
     canPc: function () { return loggedIn(); },
     collect: collect,
-    CH: CH
+    CH: CH,
+    firstLine: firstLine   /* 제목으로 넘기는 첫 줄 — 검사가 여기로 확인한다 */
   };
   console.log('[SnsShare] 로드됨, 사용가능:', available());
 })();

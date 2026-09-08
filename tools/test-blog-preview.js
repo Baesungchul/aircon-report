@@ -414,6 +414,32 @@ const imgs = (h) => (h.match(/<img[^>]*src="([^"]*)"/g) || [])
     return '네이버 글에만 적용';
   });
 
+  /* ☠️ 2026-09-08 사용자 신고 — 모바일 네이버로 공유했더니 제목이 이렇게 나왔다:
+       "[공유] 삼원빌딩 에어컨 청소 — 곰팡이가 이 정도면 … 필요가 있습니다. 삼원"
+       제목을 안 넘기면 블로그 앱이 본문 앞부분을 제 마음대로 잘라 쓴다.
+       "제목은 본문 내용의 첫줄이 적당해 보여. [공유] 이거 없이 첫줄만 제목에 넣어줘" */
+  await chk('공유할 때 글의 첫 줄을 제목으로 넘긴다', () => {
+    must(/function firstLine\(text\)/.test(snsSrc), '제목 뽑는 코드가 없습니다');
+    const at = snsSrc.indexOf('async function shareTextOnly');
+    const blk = snsSrc.slice(at, at + 900);
+    must(/_payload\.title = _ti/.test(blk), '공유에 제목을 안 넘깁니다 — 앱이 본문을 잘라 씁니다');
+    must(!/text: text.*\n.*slice/.test(blk), '본문에서 첫 줄을 빼면 안 됩니다');
+
+    const m = snsSrc.match(/function firstLine\(text\)[\s\S]*?\n  \}/);
+    must(m, 'firstLine 본문을 못 찾았습니다');
+    const fn = new Function('TITLE_MAX', m[0] + '; return firstLine;')(100);
+    must(fn('삼원빌딩 에어컨 청소 — 곰팡이가 이 정도면\n\n본문입니다') === '삼원빌딩 에어컨 청소 — 곰팡이가 이 정도면',
+         '첫 줄을 그대로 못 가져옵니다');
+    must(fn('[공유] 제목입니다\n본문') === '제목입니다', '[공유] 를 안 떼어 냅니다');
+    must(fn('## 제목입니다\n본문') === '제목입니다', '마크다운 기호를 안 떼어 냅니다');
+    must(fn('**굵은 제목**\n본문') === '굵은 제목', '굵게 표시를 안 떼어 냅니다');
+    must(fn('\n\n  \n실제 첫 줄\n본문') === '실제 첫 줄', '빈 줄을 못 건너뜁니다');
+    must(fn('(사진: 🔴 작업 전 1)\n진짜 제목') === '진짜 제목', '사진 마커 줄을 제목으로 씁니다');
+    must(fn('가'.repeat(150)).length === 100, '제목 길이 상한(100)이 안 걸립니다');
+    must(fn('') === '', '빈 글에서 터집니다');
+    return '첫 줄 · [공유] 제거 · 마커 건너뜀 · 100자';
+  });
+
   await chk('인스타·페이스북은 그대로 공유 시트를 쓴다', () => {
     /* 거기선 사진이 게시물 자체라 '자리' 개념이 없다 — 몰려도 문제가 안 된다 */
     ['insta', 'facebook'].forEach(k => {

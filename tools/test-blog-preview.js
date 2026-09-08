@@ -329,7 +329,8 @@ const imgs = (h) => (h.match(/<img[^>]*src="([^"]*)"/g) || [])
        앱에 그 화면이 남아 있다. 순서가 바뀌면 아무 소용이 없다. */
     must(/function openRefScreen\(text\)/.test(snsSrc), '참고 화면이 없습니다');
     const at = snsSrc.indexOf('async function shareTextOnly');
-    const blk = snsSrc.slice(at, at + 900);
+    const blk = snsSrc.slice(at, at + 2000);
+    must(blk.indexOf('_Share().share') > 0, '공유 호출을 못 찾았습니다 (검사 기준이 낡았습니다)');
     must(blk.indexOf('openRefScreen(text)') < blk.indexOf('_Share().share'),
          '공유 시트를 연 뒤에 참고 화면을 깝니다 — 돌아왔을 때 안 보입니다');
     must(/id="snsRefClose"/.test(snsSrc), '참고 화면에 닫기 버튼이 없습니다');
@@ -421,9 +422,16 @@ const imgs = (h) => (h.match(/<img[^>]*src="([^"]*)"/g) || [])
   await chk('공유할 때 글의 첫 줄을 제목으로 넘긴다', () => {
     must(/function firstLine\(text\)/.test(snsSrc), '제목 뽑는 코드가 없습니다');
     const at = snsSrc.indexOf('async function shareTextOnly');
-    const blk = snsSrc.slice(at, at + 900);
-    must(/_payload\.title = _ti/.test(blk), '공유에 제목을 안 넘깁니다 — 앱이 본문을 잘라 씁니다');
-    must(!/text: text.*\n.*slice/.test(blk), '본문에서 첫 줄을 빼면 안 됩니다');
+    const blk = snsSrc.slice(at, at + 1800);
+    must(/_payload\.title = _ti/.test(blk),
+         '공유에 제목을 안 넘깁니다 (네이버는 무시하지만 티스토리 등은 이 값을 씁니다)');
+    /* ☠️ 2026-09-08 2차 — 네이버는 title(EXTRA_SUBJECT)을 안 읽고 **본문 앞부분**으로
+         제목을 만든다. 그래서 네이버에는 본문을 공유로 넘기지 않는다(클립보드로 간다).
+         이 한 줄이 되돌아가면 "[공유] …" 제목이 그대로 되살아난다. */
+    must(/ch\.noShareBody \? ' '/.test(blk), '네이버에 본문을 그대로 넘깁니다 — 제목이 지저분해집니다');
+    const nv = snsSrc.match(/naver:\s*\{[^}]*\}/);
+    must(nv && /noShareBody: true/.test(nv[0]), '네이버 채널에 noShareBody 표시가 없습니다');
+    must(/제목 칸<\/b>에는 글의 <b>첫 줄/.test(snsSrc), '제목을 직접 넣으라는 안내가 없습니다');
 
     const m = snsSrc.match(/function firstLine\(text\)[\s\S]*?\n  \}/);
     must(m, 'firstLine 본문을 못 찾았습니다');

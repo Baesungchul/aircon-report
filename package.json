@@ -4,7 +4,7 @@
   "description": "",
   "main": "sw.js",
   "scripts": {
-    "test": "node tools/test-restore-snapshot.js && node tools/test-gallery-nomedia.js && node tools/test-popup-policy.js && node tools/test-notice.js && node tools/test-schedule-name.js && node tools/test-plans.js && node tools/test-calendar-anim.js && node tools/test-blog-preview.js"
+    "test": "node tools/test-restore-snapshot.js && node tools/test-gallery-nomedia.js && node tools/test-popup-policy.js && node tools/test-notice.js && node tools/test-schedule-name.js && node tools/test-plans.js && node tools/test-calendar-anim.js && node tools/test-blog-preview.js && node tools/test-drag-safety.js"
   },
   "keywords": [],
   "author": "",

@@ -2682,10 +2682,24 @@ function initInlineReorder() {
   // ★ 유령 사진(고스트) 멈춤 방지 — 강제 정리 / 커밋없는 취소 / 멈춘 드래그 워치독
   var _riWatchdog = null;
   function _riClearWatchdog() { if (_riWatchdog) { clearTimeout(_riWatchdog); _riWatchdog = null; } }
-  function _riArmWatchdog() { _riClearWatchdog(); _riWatchdog = setTimeout(function () { console.warn('[인라인순서] 워치독: 멈춘 드래그 자동 정리'); cancelDrag(); }, 6000); }
+  /* 6초 → 4초 (2026-09-08). 손을 뗀 신호가 유실됐을 때 유령이 떠 있는 시간이다.
+     4초면 '사진을 어디에 놓을까' 하고 멈칫하는 시간보다는 길고, 사고로 느껴지기엔 짧다. */
+  function _riArmWatchdog() { _riClearWatchdog(); _riWatchdog = setTimeout(function () { console.warn('[인라인순서] 워치독: 멈춘 드래그 자동 정리'); cancelDrag(); }, 4000); }
+  /* 드래그가 없는데 남아 있는 고스트만 걷어낸다 — 어떤 경로로 새어 나왔든 여기서 사라진다 */
+  function sweepGhosts() {
+    var gs = document.querySelectorAll('.ri-ghost');
+    if (!gs.length) return false;
+    for (var i = 0; i < gs.length; i++) { if (gs[i].parentNode) gs[i].parentNode.removeChild(gs[i]); }
+    console.warn('[인라인순서] 남아 있던 유령 사진 ' + gs.length + '장 정리');
+    return true;
+  }
+  function redraw() { if (typeof renderAll === 'function') { try { renderAll(); } catch (e) {} } }
+  /* 드래그 중이라 미뤄 둔 그리기가 있으면 여기서 되살린다 (render.js 의 __riRenderPending).
+     ☠️ 이걸 빼면 드래그가 끝난 뒤에도 화면이 옛 데이터로 남는다 — 미루는 것보다 나쁜 사고다. */
+  function flushPendingRender() { if (window.__riRenderPending) { window.__riRenderPending = false; redraw(); } }
   function hardCleanup() {   // 떠 있는 고스트/드래그 흔적을 전부 제거하고 상태 리셋
     _riClearWatchdog();
-    try { var gs = document.querySelectorAll('.ri-ghost'); for (var i = 0; i < gs.length; i++) { if (gs[i].parentNode) gs[i].parentNode.removeChild(gs[i]); } } catch (e) {}
+    try { sweepGhosts(); } catch (e) {}
     try { var ds = document.querySelectorAll('.th-wrap.ri-drag'); for (var j = 0; j < ds.length; j++) { ds[j].classList.remove('ri-drag'); } } catch (e) {}
     try { var cs = document.querySelectorAll('.ri-active-card'); for (var k = 0; k < cs.length; k++) { cs[k].classList.remove('ri-active-card'); } } catch (e) {}
     D = null;
@@ -2694,8 +2708,13 @@ function initInlineReorder() {
   function cancelDrag() {   // 커밋 없이 취소 → 데이터 기준으로 화면 복구(진행중 이동 폐기)
     var had = !!D || !!document.querySelector('.ri-ghost');
     hardCleanup();
-    if (had && typeof renderAll === 'function') { try { renderAll(); } catch (e) {} }
+    if (had || window.__riRenderPending) { window.__riRenderPending = false; redraw(); }
   }
+  /* ☠️ 2026-09-08 — 마지막 그물. 화면 아무 데나 손을 대는 순간, 드래그가 아닌데 떠 있는
+       고스트가 있으면 치운다. 위의 모든 안전장치를 다 빠져나온 유령도 여기서 사라진다.
+       (사용자 신고: "사진 순서를 이동하다 보면 중간에 유령 이미지가 아주 가끔 생긴다") */
+  document.addEventListener('touchstart', function () { if (!D) sweepGhosts(); }, { passive: true, capture: true });
+  document.addEventListener('mousedown',  function () { if (!D) sweepGhosts(); }, true);
 
   // wrap이 속한 배열/칸/종류 파악. kind: 'before' | 'after' | 'special'
   function ctxOf(wrap) {
@@ -2794,6 +2813,13 @@ function initInlineReorder() {
   }
   function moveTo(x, y) {
     if (!D) return;
+    /* ☠️ 2026-09-08 유령 사진의 진짜 원인 — 드래그 도중 목록이 통째로 다시 그려지면
+         (클라우드 동기화·자동저장 등이 renderAll 을 부른다) D.wrap 은 화면에서 떨어져
+         나온 옛 조각이 된다. 그 조각을 새로 그려진 칸에 다시 끼워 넣으면 **같은 사진이
+         두 장** 보인다 — 그게 '중간에 떠 있는 유령 이미지'다.
+         드래그 중 renderAll 은 render.js 에서 미루게 막아 뒀지만, 다른 길로 새어 들어올
+         수 있으니 여기서 한 번 더 확인하고 떨어져 나왔으면 조용히 되돌린다. */
+    if (!document.body.contains(D.wrap)) { cancelDrag(); return; }
     _riArmWatchdog();                          // ★ 움직임이 있으면 워치독 갱신
     positionGhost(x, y);                       // 고스트가 손가락을 따라옴
     var cont = _riContainerAt(x, y);
@@ -2899,12 +2925,20 @@ function initInlineReorder() {
   function end() {
     _riClearWatchdog();
     window.__riDragging = false;
-    if (!D) return;
+    if (!D) { sweepGhosts(); flushPendingRender(); return; }   // 드래그가 없는데 고스트가 떠 있으면 그것만 치운다
     removeGhost();
     D.wrap.classList.remove('ri-drag');
     if (D.card) D.card.classList.remove('ri-active-card');
+    /* 드래그 중에 목록이 새로 그려졌다면 D.wrap 은 옛 조각이다 — 그 위치로 데이터를
+       고치면 순서가 엉키고 사진이 겹쳐 보인다. 커밋하지 말고 데이터 기준으로 다시 그린다. */
+    if (!document.body.contains(D.wrap)) { D = null; sweepGhosts(); redraw(); return; }
     try { if (D.kind === 'special') commitSingle(); else commitBeforeAfter(); }
-    catch (err) { console.warn('[인라인순서] 커밋 실패', err && err.message); }
+    catch (err) {
+      console.warn('[인라인순서] 커밋 실패', err && err.message);
+      /* ☠️ 커밋이 던지면 afterCommit 의 renderAll 까지 건너뛴다 — 손으로 옮겨 둔 DOM 이
+           데이터와 어긋난 채 화면에 남아 사진이 두 장 있는 것처럼 보였다(2026-09-08). */
+      redraw();
+    }
     D = null;
   }
 

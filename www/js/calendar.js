@@ -772,11 +772,67 @@
         /* 되돌아가는 동안까지만 레이어를 물고 있다가 놓는다 (2026-09-07) */
         setTimeout(function () { if (!_navAnimating) grid.classList.remove('cal-anim'); }, 200);
       }
+
+      /* ── 끊긴 드래그 되돌리기 (2026-09-08 사용자 신고) ────────────────────
+         "달력을 옆으로 밀거나 아래로 내리는데 중간에 멈추는 경우가 있어"
+
+         ☠️ 원인은 손을 뗀 신호가 영영 안 오는 경우다. 드래그 중 화면은
+            transition:none 에 인라인 transform/height/opacity 가 박혀 있어서,
+            onEnd 도 onCancel 도 안 오면 **그 중간값 그대로 굳는다.**
+            아래 세 갈래로 새어 나갈 수 있었다.
+              ① 밀던 중에 두 번째 손가락이 닿으면 onStart 가 다시 불려
+                 mode 를 3(무시)으로 덮어썼다 → 되돌릴 주인이 사라진다.
+              ② 안드로이드가 제스처를 가져갈 때 touchcancel 이 안 오는 기종이 있다.
+              ③ 앱을 내렸다 올리는 사이 touchend 가 유실된다.
+         → 어느 경로든 '드래그 중이면 반드시 원래대로' 한 곳에서 되돌린다.
+         ⚠️ 되돌리기는 mode 를 0 으로 만들고 나가야 한다 — 안 그러면 다음 손짓이
+            남은 mode 를 이어받아 두 번 움직인다. */
+      var _dragWd = null;
+      function _clearWd() { if (_dragWd) { clearTimeout(_dragWd); _dragWd = null; } }
+      function _armWd() {
+        _clearWd();
+        _dragWd = setTimeout(function () {
+          if (mode === 2 || mode === 4 || mode === 5) {
+            console.warn('[달력] 끊긴 드래그 자동 복구');
+            restoreDrag();
+          }
+        }, 5000);
+      }
+      /* 드래그 중이면 화면을 손대기 전 모습으로 되돌린다. 드래그가 아니면 아무 것도 안 한다. */
+      function restoreDrag() {
+        var was = mode;
+        mode = 0;
+        _clearWd();
+        if (was === 2) { snapBack(); return; }
+        if (was === 4) { _setExpanded(_expanded, true); return; }
+        if (was === 5) {
+          grid.style.transition = 'height .18s ease-out, opacity .18s ease-out';
+          grid.style.opacity    = '1';
+          grid.style.height     = (v5Base || _expandedHeight()) + 'px';
+        }
+      }
+      /* 드래그가 아닌데도 인라인 값이 남아 있으면(어떤 경로로든 새어 나온 것) 지운다.
+         ☠️ 달 이동 애니메이션 중에는 손대지 말 것 — 그건 정상적으로 값을 쓰고 있는 중이다. */
+      function sweepStuck() {
+        if (mode !== 0 || _navAnimating) return;
+        var s = grid.style;
+        if (!s.transform && !s.opacity) return;
+        if (s.transform === 'none' && (s.opacity === '' || s.opacity === '1')) return;
+        console.warn('[달력] 남아 있던 드래그 흔적 정리');
+        s.transition = 'none'; s.transform = 'none'; s.opacity = '1';
+        grid.classList.remove('cal-anim');
+      }
+
       function onStart(e) {
+        /* ★ 이미 밀고 있는 중에 손가락이 하나 더 닿았다 → 지금 것을 제대로 되돌리고 무시한다.
+             (예전엔 mode 만 3 으로 덮어써서 밀리다 만 화면이 그대로 굳었다) */
+        if (mode === 2 || mode === 4 || mode === 5) { restoreDrag(); mode = 3; return; }
+        sweepStuck();                          // 지난번 흔적이 남아 있으면 먼저 치운다
         if (!e.touches || e.touches.length !== 1) { mode = 3; return; }
         sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
         startedAtBottom = _agendaAtBottom();   // ★ 2026-08-24 접기 판정은 '손댈 때 이미 바닥'이어야 한다
         mode = 1;
+        _armWd();
       }
       function onMove(e) {
         if (mode === 0 || mode === 3) return;
@@ -854,6 +910,7 @@
       function onEnd(e) {
         var was = mode;
         mode = 0;
+        _clearWd();
         if (was !== 2 && was !== 4 && was !== 5) return;
         window._calSwipeTs = Date.now();  // 드래그 직후 날짜 클릭 오작동 방지
         var t = e.changedTouches && e.changedTouches[0];
@@ -886,21 +943,30 @@
         var on = flick ? (dy2 > 0) : (prog > 0.4);
         _setExpanded(on, true);
       }
-      function onCancel() {
-        if (mode === 2) snapBack();
-        if (mode === 4) _setExpanded(_expanded, true);
-        /* ★ 2026-08-31 수정: 접기 드래그(mode 5) 도중 touchcancel(전화 수신,
+      /* ★ 2026-08-31 수정: 접기 드래그(mode 5) 도중 touchcancel(전화 수신,
            OS 뒤로가기 제스처, 알림창 당김 등)이 발생하면 grid 가 줄어들던
            중간 높이·중간 투명도에 transition:none 상태로 멈춰버려
            "펼침 화면이 위쪽 절반만 보이거나 펼쳐지다 만 모습"으로 고정되는
-           버그가 있었다. onEnd 의 '문턱을 못 넘었을 때' 복구와 같은 방식으로
-           펼친 높이/투명도를 되돌린다. */
-        if (mode === 5) {
-          grid.style.transition = 'height .18s ease-out, opacity .18s ease-out';
-          grid.style.opacity    = '1';
-          grid.style.height     = (v5Base || _expandedHeight()) + 'px';
-        }
-        mode = 0;
+           버그가 있었다.
+         ★ 2026-09-08 — 세 갈래(mode 2·4·5) 되돌리기를 restoreDrag() 한 곳으로 모았다.
+           갈래마다 따로 적어 두면 새 mode 를 만들 때 한 갈래를 빠뜨린다. */
+      function onCancel() { restoreDrag(); }
+
+      /* ☠️ 앱을 내렸다 올리는 사이에는 touchend 가 유실된다 — 돌아왔을 때 밀리다 만
+           화면이 그대로 남아 있으면 사용자는 앱이 멈춘 걸로 본다.
+         ⚠️ renderCalendarShell 은 달력을 열 때마다 다시 돈다. 여기서 그냥
+            addEventListener 를 하면 열 때마다 한 겹씩 쌓이고, 옛 겹은 이미 사라진
+            격자를 붙들고 있다 → 리스너 누수 + 엉뚱한 요소 건드림.
+            그래서 창에 거는 건 **딱 한 번**, 대상만 최신 것으로 갈아 끼운다. */
+      window.__calRestoreDrag = restoreDrag;
+      window.__calSweepStuck  = sweepStuck;
+      if (!window.__calDragGuardBound) {
+        window.__calDragGuardBound = true;
+        document.addEventListener('visibilitychange', function () {
+          if (document.hidden) { if (window.__calRestoreDrag) window.__calRestoreDrag(); }
+          else if (window.__calSweepStuck) window.__calSweepStuck();
+        });
+        window.addEventListener('blur', function () { if (window.__calRestoreDrag) window.__calRestoreDrag(); });
       }
 
       /* ⭐ 2026-08-22 (사용자 지적) — "당기라고 그려 놨으면 그걸 당기는 게 사람 마음인데,
@@ -935,10 +1001,23 @@
       panel.addEventListener('click', function (e) {
         if (Date.now() - (window._calSwipeTs || 0) < 400) { e.stopPropagation(); e.preventDefault(); }
       }, true);
+      /* ☠️ 2026-09-08 — 격자 드래그와 같은 사고(밀리다 만 채 굳음)를 여기서도 막는다.
+           손을 뗀 신호가 안 오면 목록이 옆으로 밀린 반투명 상태로 남는다. */
+      var _pWd = null;
+      function _pClear() { if (_pWd) { clearTimeout(_pWd); _pWd = null; } }
+      function _pArm() { _pClear(); _pWd = setTimeout(function () { if (mode === 2) { mode = 0; snapBack(); } }, 5000); }
+      function pSweep() {
+        if (mode !== 0) return;
+        var s = panel.style;
+        if (s.transform && s.transform !== 'none') { s.transition = 'none'; s.transform = 'none'; s.opacity = '1'; }
+      }
       panel.addEventListener('touchstart', function (e) {
+        if (mode === 2) { mode = 0; _pClear(); snapBack(); mode = 3; return; }   // 두 번째 손가락 → 지금 것 되돌리고 무시
+        pSweep();
         if (!e.touches || e.touches.length !== 1) { mode = 3; return; }
         sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
         mode = 1;
+        _pArm();
       }, { passive: true });
       panel.addEventListener('touchmove', function (e) {
         if (mode === 0 || mode === 3) return;
@@ -960,6 +1039,7 @@
       panel.addEventListener('touchend', function (e) {
         var wasDrag = (mode === 2);
         mode = 0;
+        _pClear();
         if (!wasDrag) return;
         window._calSwipeTs = Date.now();
         var t = e.changedTouches && e.changedTouches[0];
@@ -972,7 +1052,9 @@
           panel.style.transform = 'translateX(' + (dx < 0 ? '-60%' : '60%') + ')';
           panel.style.opacity = '0';
           setTimeout(function () {
-            _navDay(dir);
+            /* ☠️ _navDay 가 던지면 목록이 opacity:0 인 채로 남는다 — 화면이 통째로
+                 사라진 것처럼 보인다. 어떤 경우에도 되돌아오도록 감싼다(2026-09-08). */
+            try { _navDay(dir); } catch (err) { console.warn('[달력] 날짜 이동 실패', err && err.message); }
             panel.style.transition = 'none';
             panel.style.transform = 'translateX(' + (dx < 0 ? '60%' : '-60%') + ')';
             panel.style.opacity = '0';
@@ -983,13 +1065,29 @@
                 panel.style.opacity = '1';
               });
             });
+            /* rAF 는 화면이 꺼져 있으면 안 돈다 — 그동안 앱을 내렸다 올리면 투명한 채로 굳는다.
+               안전망으로 한 번 더 제자리로 돌려 둔다. */
+            setTimeout(function () {
+              if (mode === 0) { panel.style.transform = 'none'; panel.style.opacity = '1'; }
+            }, 500);
           }, 120);
         } else snapBack();
       }, { passive: true });
       panel.addEventListener('touchcancel', function () {
-        if (mode === 2) snapBack();
+        _pClear();
+        if (mode === 2) { mode = 0; snapBack(); return; }
         mode = 0;
       }, { passive: true });
+      /* ⚠️ 위와 같은 이유로 한 번만 건다 — 대상만 최신 것으로 갈아 끼운다 */
+      window.__calPanelRestore = function () { if (mode === 2) { mode = 0; _pClear(); snapBack(); } };
+      window.__calPanelSweep   = pSweep;
+      if (!window.__calPanelGuardBound) {
+        window.__calPanelGuardBound = true;
+        document.addEventListener('visibilitychange', function () {
+          if (document.hidden) { if (window.__calPanelRestore) window.__calPanelRestore(); }
+          else if (window.__calPanelSweep) window.__calPanelSweep();
+        });
+      }
     })();
   }
 
@@ -1078,7 +1176,24 @@
         var done = function () { g2.removeEventListener('transitionend', done); _unlockGrid(myNav); };
         g2.addEventListener('transitionend', done);
         setTimeout(function () { _unlockGrid(myNav); }, IN + 140);   // 안전망 — transitionend 가 안 오는 경우가 있다
-      } catch (e) { _unlockGrid(myNav); }
+        /* ☠️ 2026-09-08 — 화면이 꺼져 있거나 앱이 내려가 있으면 transition 이 아예 안 돌아,
+             달력이 옆으로 32% 밀린 투명한 상태로 남는다("중간에 멈춘다"는 신고의 한 갈래).
+             들어오는 애니메이션이 끝났어야 할 시각에 값이 아직 목표가 아니면 그냥 박아 넣는다. */
+        setTimeout(function () {
+          var g3 = document.getElementById('calGrid');
+          if (!g3 || myNav !== _navToken) return;
+          if (g3.style.transform && g3.style.transform !== 'none') {
+            g3.style.transition = 'none'; g3.style.transform = 'none'; g3.style.opacity = '1';
+          }
+        }, IN + 400);
+      } catch (e) {
+        /* 새 달을 그리다 실패해도 화면은 반드시 제자리로 — 밀려 나간 채 두면 달력이 사라진다 */
+        try {
+          var gErr = document.getElementById('calGrid');
+          if (gErr) { gErr.style.transition = 'none'; gErr.style.transform = 'none'; gErr.style.opacity = '1'; }
+        } catch (e2) {}
+        _unlockGrid(myNav);
+      }
     });
     // 3) 데이터는 병렬 로드 → 완료되면 점이 채워짐(애니메이션이 끝난 뒤에)
     loadCalendarData();

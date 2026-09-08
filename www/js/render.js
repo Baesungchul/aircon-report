@@ -133,6 +133,19 @@ function ensureSpecialIds() {
 if (typeof window !== 'undefined') window.ensureSpecialIds = ensureSpecialIds;
 
 function renderAll() {
+  /* ☠️ 2026-09-08 — 사진을 끌고 있는 동안에는 목록을 새로 그리지 않는다.
+       innerHTML 로 통째로 다시 만들면 손에 쥔 썸네일(.th-wrap)이 화면에서 떨어져 나가고,
+       그 옛 조각이 새 화면에 다시 끼워지면서 **같은 사진이 두 장** 보였다
+       (사용자 신고: "사진 순서를 이동하다 보면 중간에 유령 이미지가 생긴다").
+       부르는 쪽은 클라우드 동기화·자동저장 등 언제든 끼어들 수 있는 것들이라,
+       막는 자리는 부르는 곳이 아니라 여기여야 한다.
+     ⚠️ 미룬 그리기는 반드시 되살아나야 한다 — 드래그가 끝나면
+       events.js 의 end()/cancelDrag() 가 renderAll 을 다시 부른다. */
+  if (typeof window !== 'undefined' && window.__riDragging) {
+    window.__riRenderPending = true;
+    return;
+  }
+  if (typeof window !== 'undefined') window.__riRenderPending = false;
   try {
     ensureSpecialIds();   // ★ 그리기 전에 특이사항 id 보정 (없으면 삭제·편집이 안 먹음)
     const q=(document.getElementById('srch')?.value||'').trim().toLowerCase();

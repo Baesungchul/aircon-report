@@ -33,6 +33,9 @@
 
   function shell(inner, z) {
     var ov = document.createElement('div');
+    /* ov-lock — 뒷 화면 스크롤 잠금 + 하드웨어 뒤로가기가 이 표식으로 팝업을 찾는다
+       (state.js closeTopPopup 주석 참고, 2026-09-08) */
+    ov.className = 'ov-lock';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:' + (z || 1600) +
       ';display:flex;align-items:flex-start;justify-content:center;padding:40px 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;';
     ov.innerHTML = '<div style="background:var(--sf);border-radius:14px;padding:16px;max-width:520px;width:100%;">' + inner + '</div>';

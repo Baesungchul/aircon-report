@@ -461,7 +461,17 @@ window.closeTopPopup = function () {
       if (cs.position !== 'fixed') continue;
       if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') === 0) continue;
       var z = parseInt(cs.zIndex, 10); if (isNaN(z)) z = 0;
-      if (z < 1000) continue;                 // 탭바 이상에 뜬 진짜 팝업만 (탭 패널은 z<1000 → 제외)
+      /* ☠️ 2026-09-08 사용자 신고 — "팝업에서 뒤로가기했는데 포커스가 뒤편에 있는 증상이
+           이전에도 자주 있었다". 전수 조사해 보니 원인이 여기였다.
+           AI 관련 팝업 8개(글 결과·지침 편집·견적·＋메뉴·저장된 글·API키·문자·남은횟수)는
+           탭바를 가리지 않으려고 z 를 850~860 으로 잡았는데, 이 검사가 z<1000 을
+           전부 버리고 있었다. 그래서 뒤로가기가 그 팝업들을 **못 보고** 탭을 바꾸거나
+           종료 안내를 띄웠다 — 화면에는 팝업이 그대로 떠 있는 채로.
+         → z 만으로 판단하지 않는다. 이 앱이 동적 오버레이에 붙이는 표식(.ov-lock)이 있으면
+           z 가 낮아도 팝업으로 본다(ai.js overlayShell 주석: "새로 만들면 ov-lock 을 같이 붙일 것").
+         ⚠️ 탭 패널은 ov-lock 이 없고 z 도 낮다 — 그대로 걸러진다. */
+      var marked = el.classList && el.classList.contains('ov-lock');
+      if (!marked && z < 1000) continue;
       var r = el.getBoundingClientRect();
       if (r.width < window.innerWidth * 0.7 || r.height < window.innerHeight * 0.5) continue;  // 풀스크린류만
       if (z >= bestZ) { bestZ = z; best = el; }

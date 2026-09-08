@@ -207,6 +207,7 @@
 
     var ov = document.createElement('div');
     ov.id = 'snsRefOv';
+    ov.className = 'ov-lock';   /* 뒤로가기·스크롤 잠금 표식 (state.js closeTopPopup) */
     ov.style.cssText = 'position:fixed;inset:0;background:var(--bg,#0F141A);z-index:2600;' +
       'display:flex;flex-direction:column;';
     ov.innerHTML =
@@ -313,6 +314,7 @@
     }
 
     var ov = document.createElement('div');
+    ov.className = 'ov-lock';   /* 뒤로가기·스크롤 잠금 표식 (state.js closeTopPopup) */
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2500;display:flex;' +
       'align-items:flex-start;justify-content:center;padding:40px 16px 16px;overflow-y:auto;';
     function chk(k, label, n) {
@@ -522,6 +524,7 @@
 
   function showLink(res) {
     var ov = document.createElement('div');
+    ov.className = 'ov-lock';   /* 뒤로가기·스크롤 잠금 표식 (state.js closeTopPopup) */
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2500;display:flex;' +
       'align-items:flex-start;justify-content:center;padding:40px 16px 16px;overflow-y:auto;';
     ov.innerHTML = '<div style="background:var(--sf);border-radius:14px;padding:18px;max-width:440px;width:100%;">' +

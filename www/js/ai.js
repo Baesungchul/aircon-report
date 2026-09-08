@@ -469,6 +469,46 @@
     return L.join('\n');
   }
 
+  /* ── 마커 바로잡기 (2026-09-08 사용자 신고) ───────────────────────────────
+     "참고용과 블로그앱에 복사해 붙인 텍스트가 달라. 블로그 앱 쪽에는
+      (사진: 작업 전) (사진: 작업 후) 이렇게밖에 없어"
+
+     ☠️ 원인은 AI 다. 위 배치 규칙이 '(사진: 🔴 작업 전 1)' 로 적으라고 해도, 모델이
+        이모지와 번호를 빼고 '(사진: 작업 전)' 으로만 적는 일이 잦다. 그런데 참고 화면은
+        **사진 목록에서 이름을 계산해** 붙이므로 늘 완전한 모양을 보여 준다.
+        → 두 글자가 달라 사장님이 블로그에서 짝을 맞출 수가 없었다.
+
+     ☠️ 번호가 없으면 사고가 하나 더 있다. (사진: 작업 전) 이 두 번 나오면 둘이
+        글자까지 똑같아서, 어느 쪽에 어느 사진을 넣어야 하는지 알 길이 없다.
+
+     → 부탁만 하지 말고 **받은 글을 우리가 고친다.** 종류(전/후/특이)만 읽어 내면
+       번호는 나온 순서대로 우리가 매기면 된다. 사진보다 마커가 많으면 남는 마커는
+       지운다(넣을 사진이 없는 자리는 블로그에서 그냥 지저분한 글자다).
+     ⚠️ 종류를 못 읽는 마커는 손대지 않는다 — 우리가 뜻을 지어내면 안 된다.
+     ⚠️ 번호는 preview.js·site/post.html 의 takeKindNth(종류, n) 와 같은 축이다.
+        여기서 매기는 순서를 바꾸면 화면과 실제 자리가 어긋난다. */
+  var MARK_LB = { before: '작업 전', after: '작업 후', special: '특이사항' };
+  function normalizeMarkers(text, inv) {
+    if (!text) return text;
+    inv = inv || photoInventory();
+    var cap = { before: inv.before || 0, after: inv.after || 0, special: inv.special || 0 };
+    var n = { before: 0, after: 0, special: 0 };
+    var out = String(text).replace(/[\(（]\s*(?:사진|이미지)\s*[:：\-]?\s*([^)）]*)[\)）]/g,
+      function (whole, label) {
+        var s2 = String(label || '');
+        var k = /후/.test(s2) ? 'after'
+              : /전/.test(s2) ? 'before'
+              : /특이|추가|기타/.test(s2) ? 'special' : '';
+        if (!k) return whole;               // 종류를 못 읽었다 — 그대로 둔다
+        if (n[k] >= cap[k]) return '';      // 넣을 사진이 없는 마커는 지운다
+        n[k] += 1;
+        return '(사진: ' + MARK_EMO[k] + ' ' + MARK_LB[k] + ' ' + n[k] + ')';
+      });
+    /* 마커를 지우면 그 줄이 빈 줄로 남는다 — 빈 줄이 세 개 이상 겹치면 두 개로 줄인다 */
+    return out.replace(/\n{3,}/g, '\n\n');
+  }
+  ClaudeAI.normalizeMarkers = normalizeMarkers;
+
   // 현재 작업 메타 텍스트
   function currentWorkMeta() {
     var g = function (id) { var el = document.getElementById(id); return el ? (el.value || '') : ''; };
@@ -799,7 +839,12 @@
     if (memo) ask += '\n\n[추가 메모/강조점]\n' + memo;
     if (markGuide) ask += '\n\n※ 위 [사진 배치 규칙]의 마커를 빠짐없이, 본문 문단 사이사이에 흩어서 넣어줘.';
     content.push({ type: 'text', text: ask });
-    return await callClaude({ model: getBlogModel(), max_tokens: 2200, system: sys, messages: [{ role: 'user', content: content }] });
+    var _out = await callClaude({ model: getBlogModel(), max_tokens: 2200, system: sys, messages: [{ role: 'user', content: content }] });
+    /* ☠️ 받은 그대로 쓰지 않는다 — 마커를 우리 형식으로 바로잡는다(위 normalizeMarkers 주석).
+         여기서 고쳐 두면 편집 상자·복사·PC 링크·참고 화면이 모두 같은 글자를 본다.
+         마커를 안 쓰는 채널(인스타·당근 등)은 markGuide 가 비어 있으니 손대지 않는다. */
+    if (markGuide) { try { _out = normalizeMarkers(_out); } catch (e) { console.warn('[마커] 정리 실패', e && e.message); } }
+    return _out;
   }
 
   // ── 견적 교정 학습 (사용자가 견적서를 고치면 다음 생성에 반영 — 일정 분석과 동일 개념) ──

@@ -337,45 +337,75 @@ const imgs = (h) => (h.match(/<img[^>]*src="([^"]*)"/g) || [])
     must(/KIND_LB = \{ before: '🔴 작업 전', after: '🟢 작업 후', special: '⚠️ 특이사항' \}/.test(prevSrc),
          '마커 이름이 ai.js 의 표기와 다릅니다 — 참고표가 거짓말이 됩니다');
     must(/<figcaption><span class="pv-mk">/.test(prevSrc), '사진 밑에 마커를 안 적습니다');
+    must(/pushImgs\(list, markTx\)/.test(prevSrc), '캡션이 글의 마커가 아니라 계산한 이름입니다');
     must(/\.post-pv \.pv-fig figcaption\{/.test(css), '참고 화면 캡션 스타일이 없습니다');
     must(/\.post-pv \.pv-fig \.pv-mk\{/.test(css), '마커 상자 스타일이 없습니다');
     return '마커 표기';
   });
 
-  /* ☠️ 2026-09-08 사용자 요청 — 캡션은 라벨이 아니라 **마커 원문**이어야 한다.
-       "예시화면의 사진에 마커도 같이 표시해주면 사용자가 구분하기 쉬울것 같아"
-       글에 박힌 글자와 한 글자라도 다르면 눈으로 대조하는 의미가 사라진다.
-       그래서 ai.js 가 실제로 만드는 마커와 화면에 찍히는 캡션을 맞대 본다. */
-  await chk('캡션이 ai.js 가 글에 박는 마커와 글자까지 같다', () => {
-    const mkAi = (emo, label, n) => {
-      const out = [];
-      for (let i = 1; i <= n; i++) out.push('(사진: ' + emo + ' ' + label + ' ' + i + ')');
-      return out;
-    };
-    /* ai.js 의 mk() 가 이 조립식 그대로인지부터 — 형식이 바뀌면 아래 기대값이 거짓이 된다 */
-    must(/out\.push\('\(사진: ' \+ emo \+ ' ' \+ label \+ ' ' \+ i \+ '\)'\)/.test(aiSrc),
-         'ai.js 의 마커 조립식이 바뀌었습니다 — 참고 화면 캡션도 같이 고쳐야 합니다');
-    const want = {
-      B1: mkAi('🔴', '작업 전', 2)[0], B2: mkAi('🔴', '작업 전', 2)[1],
-      A1: mkAi('🟢', '작업 후', 2)[0], A2: mkAi('🟢', '작업 후', 2)[1],
-      S1: mkAi('⚠️', '특이사항', 1)[0]
-    };
-    return P.renderRef('제목\n\n(사진: 🔴 작업 전 1)\n\n본문입니다.\n\n(사진: 🟢 작업 후 1)\n\n끝.')
+  /* ☠️ 2026-09-08 사용자 신고 —
+       "참고용과 블로그앱에 복사해 붙인 텍스트가 달라. 블로그 앱 쪽에는
+        (사진: 작업 전) (사진: 작업 후) 이렇게밖에 없어"
+     원인은 둘이었다.
+       ① AI 가 이모지·번호를 빼고 짧게 적는다 → ai.js normalizeMarkers 가 바로잡는다
+       ② 참고 화면이 사진 목록에서 이름을 **계산해** 붙였다 → 글을 안 보고 지어낸 셈이다
+     그래서 여기서는 '화면 캡션 = 글에 있는 그 글자' 인지를 실제로 렌더해서 확인한다. */
+  await chk('캡션이 글에 박힌 마커 글자를 그대로 쓴다', () => {
+    /* AI 가 짧게 적은 글을 그대로 넣어 본다 — 계산해서 붙이던 시절엔 여기서 어긋났다 */
+    return P.renderRef('제목\n\n(사진: 작업 전 1)\n\n본문입니다.\n\n(사진: 작업 후 1)\n\n끝.')
       .then(h => {
         const figs = h.match(/<figure class="pv-fig">[\s\S]*?<\/figure>/g) || [];
         must(figs.length === 5, '사진 5장에 캡션이 다 안 붙었습니다 (' + figs.length + '개)');
         const pair = {};
         figs.forEach(f => {
           const src = (f.match(/src="([^"]*)"/) || [])[1];
-          const cap = (f.match(/<span class="pv-mk">([^<]*)<\/span>/) || [])[1];
-          pair[src] = cap;
+          pair[src] = (f.match(/<span class="pv-mk">([^<]*)<\/span>/) || [])[1];
         });
-        Object.keys(want).forEach(k => {
-          must(pair[k] === want[k],
-               k + ' 의 캡션이 글의 마커와 다릅니다 — 글: ' + want[k] + ' / 화면: ' + pair[k]);
+        must(pair.B1 === '(사진: 작업 전 1)',
+             '첫 마커 자리의 캡션이 글과 다릅니다 — 글: (사진: 작업 전 1) / 화면: ' + pair.B1);
+        must(pair.A1 === '(사진: 작업 후 1)',
+             '둘째 마커 자리의 캡션이 글과 다릅니다 — 글: (사진: 작업 후 1) / 화면: ' + pair.A1);
+        /* 마커에 안 걸린 사진은 '없는 표시'를 지어내지 않는다 — 글에서 찾다 시간만 버린다 */
+        ['B2', 'A2', 'S1'].forEach(k => {
+          must(pair[k] === '글에 표시 없음',
+               k + ' 은 글에 마커가 없는데 있는 것처럼 적었습니다: ' + pair[k]);
         });
-        return Object.keys(want).map(k => pair[k]).join(' ');
+        return '글자 그대로 · 남은 사진은 표시 없음';
       });
+  });
+
+  await chk('AI 가 짧게 적은 마커를 우리가 바로잡는다', () => {
+    /* ☠️ 번호가 없으면 (사진: 작업 전) 이 두 번 나올 때 둘이 글자까지 같아져
+         어느 자리에 어느 사진인지 알 길이 없다. normalizeMarkers 가 번호를 매긴다. */
+    must(/function normalizeMarkers\(text, inv\)/.test(aiSrc), 'normalizeMarkers 가 없습니다');
+    const m = aiSrc.match(/function normalizeMarkers\(text, inv\)[\s\S]*?\n  \}/);
+    must(m, 'normalizeMarkers 본문을 못 찾았습니다');
+    const body = m[0];
+    const run = new Function('MARK_EMO', 'photoInventory',
+      'var MARK_LB = { before: \'작업 전\', after: \'작업 후\', special: \'특이사항\' };'
+      + body + '; return normalizeMarkers;')(
+        { before: '🔴', after: '🟢', special: '⚠️' },
+        () => ({ before: 2, after: 2, special: 1, total: 5 }));
+    const got = run('제목\n\n(사진: 작업 전)\n\n가\n\n(사진: 작업 전)\n\n나\n\n(사진: 작업 후)\n\n다\n\n(사진: 작업 후)\n\n라\n\n(사진: 특이사항)\n\n마\n\n(사진: 작업 후)\n\n끝', null);
+    ['(사진: 🔴 작업 전 1)', '(사진: 🔴 작업 전 2)', '(사진: 🟢 작업 후 1)',
+     '(사진: 🟢 작업 후 2)', '(사진: ⚠️ 특이사항 1)'].forEach(w => {
+      must(got.indexOf(w) >= 0, '마커를 못 바로잡았습니다: ' + w + '\n' + got);
+    });
+    /* 사진보다 마커가 많으면 남는 마커는 지운다 — 넣을 사진이 없는 자리는 지저분한 글자다 */
+    must((got.match(/작업 후/g) || []).length === 2, '사진이 없는 마커가 남았습니다:\n' + got);
+    /* 종류를 못 읽는 마커는 손대지 않는다 — 뜻을 지어내면 안 된다 */
+    must(run('(사진: 하늘)', null) === '(사진: 하늘)', '알 수 없는 마커를 함부로 고쳤습니다');
+    return '이모지 + 번호 붙임 · 남는 마커 제거';
+  });
+
+  await chk('바로잡기가 실제 생성 경로에 걸려 있다', () => {
+    /* 함수만 있고 안 부르면 아무 소용이 없다 — 조용히 새는 자리라 배선까지 본다 */
+    const at = aiSrc.indexOf('async function generatePost');
+    const blk = aiSrc.slice(at, aiSrc.indexOf('// ── 견적 교정 학습', at));
+    must(/normalizeMarkers\(_out\)/.test(blk), '생성 결과에 마커 바로잡기를 안 겁니다');
+    must(/if \(markGuide\)[\s\S]{0,120}normalizeMarkers/.test(blk),
+         '마커를 안 쓰는 채널(인스타 등)까지 건드립니다');
+    return '네이버 글에만 적용';
   });
 
   await chk('인스타·페이스북은 그대로 공유 시트를 쓴다', () => {

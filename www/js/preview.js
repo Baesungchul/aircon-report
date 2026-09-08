@@ -83,21 +83,19 @@
     }).catch(function () { return ''; });
   }
 
-  /* 사진마다 '글에 적힌 마커' — 참고 화면에서 이걸로 짝을 맞춘다 (2026-09-08).
-     ☠️ 번호는 종류별 통산이다. ai.js photoMarkGuide 가 (사진: 🔴 작업 전 1) 처럼
-        종류별로 1부터 세고, collect() 순서가 그 순서다 — 둘이 어긋나면 참고표가 거짓말이 된다.
-     ⚠️ 2026-09-08 사용자 요청: 라벨만 적지 말고 **마커 원문 그대로** 적는다.
-        붙여넣은 글에 (사진: 🔴 작업 전 1) 라고 박혀 있으므로, 참고 화면도 글자 그대로
-        같아야 눈으로 대조가 된다. 라벨은 마커 안에 이미 들어 있어 따로 또 적지 않는다.
-        → 표기를 바꿀 땐 ai.js 의 mk() 도 같이 볼 것. */
+  /* 사진 종류 이름 — 참고 화면에서 **마커에 안 걸린 사진**을 설명할 때만 쓴다.
+     ☠️ 2026-09-08 (사용자 신고) 여기서 만든 이름을 캡션으로 쓰면 안 된다.
+        AI 가 (사진: 작업 전) 처럼 줄여 쓰면 화면과 붙여넣은 글의 글자가 달라진다.
+        캡션은 build() 가 **글에서 실제로 만난 마커 원문**을 쓴다.
+        (마커 자체는 ai.js normalizeMarkers 가 (사진: 🔴 작업 전 1) 형태로 바로잡는다)
+     ☠️ 번호는 종류별 통산이고 collect() 순서를 따른다 — 바꾸면 설명이 거짓말이 된다. */
   var KIND_LB = { before: '🔴 작업 전', after: '🟢 작업 후', special: '⚠️ 특이사항' };
   function captionsOf(kinds) {
     var ord = {}, out = [];
     (kinds || []).forEach(function (k) {
       k = k || 'etc';
       ord[k] = (ord[k] || 0) + 1;
-      var lb = KIND_LB[k];
-      out.push(lb ? '(사진: ' + lb + ' ' + ord[k] + ')' : '사진 ' + ord[k]);
+      out.push((KIND_LB[k] || '사진') + ' ' + ord[k]);
     });
     return out;
   }
@@ -161,7 +159,13 @@
     var MARK = new RegExp(MARK_SRC, 'gi');
     var blocks = [];
     function pushPara(t) { var h = para(t); if (h) blocks.push({ t: 'p', html: h }); }
-    function pushImgs(list) { list.forEach(function (u) { blocks.push({ t: 'img', url: u }); }); }
+    /* ☠️ 2026-09-08 — 사진 밑에 적을 글자는 '글에 실제로 박힌 마커 그대로' 여야 한다.
+         계산해서 만든 이름을 적었더니, AI 가 (사진: 작업 전) 처럼 줄여 쓴 글에서는
+         화면과 붙여넣은 글의 글자가 서로 달랐다(사용자 신고).
+         → 마커를 만난 자리에서 그 마커 원문을 사진에 붙여 둔다. */
+    function pushImgs(list, markTx) {
+      list.forEach(function (u) { blocks.push({ t: 'img', url: u, mark: markTx || '' }); });
+    }
 
     var lines = String(text || '').replace(/\r/g, '').split('\n');
     lines.forEach(function (ln) {
@@ -171,7 +175,7 @@
       while ((m = MARK.exec(t)) !== null) {
         hit = true;
         pushPara(t.slice(last, m.index));
-        pushImgs(m[2] != null ? takeOne(parseInt(m[2], 10) - 1) : resolve(m[1] || ''));
+        pushImgs(m[2] != null ? takeOne(parseInt(m[2], 10) - 1) : resolve(m[1] || ''), m[0]);
         last = m.index + m[0].length;
       }
       if (hit) { pushPara(t.slice(last)); return; }
@@ -210,13 +214,33 @@
       }
     }
 
+    /* 같은 마커가 두 번 이상이면 몇 번째인지 덧붙인다 — 글자가 같으면 짝을 못 맞춘다 */
+    var markCnt = {};
+    blocks.forEach(function (b) {
+      if (b.t !== 'img' || !b.mark) return;
+      var key = String(b.mark).replace(/\s+/g, ' ').trim();
+      markCnt[key] = (markCnt[key] || 0) + 1;
+    });
+    var markSeen = {};
     var html = blocks.map(function (b) {
       if (b.t !== 'img') return b.html;
       var img = '<img src="' + esc(b.url) + '" alt="" loading="lazy">';
       if (!caps) return img;
-      var c = capByUrl[b.url] || '사진';
+      var cap = '';
+      var sub = '';
+      if (b.mark) {
+        cap = String(b.mark).replace(/\s+/g, ' ').trim();
+        if (markCnt[cap] > 1) { markSeen[cap] = (markSeen[cap] || 0) + 1; sub = markSeen[cap] + '번째'; }
+      } else {
+        /* 어느 마커에도 안 걸린 사진 — 글에는 찾을 표시가 없고 문단 사이에 그냥 들어간다.
+           있지도 않은 표시를 적어 주면 사장님이 글에서 그걸 찾다 시간을 버린다. */
+        cap = '글에 표시 없음';
+        sub = capByUrl[b.url] || '';
+      }
       return '<figure class="pv-fig">' + img +
-             '<figcaption><span class="pv-mk">' + esc(c) + '</span></figcaption></figure>';
+             '<figcaption><span class="pv-mk">' + esc(cap) + '</span>' +
+             (sub ? '<span class="pv-no">' + esc(sub) + '</span>' : '') +
+             '</figcaption></figure>';
     }).join('');
     return html || '<div class="pv-empty">아직 글이 없습니다.</div>';
   }

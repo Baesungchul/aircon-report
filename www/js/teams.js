@@ -89,6 +89,16 @@
     return 3;
   }
   CloudTeams.capOf = capOf;
+  /* 화면에 적을 상한 — 관리자(무제한)는 숫자 대신 '무제한' 이라고 쓴다.
+     ☠️ 2026-09-09 사용자 신고: 팀 화면에 "멤버 1 / 9999명" 이라고 떴다.
+        Subs.maxMembers() 가 관리자에게 9999 를 돌려주는데(무제한이라는 뜻), 그 숫자가
+        그대로 화면에 나왔다. 틀린 값은 아니지만 사용자에게는 오류로 보인다. */
+  var CAP_UNLIMITED = 1000;   // 이 수를 넘으면 사실상 무제한으로 본다
+  function capText(t) {
+    var n = capOf(t);
+    return (n >= CAP_UNLIMITED) ? '무제한' : (n + '명');
+  }
+  function capFull(t, count) { return capOf(t) < CAP_UNLIMITED && count >= capOf(t); }
 
   function syncMaxMembers(t) {
     if (!t || !t.id || t.owner !== myUid()) return;   // 팀장만 쓴다
@@ -335,6 +345,13 @@
         maxMembers: myMaxMembers() || 2,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+      /* ☠️ 2026-09-09 — 이 쓰기가 늦으면 팀 채팅이 죽는다.
+           보안 규칙이 users/{uid}.teamIds 로 '같은 팀인가'를 판정하는데(위 머리말 hasAny),
+           teams 문서를 만든 직후 스냅샷이 먼저 도착해 팀 채팅방을 만들고 메시지 구독까지
+           붙는다. 그 찰나에 teamIds 가 아직 서버에 없으면 구독이 permission-denied 로
+           끊기고, onSnapshot 은 스스로 다시 붙지 않는다(사용자 신고: "메시지 수신 오류").
+         → 여기서 확실히 기다린다. 그래도 스냅샷이 더 빠를 수 있어서, 받는 쪽(cloud_chat.js
+           subscribeMessages)에도 '거부되면 한 번 다시 붙기' 를 넣어 뒀다. 두 겹이다. */
       await db().collection('users').doc(myUid()).set(
         { teamIds: firebase.firestore.FieldValue.arrayUnion(ref.id) }, { merge: true });
       toast('팀 "' + name + '"을(를) 만들었습니다', 'ok');
@@ -359,7 +376,7 @@
            ⚠️ 왜 팀장 플랜 이름을 안 알려주나 — 참여자는 팀장의 플랜을 읽을 수 없고,
               알려 줄 이유도 없다. 팀장에게 문의하라고만 안내한다. */
       var _cap = capOf(td);
-      if ((td.members || []).length >= _cap) {
+      if (_cap < CAP_UNLIMITED && (td.members || []).length >= _cap) {
         toast('이 팀은 인원이 다 찼습니다 (최대 ' + _cap + '명) — 팀장에게 문의해주세요', 'err');
         return;
       }
@@ -546,8 +563,8 @@
           /* ★ 2026-09-07 상한을 같이 보여준다 — 팀장이 초대 코드를 뿌리기 전에
                자리가 남았는지 알아야 한다(다 찬 뒤에 상대가 실패하면 그때 문의가 온다).
                ⚠️ 이 수는 팀장 본인을 포함한다(members 배열 길이). */
-          '<div style="font-size:11px;color:var(--mu);margin-top:4px;">멤버 ' + members.length + ' / ' + capOf(t) + '명' +
-            (members.length >= capOf(t) ? ' <b style="color:var(--wn);">(다 참)</b>' : '') +
+          '<div style="font-size:11px;color:var(--mu);margin-top:4px;">멤버 ' + members.length + ' / ' + capText(t) +
+            (capFull(t, members.length) ? ' <b style="color:var(--wn);">(다 참)</b>' : '') +
             ': ' + esc(names.join(', ')) + '</div>' +
           '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">' +
             '<span style="font-size:11px;color:var(--mu);">초대 코드</span>' +

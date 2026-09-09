@@ -171,5 +171,40 @@ chk('교정 예시를 자르지 않고 실어 보내지 않는다', () => {
   return m[1] + '자';
 });
 
+console.log('\n[5] 팀 — 새로 만든 직후 (2026-09-09 사용자 신고)');
+
+chk('권한 거부로 끊긴 메시지 구독을 한 번 다시 붙인다', () => {
+  /* ☠️ onSnapshot 은 거부되면 그대로 끝난다. 스스로 다시 안 붙어서, 앱을 껐다 켜기 전까지
+       그 방의 채팅이 죽은 채로 남았다. 팀을 만든 직후 실제로 그렇게 됐다. */
+  const s = code('cloud_chat.js');
+  must(/_msgRetried/.test(s), '재시도 표시가 없습니다');
+  must(/code === 'permission-denied' && !_msgRetried\[roomId\]/.test(s), '거부를 가려내지 않습니다');
+  must(/_msgRetried\[roomId\] = 1;/.test(s), '무한 재시도가 됩니다 — 요금만 먹습니다');
+  must(/if \(code === 'permission-denied'\) return;/.test(s),
+       '두 번째 거부까지 사용자에게 오류를 던집니다 (손쓸 수 있는 게 없습니다)');
+  return '1회만';
+});
+
+chk('팀을 만들 때 teamIds 를 먼저 확실히 쓴다', () => {
+  const t = code('teams.js');
+  const at = t.indexOf('CloudTeams.createTeam');
+  const blk = t.slice(at, at + 1600);
+  must(/await db\(\)\.collection\('users'\)\.doc\(myUid\(\)\)\.set\(/.test(blk),
+       'teamIds 쓰기를 안 기다립니다 — 보안 규칙이 이 값으로 판정합니다');
+  must(blk.indexOf('teamIds') < blk.indexOf("toast('팀 \""), '알림보다 늦게 씁니다');
+  return '기다림';
+});
+
+chk('무제한(관리자)일 때 인원 상한을 숫자로 안 보여준다', () => {
+  /* 사용자 신고: 팀 화면에 "멤버 1 / 9999명" 이 떴다. 틀린 값은 아니지만 오류로 보인다 */
+  const t = code('teams.js');
+  must(/function capText/.test(t), '표시용 변환이 없습니다');
+  must(/'무제한'/.test(t), '무제한 표기가 없습니다');
+  must(!/capOf\(t\) \+ '명'/.test(t), '아직 숫자를 그대로 씁니다');
+  must(/function capFull/.test(t), "'다 참' 판정이 상한을 그대로 씁니다");
+  must(/_cap < CAP_UNLIMITED &&/.test(t), '무제한 팀에서 참여가 막힐 수 있습니다');
+  return '무제한 표기';
+});
+
 console.log(fails ? `\n❌ 실패 ${fails}건 / 통과 ${oks}건` : `\n✅ 통과 ${oks}건`);
 process.exit(fails ? 1 : 0);

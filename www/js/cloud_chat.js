@@ -246,8 +246,33 @@
     _messages[roomId] = _messages[roomId] || [];
     if (_msgUnsubs[roomId]) return;   // ★ 이미 구독 중이면 재조회/재구독 안 함(중복 .get 폭주 방지)
     // ★ 중복 .get() 제거 (위와 동일 이유)
-    _msgUnsubs[roomId] = q.onSnapshot(apply, function(err){ console.warn('[CloudChat] 메시지 구독 오류', roomId, err && err.code); if (typeof showToast === 'function') showToast('메시지 수신 오류: ' + (err && (err.code || err.message)), 'err'); });
+    _msgUnsubs[roomId] = q.onSnapshot(apply, function (err) {
+      var code = (err && err.code) || '';
+      console.warn('[CloudChat] 메시지 구독 오류', roomId, code);
+      /* ☠️ 2026-09-09 사용자 신고 — 팀을 새로 만든 직후 "메시지 수신 오류: permission-denied"
+           가 떴다. 팀을 만들 때 순서가 이렇다.
+             ① teams 문서 생성 → ② teams 스냅샷 도착 → ③ 팀 채팅방(rooms/team_*) 생성
+             → ④ 방 스냅샷 도착 → ⑤ 여기서 메시지 구독
+           그런데 ①과 거의 동시에 나가는 users/{uid}.teamIds 쓰기가 아직 서버에 안 닿았을 수
+           있다. 보안 규칙이 그 값으로 '같은 팀인가'를 판정하므로, 그 찰나에 붙은 구독은
+           거부된다(teams.js 머리말의 hasAny 판정).
+         ☠️ 더 나쁜 것은 **onSnapshot 은 거부되면 그대로 끝난다**는 점이다. 스스로 다시
+            붙지 않아서, 앱을 껐다 켜기 전까지 그 방의 채팅이 죽은 채로 남는다.
+         → 거부는 한 번 더 붙어 본다. 그 사이 teamIds 쓰기가 끝나 대부분 살아난다.
+         ⚠️ 무한 재시도는 금지 — 정말 권한이 없는 방이면 재시도가 요금만 먹는다. 딱 한 번.
+         ⚠️ 사용자에게는 첫 실패를 알리지 않는다. 손쓸 수 있는 것이 없는 데다,
+            대개 곧바로 회복되는 일이라 알리면 놀라기만 한다(실제 신고 내용). */
+      try { _msgUnsubs[roomId] = null; delete _msgUnsubs[roomId]; } catch (e) {}
+      if (code === 'permission-denied' && !_msgRetried[roomId]) {
+        _msgRetried[roomId] = 1;
+        setTimeout(function () { if (loggedIn() && !_msgUnsubs[roomId]) subscribeMessages(roomId); }, 3000);
+        return;
+      }
+      if (code === 'permission-denied') return;   // 두 번째도 거부 — 조용히 포기(콘솔에는 남는다)
+      if (typeof showToast === 'function') showToast('메시지 수신 오류: ' + (code || (err && err.message)), 'err');
+    });
   }
+  var _msgRetried = {};   // roomId -> 권한 거부로 한 번 다시 붙어 봤는가 (무한 재시도 금지)
   function pullMessagesNow(roomId){
     db().collection('rooms').doc(roomId).collection('messages')
       .orderBy('createdAt','asc').limitToLast(300).get()
@@ -990,6 +1015,7 @@
     Object.keys(_msgUnsubs).forEach(function(k){ try { _msgUnsubs[k](); } catch(e){} });
     Object.keys(_roomDocUnsubs).forEach(function(k){ try { _roomDocUnsubs[k](); } catch(e){} });
     _msgUnsubs = {}; _roomDocUnsubs = {}; _chatPaused = false;
+    _msgRetried = {};   // 로그아웃/정리 뒤에는 다시 한 번 붙어 볼 수 있어야 한다
     _messages = {}; _pending = {}; _rooms = {}; _partners = {};
     _viewMode = 'list'; _openRoomId = null;
     if (_tickTimer) { clearInterval(_tickTimer); _tickTimer = null; }

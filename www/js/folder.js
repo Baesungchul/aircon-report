@@ -14,7 +14,78 @@ function sessionAutoSave() {
   //   저장 동작 자체는 그대로 유지된다(세션 복원 안전성 유지).
   if (typeof units === 'undefined' || !Array.isArray(units) || units.length === 0) return;
   _autoSaveTimer = setTimeout(() => sessionAutoSaveNow(), 1500);
+  _armWorkAutoSave();   // ★ 2026-09-09 폴더 자동저장 예약(아래 주석)
 }
+
+/* ═══ 작업 자동저장 (2026-09-09 사진 유실 사고, 사용자 요청) ═══════════════════
+   무슨 일이 있었나:
+     "일정을 만들고 사진을 찍었는데 저장을 잊었어. 다른 작업하다가 앱을 다시 열었는데
+      일정이 열려 있는 걸 모르고 달력에서 선택해 다시 열었더니 찍은 사진이 없어졌어"
+
+   ☠️ 예전에도 자동저장은 있었다. 그런데 그건 **세션 스냅샷**(sessionAutoSaveNow)이라
+      앱을 껐다 켤 때 복원하는 용도였고, 폴더에는 안 썼다. 작업을 다시 열면 화면은
+      **폴더 저장본**으로 덮인다 — 세션에만 있던 사진은 그때 사라진다.
+   → 폴더가 연결돼 있으면 폴더에도 자동으로 저장한다. 그래야 '저장을 잊어도 남는다'.
+
+   언제 저장하나 (사용자 요청 그대로)
+     · 마지막 변경 뒤 IDLE_MS 동안 더 안 건드리면 (조용해졌을 때 한 번)
+     · 그래도 계속 만지고 있으면 MAX_MS 마다 한 번은 (편집이 길어져도 남게)
+     · 앱이 백그라운드로 갈 때 · 화면이 꺼질 때 · 페이지가 사라질 때
+
+   ⚠️ 변경이 없으면 saveToFolder 가 스스로 건너뛴다(_dataDirty + 스냅샷 비교).
+      그래서 타이머가 도는 것만으로는 아무 비용이 없다.
+   ⚠️ auto:true 로 부른다 — 토스트를 띄우지 않는다. 손으로 누른 저장만 답을 준다
+      (2026-09-08 결정). 자동저장이 말을 걸면 작업을 방해한다.
+   ⚠️ 백그라운드 저장(newWork 의 이전 작업 저장) 중에는 건드리지 않는다 —
+      그때 전역 units 가 이전 작업으로 바뀌어 있어, 지금 저장하면 남의 것을 쓴다. */
+let _workAutoIdle = null, _workAutoMax = null;
+const WORK_AUTOSAVE_IDLE_MS = 20000;    // 20초 조용하면
+const WORK_AUTOSAVE_MAX_MS  = 180000;   // 계속 만져도 3분에 한 번은
+
+function _canWorkAutoSave() {
+  if (typeof units === 'undefined' || !Array.isArray(units) || units.length === 0) return false;
+  if (typeof window !== 'undefined' && window._isSavingInBackground) return false;
+  if (typeof _dataDirty !== 'undefined' && !_dataDirty) return false;
+  if (typeof window !== 'undefined' && window._workLoading) return false;   // 불러오는 중엔 손대지 않는다
+  return true;
+}
+async function workAutoSaveNow(reason) {
+  clearTimeout(_workAutoIdle); _workAutoIdle = null;
+  clearTimeout(_workAutoMax);  _workAutoMax = null;
+  if (!_canWorkAutoSave()) return;
+  try {
+    if (typeof photoFolderHandle !== 'undefined' && photoFolderHandle && typeof saveToFolder === 'function') {
+      await saveToFolder({ auto: true });
+      console.log('[자동저장] 폴더 저장 완료 (' + (reason || '') + ')');
+    } else if (typeof sessionAutoSaveNow === 'function') {
+      /* 폴더가 없으면 세션 스냅샷이 최선이다 — 앱을 껐다 켜면 복원된다 */
+      await sessionAutoSaveNow();
+    }
+  } catch (e) { console.warn('[자동저장] 실패(' + (reason || '') + ')', e && (e.message || e)); }
+}
+if (typeof window !== 'undefined') window.workAutoSaveNow = workAutoSaveNow;
+
+function _armWorkAutoSave() {
+  if (!_canWorkAutoSave()) return;
+  clearTimeout(_workAutoIdle);
+  _workAutoIdle = setTimeout(() => workAutoSaveNow('조용해짐'), WORK_AUTOSAVE_IDLE_MS);
+  /* 계속 만지고 있으면 위 타이머가 매번 뒤로 밀린다 — 그래서 최대 간격도 따로 둔다 */
+  if (!_workAutoMax) _workAutoMax = setTimeout(() => workAutoSaveNow('최대 간격'), WORK_AUTOSAVE_MAX_MS);
+}
+
+/* 앱을 내리거나 화면이 꺼질 때 — 여기서 놓치면 그대로 유실이다.
+   ⚠️ 안드로이드에서 visibilitychange 가 안 오는 기종이 있어 Capacitor 이벤트도 같이 건다. */
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'hidden') workAutoSaveNow('백그라운드');
+});
+window.addEventListener('pagehide', function () { workAutoSaveNow('페이지 종료'); });
+try {
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+    window.Capacitor.Plugins.App.addListener('appStateChange', function (st) {
+      if (st && st.isActive === false) workAutoSaveNow('앱 내림');
+    });
+  }
+} catch (e) {}
 
 async function sessionAutoSaveNow(opts) {
   clearTimeout(_autoSaveTimer);

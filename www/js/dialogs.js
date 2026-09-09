@@ -1287,13 +1287,32 @@ async function loadWorkFromFile(file) {
 
 // 날짜 폴더에서 작업 복원 (목록에서 선택한 경우)
 async function loadFromDateFolder(dateDir, data) {
-  // 현재 작업과 같으면 그냥 닫기 (모든 모달 닫기)
-  // ★ workId 우선 비교 - 같은 apt+date라도 workId 다르면 다른 작업
-  //   (이전: apt+date만 비교 → 같은 날 같은 아파트의 다른 호수 작업이 "이미 현재 작업"으로 잘못 판정되어 안 열림)
+  /* ── 이미 열려 있는 작업이면 다시 열지 않는다 ─────────────────────────────────
+     ☠️ 2026-09-09 사진 유실 사고 (사용자 신고)
+        "일정을 만들고 사진을 찍었는데 저장을 잊었어. 앱을 다시 열었는데 일정이 열려
+         있는 걸 모르고 달력에서 선택해 다시 열었더니 찍은 사진이 없어졌어"
+        다시 열기는 **저장본으로 화면을 덮어쓰는 일**이다. 아직 저장 안 한 사진은
+        저장본에 없으므로 그 순간 사라진다. 열려 있는 것을 또 여는 건 얻는 게 없고
+        잃을 것만 있으므로, 아예 하지 않는다.
+
+     ☠️ 예전 판정이 이 경우를 못 잡은 이유:
+        · workId 비교는 **양쪽 다 있을 때만** 했다. 새로 만든 작업은 아직 저장 전이라
+          화면 쪽 currentWorkId 가 비어 있는 일이 있다.
+        · apt+date 폴백은 **양쪽 다 workId 가 없을 때만** 돌았다.
+     → 폴더 이름을 하나 더 본다. 폴더 이름은 작업마다 하나씩이라(dialogs.js 저장 경로),
+       같은 날 같은 아파트의 다른 호수와 헷갈리지 않는다 — apt+date 폴백이 안전하지
+       않았던 바로 그 문제가 여기서는 없다.
+     ⚠️ 조용히 넘어가면 눌러도 아무 일이 없는 것처럼 보인다 — 왜 안 열리는지 알려 준다. */
   try {
-    if (data.workId && currentWorkId && data.workId === currentWorkId) {
+    var _sameId = data.workId && currentWorkId && data.workId === currentWorkId;
+    var _sameFolder = data.folderName && typeof currentFolderName !== 'undefined' && currentFolderName
+                      && String(data.folderName) === String(currentFolderName);
+    var _sameDirName = dateDir && dateDir.name && typeof currentFolderName !== 'undefined' && currentFolderName
+                       && String(dateDir.name) === String(currentFolderName);
+    if (_sameId || _sameFolder || _sameDirName) {
       document.getElementById('slModal')?.classList.remove('open');
       document.getElementById('customerModal')?.classList.remove('open');
+      if (typeof showToast === 'function') showToast('이미 열려 있는 작업입니다', 'ok');
       return;
     }
     // workId가 양쪽 다 없을 때만 apt+date 폴백
@@ -1303,6 +1322,7 @@ async function loadFromDateFolder(dateDir, data) {
       if (curApt === (data.apt || '').trim() && curDate === (data.date || '').trim()) {
         document.getElementById('slModal')?.classList.remove('open');
         document.getElementById('customerModal')?.classList.remove('open');
+        if (typeof showToast === 'function') showToast('이미 열려 있는 작업입니다', 'ok');
         return;
       }
     }
@@ -2040,6 +2060,16 @@ function photoId() {
 
 // 폴더에서 세션 목록 읽기
 async function doLoad(saveId) {
+  /* 이미 열려 있는 작업이면 다시 열지 않는다 — loadFromDateFolder 머리말과 같은 이유.
+     ☠️ 다시 열기는 저장본으로 화면을 덮어쓰는 일이라, 아직 저장 안 한 사진이 사라진다. */
+  try {
+    if (saveId && currentWorkId && String(saveId) === String(currentWorkId)) {
+      document.getElementById('slModal')?.classList.remove('open');
+      document.getElementById('customerModal')?.classList.remove('open');
+      if (typeof showToast === 'function') showToast('이미 열려 있는 작업입니다', 'ok');
+      return;
+    }
+  } catch (e) {}
   // 현재 작업이 있고 저장 안 된 경우 - 저장 확인
   if (units.length > 0) {
     if (typeof _dataDirty !== 'undefined' && _dataDirty) {

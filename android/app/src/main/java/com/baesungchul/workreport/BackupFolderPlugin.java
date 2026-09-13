@@ -71,13 +71,41 @@ public class BackupFolderPlugin extends Plugin {
         call.resolve(ret);
     }
 
-    /** 1-b) 자동백업용 폴더 선택 — 읽기+쓰기 영구 권한 확보 */
+    /** 1-b) 자동백업용 폴더 선택 — 읽기+쓰기 영구 권한 확보
+     *
+     *  ☠️ 2026-09-13 사고의 출발점: 여기서 시작 폴더를 지정하지 않아, 시스템 폴더
+     *     선택기가 '자기가 마지막에 보던 곳'에서 열렸다. 그게 DCIM/Camera 였던 사용자는
+     *     「다음」 한 번으로 카메라 폴더를 백업 폴더로 지정해 버렸다.
+     *     → EXTRA_INITIAL_URI 로 항상 Documents(또는 이미 쓰던 백업 폴더)에서 열리게 한다.
+     *     ★ 시작 위치 지정을 없애지 말 것.
+     */
     @PluginMethod
     public void pickBackupFolder(PluginCall call) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
                 | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try {
+            /* 이미 쓰던 백업 폴더가 있으면 그 자리에서, 없으면 Documents 에서 열린다.
+               Documents 자체를 골라도 위의 isSystemMediaDir 가 막으므로, 사용자는
+               그 안에 폴더를 새로 만들거나 기존 백업 폴더로 들어가게 된다. */
+            String cur = call.getString("currentUri");
+            Uri initial = null;
+            if (cur != null && !cur.isEmpty()) {
+                try {
+                    Uri t = Uri.parse(cur);
+                    initial = DocumentsContract.buildDocumentUriUsingTree(
+                            t, DocumentsContract.getTreeDocumentId(t));
+                } catch (Exception ignored) {}
+            }
+            if (initial == null) {
+                initial = DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Documents");
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial);
+            }
+        } catch (Exception ignored) {}
         startActivityForResult(call, intent, "backupFolderPicked");
     }
 
@@ -98,9 +126,209 @@ public class BackupFolderPlugin extends Plugin {
                     treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                             | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
         } catch (Exception ignored) {}
-        JSObject ret = new JSObject();
-        ret.put("uri", treeUri.toString());
-        call.resolve(ret);
+        /* ★ 2026-09-13 — 고른 폴더가 안전한지 같이 알려준다.
+             사고: 사용자가 DCIM/Camera 를 백업 폴더로 골랐다 → mirror() 의 prune 이
+             "앱 폴더에 없는 이름"인 기존 카메라 사진을 전부 삭제. 되돌릴 수 없었다.
+             그래서 고른 즉시 (a) 시스템 미디어 폴더인지 (b) 남의 파일이 들어 있는지를
+             JS 로 넘겨, JS 가 거부하거나 경고하게 한다.
+             ☠️ 폴더 훑기는 사진 수천 장이면 시간이 걸린다 — 메인 스레드에서 하면 ANR 이다. */
+        final Uri picked = treeUri;
+        new Thread(new Runnable() {
+            public void run() {
+                JSObject ret = new JSObject();
+                ret.put("uri", picked.toString());
+                try {
+                    String rel = relPathOfTree(picked);
+                    ret.put("relPath", rel == null ? "" : rel);
+                    ret.put("isSystemDir", isSystemMediaDir(rel));
+                    JSObject scan = scanForeign(picked);
+                    ret.put("foreignCount", scan.getInteger("foreignCount", 0));
+                    ret.put("foreignSample", scan.getString("foreignSample", ""));
+                } catch (Exception ignored) {}
+                call.resolve(ret);
+            }
+        }).start();
+    }
+
+    /** 앱이 쓰는 전용 백업 폴더 이름 — 시스템 폴더를 골랐을 때 그 안에 이걸 만들어 쓴다 */
+    static final String OUR_BACKUP_DIR = "작업보고서백업";
+
+    /** 1-b2) 고른 폴더 안에 전용 백업 폴더를 만들고(있으면 그대로) 그 폴더의 트리 uri 를 돌려준다.
+     *
+     *  사용자 요청(2026-09-13): "기본폴더를 도큐멘트로 해주고 그대로 선택하면 backup용 새폴더를
+     *  만들어서 사용하게끔". Documents 처럼 남의 파일이 있는 곳을 골라도, 실제 백업은 그 아래
+     *  전용 폴더에서만 이뤄지게 해 사고를 구조적으로 막는다.
+     *  부모 폴더에 받은 영구 권한이 자식 트리에도 적용되므로(ExternalStorageProvider 의
+     *  isChildDocument) 자식 트리 uri 를 그대로 저장해 쓸 수 있다. 그래도 실제로 읽히는지
+     *  한 번 확인한 뒤에만 ok=true 로 돌려준다. */
+    @PluginMethod
+    public void ensureChildDir(final PluginCall call) {
+        final String uriStr = call.getString("uri");
+        final String name = call.getString("name", OUR_BACKUP_DIR);
+        if (uriStr == null || uriStr.isEmpty()) { call.reject("uri가 없습니다"); return; }
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    ContentResolver resolver = getContext().getContentResolver();
+                    Uri treeUri = Uri.parse(uriStr);
+                    String parentId = DocumentsContract.getTreeDocumentId(treeUri);
+                    String childId = findChildByName(resolver, treeUri, parentId, name);
+                    boolean created = false;
+                    if (childId == null) {
+                        childId = createDir(resolver, treeUri, parentId, name);
+                        created = (childId != null);
+                    }
+                    JSObject ret = new JSObject();
+                    if (childId == null) {
+                        ret.put("ok", false);
+                        ret.put("uri", "");
+                        call.resolve(ret);
+                        return;
+                    }
+                    Uri childTree = DocumentsContract.buildTreeDocumentUri(treeUri.getAuthority(), childId);
+                    /* 확인: 그 트리로 정말 읽히는가 (안 되면 부모를 그대로 쓰게 두고 JS 가 안내한다) */
+                    boolean usable = false;
+                    Cursor c = null;
+                    try {
+                        c = resolver.query(
+                                DocumentsContract.buildChildDocumentsUriUsingTree(childTree, childId),
+                                new String[]{ DocumentsContract.Document.COLUMN_DOCUMENT_ID },
+                                null, null, null);
+                        usable = (c != null);
+                    } catch (Exception ignored) {
+                    } finally { if (c != null) try { c.close(); } catch (Exception ignored) {} }
+                    ret.put("ok", usable);
+                    ret.put("uri", usable ? childTree.toString() : "");
+                    ret.put("name", name);
+                    ret.put("created", created);
+                    String rel = relPathOfTree(usable ? childTree : treeUri);
+                    ret.put("relPath", rel == null ? "" : rel);
+                    call.resolve(ret);
+                } catch (Exception e) {
+                    call.reject("백업 폴더 준비 실패: " + e.getMessage(), e);
+                }
+            }
+        }).start();
+    }
+
+    /** 1-c) 이미 저장해 둔 백업 폴더가 안전한지 검사 (앱 켤 때 한 번 — 옛 빌드에서 잘못 지정된 폴더 구제) */
+    @PluginMethod
+    public void inspectFolder(final PluginCall call) {
+        final String uriStr = call.getString("uri");
+        if (uriStr == null || uriStr.isEmpty()) { call.reject("uri가 없습니다"); return; }
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    Uri treeUri = Uri.parse(uriStr);
+                    String rel = relPathOfTree(treeUri);
+                    JSObject ret = new JSObject();
+                    ret.put("relPath", rel == null ? "" : rel);
+                    ret.put("isSystemDir", isSystemMediaDir(rel));
+                    JSObject scan = scanForeign(treeUri);
+                    ret.put("foreignCount", scan.getInteger("foreignCount", 0));
+                    ret.put("foreignSample", scan.getString("foreignSample", ""));
+                    call.resolve(ret);
+                } catch (Exception e) {
+                    call.reject("폴더 검사 실패: " + e.getMessage(), e);
+                }
+            }
+        }).start();
+    }
+
+    /** 트리 uri 의 내장저장소 기준 상대경로 ("DCIM/Camera"). 기본 저장소가 아니면 null */
+    private String relPathOfTree(Uri treeUri) {
+        try {
+            String docId = DocumentsContract.getTreeDocumentId(treeUri);
+            String[] split = docId.split(":");
+            if (split.length >= 1 && "primary".equalsIgnoreCase(split[0])) {
+                String tail = (split.length > 1 && split[1] != null) ? split[1] : "";
+                while (tail.startsWith("/")) tail = tail.substring(1);
+                while (tail.endsWith("/")) tail = tail.substring(0, tail.length() - 1);
+                return tail;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /** 안드로이드가 쓰는 공용/시스템 미디어 폴더인가 (그 자체 또는 저장소 루트) */
+    private boolean isSystemMediaDir(String rel) {
+        if (rel == null) return false;              // 기본 저장소가 아니면 판단 불가 — 막지 않는다
+        String r = rel.trim();
+        while (r.endsWith("/")) r = r.substring(0, r.length() - 1);
+        if (r.isEmpty()) return true;               // 저장소 루트
+        /* 우리가 만든 전용 폴더는 어디에 있어도 안전하다 (Documents/작업보고서백업 등).
+           이 예외가 없으면 방금 만든 우리 폴더를 우리가 다시 거부한다. */
+        if (r.equals(OUR_BACKUP_DIR) || r.endsWith("/" + OUR_BACKUP_DIR)) return false;
+        String low = r.toLowerCase();
+        String[] tops = {"dcim", "pictures", "movies", "music", "download", "downloads",
+                         "documents", "alarms", "ringtones", "notifications", "podcasts",
+                         "android", "recordings", "audiobooks"};
+        for (String t : tops) {
+            if (low.equals(t)) return true;                     // DCIM
+            if (low.startsWith(t + "/")) {
+                /* DCIM/Camera, Pictures/Screenshots 같은 1단계 하위도 시스템 앨범이라 막는다.
+                   단, 사용자가 그 아래에 직접 만든 2단계 이상 폴더(Documents/내백업/2026)는 허용. */
+                String restOf = low.substring(t.length() + 1);
+                if (restOf.indexOf('/') < 0) return true;
+            }
+        }
+        return false;
+    }
+
+    /** 고른 폴더 안에 '우리 것이 아닌' 항목이 몇 개나 있는지 (사진 유실 사고 예방용) */
+    private JSObject scanForeign(Uri treeUri) {
+        JSObject out = new JSObject();
+        int foreign = 0;
+        StringBuilder sample = new StringBuilder();
+        ContentResolver resolver = getContext().getContentResolver();
+        String rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, rootDocId);
+        Cursor c = null;
+        try {
+            c = resolver.query(childrenUri, new String[]{
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME }, null, null, null);
+            if (c != null) {
+                while (c.moveToNext()) {
+                    String nm = c.getString(0);
+                    if (nm == null || ".nomedia".equals(nm)) continue;
+                    if (isOursTopLevel(nm)) continue;
+                    foreign++;
+                    if (sample.length() < 120) {
+                        if (sample.length() > 0) sample.append(", ");
+                        sample.append(nm);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) try { c.close(); } catch (Exception ignored) {}
+        }
+        out.put("foreignCount", foreign);
+        out.put("foreignSample", sample.toString());
+        return out;
+    }
+
+    /**
+     * 백업 폴더 '맨 위'에서 우리가 만든 이름인가.
+     *   앱 폴더(work-report)의 최상위는 날짜/작업 폴더(YYYY-MM-DD…), '_' 로 시작하는 것들
+     *   (_shared, _appdata.json), 수동일정(m_…), 그리고 *.json 뿐이다.
+     *   ☠️ prune(원본에 없는 대상 삭제)은 맨 위에서 이 목록만 지운다. 사용자가 백업 폴더를
+     *      DCIM/Camera 로 잘못 골라도 IMG_…jpg / 20260905_…jpg / Camera 같은 남의 것은 건드리지 않는다.
+     *      2026-09-13 사진 유실 사고의 재발 방지 — 이 게이트를 느슨하게 고치지 말 것.
+     */
+    private static boolean isOursTopLevel(String name) {
+        if (name == null || name.isEmpty()) return false;
+        if (".nomedia".equals(name)) return false;          // 우리가 뒀지만 지우지 않는다
+        if (name.charAt(0) == '_') return true;             // _shared, _appdata.json …
+        if (name.startsWith("m_")) return true;             // 수동일정
+        if (name.toLowerCase().endsWith(".json")) return true;
+        if (name.length() < 10) return false;
+        for (int i = 0; i < 10; i++) {
+            char ch = name.charAt(i);
+            boolean dash = (i == 4 || i == 7);
+            if (dash ? (ch != '-') : (ch < '0' || ch > '9')) return false;
+        }
+        return true;                                        // YYYY-MM-DD…
     }
 
     /** 3) EXTERNAL/<appFolder> 를 선택된 폴더(uri)에 거울 백업 (증분 복사 + orphan 삭제) */
@@ -117,15 +345,16 @@ public class BackupFolderPlugin extends Plugin {
                     Uri treeUri = Uri.parse(uriStr);
                     String rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
                     File srcRoot = new File(getContext().getExternalFilesDir(null), appFolder);
-                    int[] counts = new int[]{0, 0, 0, 0}; // copied, skipped, pruned, fail
+                    int[] counts = new int[]{0, 0, 0, 0, 0}; // copied, skipped, pruned, fail, kept(남의 파일)
                     if (srcRoot.exists() && srcRoot.isDirectory()) {
-                        mirror(resolver, treeUri, rootDocId, srcRoot, counts);
+                        mirror(resolver, treeUri, rootDocId, srcRoot, counts, true);
                     }
                     JSObject ret = new JSObject();
                     ret.put("copied", counts[0]);
                     ret.put("skipped", counts[1]);
                     ret.put("pruned", counts[2]);
                     ret.put("fail", counts[3]);
+                    ret.put("kept", counts[4]);   // 백업 폴더 맨 위에서 보호한 남의 항목 수
                     call.resolve(ret);
                 } catch (Exception e) {
                     call.reject("백업 실패: " + e.getMessage(), e);
@@ -136,7 +365,7 @@ public class BackupFolderPlugin extends Plugin {
 
     // 한 디렉토리를 대상 폴더에 거울 동기화 (재귀)
     private void mirror(ContentResolver resolver, Uri treeUri, String destDocId,
-                        File srcDir, int[] counts) {
+                        File srcDir, int[] counts, boolean isRoot) {
         // 대상 자식 목록 (name -> [docId, mime, sizeStr])
         Map<String, String[]> destMap = new HashMap<>();
         Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, destDocId);
@@ -181,7 +410,7 @@ public class BackupFolderPlugin extends Plugin {
                     } else {
                         childId = ci[0];
                     }
-                    if (childId != null) mirror(resolver, treeUri, childId, k, counts);
+                    if (childId != null) mirror(resolver, treeUri, childId, k, counts, false);
                 } else {
                     boolean need;
                     if (ci == null) {
@@ -207,11 +436,20 @@ public class BackupFolderPlugin extends Plugin {
                 }
             }
         }
-        // prune: 원본에 없는 대상 자식 삭제 (삭제된 작업 · 순서편집 잔재 정리)
+        /* prune: 원본에 없는 대상 자식 삭제 (삭제된 작업 · 순서편집 잔재 정리)
+           ☠️ 2026-09-13 — 맨 위(백업 폴더 그 자체)에서는 '우리가 만든 이름'만 지운다.
+              사용자가 DCIM/Camera 를 백업 폴더로 고른 사고가 있었다. 그때 이 루프가
+              기존 카메라 사진을 전부 삭제했다(되돌릴 수 없었다). 하위 폴더는 우리가
+              만든 작업 폴더 안이므로 그대로 거울 동기화한다.
+              ★ isOursTopLevel 게이트를 없애거나 느슨하게 고치지 말 것. */
         for (Map.Entry<String, String[]> e : destMap.entrySet()) {
-            if (!srcNames.contains(e.getKey())) {
-                if (deleteDoc(resolver, treeUri, e.getValue()[0])) counts[2]++;
+            String nm = e.getKey();
+            if (srcNames.contains(nm)) continue;
+            if (isRoot && !isOursTopLevel(nm)) {
+                counts[4]++;                      // 남의 파일 — 건드리지 않고 세어만 둔다
+                continue;
             }
+            if (deleteDoc(resolver, treeUri, e.getValue()[0])) counts[2]++;
         }
     }
 
@@ -261,7 +499,16 @@ public class BackupFolderPlugin extends Plugin {
                     ContentResolver resolver = getContext().getContentResolver();
 
                     // ── SAF 폴더 ──
-                    if (uriStr != null && !uriStr.isEmpty()) {
+                    /* ☠️ 2026-09-13 — 시스템 미디어 폴더(DCIM, DCIM/Camera, Pictures …)에는
+                         절대 .nomedia 를 두지 않는다. 두면 사용자의 갤러리가 통째로 빈다.
+                         실제로 백업 폴더를 DCIM/Camera 로 고른 사고에서 이 일이 났다. */
+                    boolean safBlocked = false;
+                    if (uriStr != null && !uriStr.isEmpty()
+                            && isSystemMediaDir(relPathOfTree(Uri.parse(uriStr)))) {
+                        safBlocked = true;
+                        ret.put("blocked", true);
+                    }
+                    if (!safBlocked && uriStr != null && !uriStr.isEmpty()) {
                         Uri treeUri = Uri.parse(uriStr);
                         String rootId = DocumentsContract.getTreeDocumentId(treeUri);
                         if (findChildByName(resolver, treeUri, rootId, ".nomedia") != null) existed = true;

@@ -113,6 +113,61 @@
   /* 설정 화면에서 손으로 다시 시킬 수 있게 열어 둔다 */
   AutoBackup.hideFromGallery = function () { return hideBackupFromGallery(true); };
 
+  /* 전용 백업 폴더 이름 — 네이티브(BackupFolderPlugin.OUR_BACKUP_DIR)와 같아야 한다 */
+  var OUR_DIR = '작업보고서백업';
+
+  /* 고른 폴더 안에 전용 백업 폴더를 만들어 그 폴더를 쓰게 한다.
+     사용자 요청(2026-09-13): 기본 위치를 Documents 로 두고, 그대로 고르면 백업용 새 폴더를 만들어 쓴다. */
+  async function useChildDir(parentUri) {
+    var bf = BF();
+    if (!bf || !bf.ensureChildDir) return null;
+    try {
+      var s = await bf.ensureChildDir({ uri: parentUri, name: OUR_DIR });
+      if (s && s.ok && s.uri) return s;
+    } catch (e) { console.warn('[자동백업] 전용 폴더 준비 실패', e && (e.message || e)); }
+    return null;
+  }
+
+  /* ── 이미 잘못 지정된 백업 폴더 구제 (2026-09-13) ──
+     옛 빌드는 선택기의 시작 폴더를 지정하지 않아 DCIM/Camera 같은 곳이 백업 폴더로
+     지정될 수 있었다. 그 상태로 두면 백업이 돌 때마다 그 폴더를 계속 건드린다.
+     앱을 켤 때 한 번 검사해서, 시스템 미디어 폴더면 그 안의 전용 폴더로 옮긴다.
+     ☠️ 옮기기만 한다 — 파일은 절대 지우지 않는다. 이미 유실 사고가 난 경로다. */
+  var UNSAFE_LS = 'auto_backup_unsafe_notified';
+  AutoBackup.auditFolder = async function () {
+    var saf = getSaf();
+    var bf = BF();
+    if (!saf || !bf || !bf.inspectFolder) return;
+    var info = null;
+    try { info = await bf.inspectFolder({ uri: saf }); } catch (e) { return; }
+    if (!info || !info.isSystemDir) return;
+
+    var nm = info.relPath || '시스템 폴더';
+    var sub = await useChildDir(saf);
+    if (sub) setSaf(sub.uri);                    // 같은 폴더 안의 전용 폴더로 이사
+    else setSaf('');                             // 못 만들면 지정만 해제한다
+    var to = sub ? (sub.relPath || (nm + '/' + OUR_DIR)) : '';
+
+    try {
+      if (localStorage.getItem(UNSAFE_LS) === nm) return;   // 한 번만 알린다
+      localStorage.setItem(UNSAFE_LS, nm);
+    } catch (e) {}
+    console.warn('[자동백업] 위험한 백업 폴더 조치:', nm, '→', to || '(해제)');
+    setTimeout(function () {
+      if (sub) {
+        alert('백업 폴더가 「' + nm + '」로 지정되어 있어 「' + to + '」로 바꿨습니다.\n\n' +
+              '「' + nm + '」는 안드로이드가 쓰는 사진 폴더입니다. 백업 폴더는 앱 데이터에 맞춰 ' +
+              '정리되는 곳이라, 여기에 그대로 두면 기존 사진이 지워질 수 있습니다.\n\n' +
+              '앞으로 백업은 새 폴더에만 들어갑니다. 「' + nm + '」에 남아 있는 날짜 폴더는 ' +
+              '예전 백업이니, 필요 없으면 파일 관리자에서 직접 지우세요.');
+      } else {
+        alert('백업 폴더가 「' + nm + '」로 지정되어 있어 해제했습니다.\n\n' +
+              '이 폴더는 안드로이드가 쓰는 사진 폴더라, 그대로 두면 기존 사진이 지워질 수 있습니다.\n\n' +
+              '설정 > 자동백업에서 폴더를 다시 지정해 주세요.');
+      }
+    }, 1500);
+  };
+
   // 사용자가 백업 폴더를 한 번 지정 (읽기+쓰기 영구 권한). 재설치 후 재지정하면 옛 파일까지 자유롭게 갱신/삭제됨.
   AutoBackup.pickFolder = async function () {
     var bf = BF();
@@ -121,10 +176,35 @@
       return false;
     }
     try {
-      var r = await bf.pickBackupFolder();
+      /* 시작 폴더를 넘긴다 — 안 넘기면 선택기가 마지막에 보던 곳(카메라 폴더 등)에서 열린다 */
+      var r = await bf.pickBackupFolder({ currentUri: getSaf() || '' });
       if (!r || r.cancelled || !r.uri) return false;
-      setSaf(r.uri);
-      if (typeof showToast === 'function') showToast('백업 폴더가 지정되었습니다', 'ok');
+
+      /* ★ 2026-09-13 사고 — 사용자가 백업 폴더를 DCIM/Camera 로 골랐다.
+           거울 백업은 '앱 폴더에 없는 것'을 지우므로 그 안의 기존 사진이 전부 삭제됐다.
+           그래서 시스템 폴더나 남의 파일이 있는 폴더를 고르면, 그 폴더를 그대로 쓰지 않고
+           **그 안에 전용 폴더를 만들어** 거기에만 백업한다. 선택기는 Documents 에서 열리므로
+           사용자가 아무것도 안 하고 「다음」만 눌러도 Documents/작업보고서백업 이 된다.
+           ☠️ 이 분기를 없애고 고른 폴더를 그대로 쓰게 고치지 말 것. */
+      var _uri = r.uri, _nm = r.relPath || '';
+      if (r.isSystemDir || r.foreignCount > 0) {
+        var sub = await useChildDir(r.uri);
+        if (!sub) {
+          alert('백업 폴더를 준비하지 못했습니다.\n\n' +
+                (r.isSystemDir
+                  ? '「' + (_nm || '고른 폴더') + '」는 안드로이드가 쓰는 사진·다운로드 폴더라 그대로 쓸 수 없습니다.\n'
+                  : '') +
+                '파일 관리자에서 새 폴더를 하나 만들어 그것을 골라 주세요.');
+          return false;
+        }
+        _uri = sub.uri;
+        _nm = sub.relPath || ((_nm ? _nm + '/' : '') + OUR_DIR);
+        console.log('[자동백업] 전용 백업 폴더 사용:', _nm, sub.created ? '(새로 만듦)' : '(기존)');
+      }
+      setSaf(_uri);
+      if (typeof showToast === 'function') {
+        showToast(_nm ? ('백업 폴더: ' + _nm) : '백업 폴더가 지정되었습니다', 'ok');
+      }
       /* 새 폴더에도 .nomedia 를 넣는다 — 안 넣으면 백업 사진이 갤러리에 또 쌓인다 */
       await hideBackupFromGallery(true);
       AutoBackup.run('manual');
@@ -620,12 +700,18 @@
   //   그동안은 다음 백그라운드 전환 전까지 보완 백업이 아예 돌지 않는 사각지대가 있었다.
   //   → 앱을 새로 켤 때마다 한 번, 중단 표시가 남아있으면 즉시 이어하기 백업을 실행한다.
   setTimeout(function () {
-    try {
-      if (_incomplete) {
-        console.warn('[자동백업] 이전 실행이 중단된 채로 종료됨(강제종료 등) → 콜드스타트 이어하기 백업 실행');
-        AutoBackup.run('cold-start-resume');
-      }
-    } catch (e) {}
+    /* ★ 백업보다 먼저 폴더가 안전한지 본다 — 위험하면 해제되어 아래 백업이 그 폴더를 건드리지 않는다 */
+    Promise.resolve()
+      .then(function () { return AutoBackup.auditFolder && AutoBackup.auditFolder(); })
+      .catch(function () {})
+      .then(function () {
+        try {
+          if (_incomplete) {
+            console.warn('[자동백업] 이전 실행이 중단된 채로 종료됨(강제종료 등) → 콜드스타트 이어하기 백업 실행');
+            AutoBackup.run('cold-start-resume');
+          }
+        } catch (e) {}
+      });
   }, 3000);
 
   // 저장/수정/삭제 후에도 (앱을 나가지 않아도) 최근 작업을 백업 폴더에 반영한다.

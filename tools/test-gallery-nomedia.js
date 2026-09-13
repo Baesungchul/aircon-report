@@ -68,7 +68,8 @@ chk('auto_backup 이 hideFromGallery 를 부른다', () => {
 
 chk('폴더를 새로 고르면 그 폴더에도 넣는다', () => {
   const s = read(path.join(JS, 'auto_backup.js'));
-  const pick = s.slice(s.indexOf('AutoBackup.pickFolder'), s.indexOf('AutoBackup.pickFolder') + 900);
+  /* ★ 2026-09-13 — pickFolder 에 위험 폴더 거부 검사가 들어와 블록이 길어졌다. 창을 넉넉히 잡는다. */
+  const pick = s.slice(s.indexOf('AutoBackup.pickFolder'), s.indexOf('AutoBackup.pickFolder') + 2600);
   must(/hideBackupFromGallery\(true\)/.test(pick),
        '폴더를 바꿔도 새 폴더엔 .nomedia 가 안 들어간다 — 거기서 다시 중복이 생긴다');
   return '새 폴더에도 적용';

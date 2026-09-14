@@ -406,13 +406,39 @@ async function _purgeAccount(db, uid) {
   console.log('[cleanup] 계정 정리 완료:', uid);
 }
 
-// 구독 활성 여부: subscriptionActive=true 이고 (만료시각이 없거나 아직 안 지남)
-//  ⚠️ 구독 결제 구현 시 서버(영수증검증)가 users/{uid}에 아래 필드를 기록하도록 맞출 것:
-//     subscriptionActive(bool), subscriptionExpiresAt(Timestamp, 선택)
+/* 구독 활성 여부 — 계정을 통째로 지울지 말지를 정하는 판정이다.
+ *
+ * ☠️ 2026-09-14 점검에서 찾은 구멍: 예전에는 subscriptionActive === true 하나만 봤다.
+ *    그런데 앱은 플랜을 두 군데에 기록한다.
+ *      · billingPlan — RevenueCat 결제로 받은 플랜
+ *      · plan        — 관리자 화면에서 손으로 부여한 플랜 (subscription.js:688)
+ *    관리자가 손으로 플랜을 준 사람에게는 subscriptionActive 가 찍히지 않는다. 그 사람이
+ *    과거에 결제했다 해지한 이력이 있으면 subscriptionEndedAt 이 남아 있고,
+ *    6개월 뒤 이 함수가 false 를 돌려줘 **계정이 통째로 삭제된다**
+ *    (사진 전량 · 서브컬렉션 · 서버 백업 · Auth 계정까지, 되돌릴 수 없음).
+ *    앱 화면에서는 그날까지 멀쩡한 유료 사용자로 보인다.
+ *
+ * 그래서 판정을 앱(Subs.effectivePlan = billingPlan || plan)·통계(adminStats)와 같게 맞췄다.
+ * 삭제는 되돌릴 수 없으므로 **의심스러우면 살린다**가 이 함수의 원칙이다.
+ * ★ 이 판정을 좁히지 말 것. 좁히면 살아 있는 사용자가 지워진다.
+ */
+const _PLAN_KEYS = { free: 1, lite: 1, basic: 1, pro: 1, master: 1 };
 function _isSubscribed(u, now) {
-  if (!u || u.subscriptionActive !== true) return false;
-  const exp = (u.subscriptionExpiresAt && u.subscriptionExpiresAt.toMillis) ? u.subscriptionExpiresAt.toMillis() : 0;
-  return exp ? (now < exp) : true;
+  if (!u) return false;
+
+  // (a) 관리자 계정은 어떤 경우에도 자동 정리 대상이 아니다
+  if (u.admin === true) return true;
+
+  // (b) 유효한 플랜이 붙어 있으면 구독으로 본다 (결제 우선, 없으면 관리자 수동 부여)
+  const plan = u.billingPlan || u.plan || '';
+  if (plan && plan !== 'free' && _PLAN_KEYS[plan]) return true;
+
+  // (c) 기존 판정 — 결제 플래그
+  if (u.subscriptionActive === true) {
+    const exp = (u.subscriptionExpiresAt && u.subscriptionExpiresAt.toMillis) ? u.subscriptionExpiresAt.toMillis() : 0;
+    return exp ? (now < exp) : true;
+  }
+  return false;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -473,6 +499,18 @@ exports.cleanupAccounts = onSchedule(
           색인을 따로 만들 필요가 없다.
        ⚠️ 한 번에 다 못 가져오면 다음 날 이어서 처리된다(매일 도는 작업이라 안전).
           상한에 걸리면 로그로 알린다. */
+    /* ── 비상 정지 스위치 (2026-09-14) ──
+       Firestore 의 config/app 문서에 purgeDryRun: true 를 넣으면, 이 작업은
+       삭제 대상을 **로그로만 남기고 실제로는 지우지 않는다**. 배포 없이 콘솔에서 켜고 끈다.
+       계정 삭제는 되돌릴 수 없어서, 판정 로직을 손볼 때 며칠 관찰할 수단이 필요하다.
+       (본인이 직접 요청한 삭제 deletionRequestedAt 는 본인 의사라 이 스위치와 무관하게 진행된다) */
+    let _PURGE_DRY_RUN = false;
+    try {
+      const _cfg = await db.collection('config').doc('app').get();
+      _PURGE_DRY_RUN = !!(_cfg.exists && _cfg.data() && _cfg.data().purgeDryRun === true);
+    } catch (e) { console.warn('[cleanupAccounts] config/app 읽기 실패(정상 진행):', e && e.message); }
+    if (_PURGE_DRY_RUN) console.warn('[cleanupAccounts] ★ 드라이런 모드 — 계정을 실제로 지우지 않습니다');
+
     const CAND_LIMIT = 500;
     const cands = new Map();
     const _add = (snap) => { snap.docs.forEach((d) => { if (!cands.has(d.id)) cands.set(d.id, d); }); };
@@ -527,7 +565,30 @@ exports.cleanupAccounts = onSchedule(
       const deleteAtMs = subEndMs + UNSUB_LIMIT_MS;
 
       // (3a) 삭제 시점 도래 → 정리
-      if (now >= deleteAtMs) { await _purgeAccount(db, uid); purged++; continue; }
+      if (now >= deleteAtMs) {
+        /* ☠️ 마지막 확인 — 후보 목록은 쿼리 시점의 사본이라 그 사이에 바뀌었을 수 있다.
+             (관리자가 방금 플랜을 부여했거나, 결제가 막 반영됐거나)
+             지우기 직전에 문서를 다시 읽어 한 번 더 판정한다. 되돌릴 수 없는 작업이라
+             읽기 한 번을 더 쓰는 편이 싸다.
+             ★ 이 재확인을 빼지 말 것. */
+        let _fresh = null;
+        try { _fresh = (await doc.ref.get()).data(); } catch (e) {
+          console.warn('[cleanupAccounts] 재확인 실패 → 이번 회차 건너뜀(보존):', uid, e && e.message);
+          continue;   // 못 읽으면 지우지 않는다
+        }
+        if (!_fresh) { console.warn('[cleanupAccounts] 문서가 이미 없음 → 건너뜀:', uid); continue; }
+        if (_fresh.deletionRequestedAt) { await _purgeAccount(db, uid); purged++; continue; }
+        if (_isSubscribed(_fresh, Date.now())) {
+          console.log('[cleanupAccounts] 재확인에서 구독 확인 → 보존:', uid);
+          continue;
+        }
+        if (_PURGE_DRY_RUN) {
+          console.warn('[cleanupAccounts] (드라이런) 삭제 대상이지만 지우지 않음:', uid,
+                       'plan=', (_fresh.billingPlan || _fresh.plan || 'free'));
+          continue;
+        }
+        await _purgeAccount(db, uid); purged++; continue;
+      }
 
       // (3b) 삭제 30일 전 → 경고 1회 + 예약시각 기록
       if (now >= deleteAtMs - WARN_LEAD_MS && !u.deletionWarnedAt) {

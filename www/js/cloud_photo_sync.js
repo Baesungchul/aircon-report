@@ -370,6 +370,22 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
     //    - 상대가 보탠(addedBy 있음) 사진은 절대 건드리지 않음
     //    - 없으면 삭제/이동된 사진이 클라우드에 남아 상대 폰에 계속 보이고(=두 폰 불일치), 유령/섞임의 원인이 됨
     try {
+      /* ☠️ 2026-09-14 감사에서 찾은 구멍 — 정리 단계를 건너뛰어야 하는 경우.
+           「사진 없이 불러오기」로 열었거나 사진 폴더를 못 읽어 열렸을 때(dialogs.js:1906·1920),
+           units 의 before/after 는 **비어 있고** _photosOnDisk.skipPhotoSync 로
+           "디스크에 사진이 있으니 건드리지 마라"고 표시된다. 그 상태로 저장하면
+           아래 정리가 "화면에 없으니 지운다"고 판단해 그 작업의 **클라우드 사진을 전멸**시킨다.
+           같은 파일의 pullBorrowedAdditions 에는 이미 이 가드가 있다(_skipClean).
+           업로드는 위에서 이미 끝났다 — 여기서 건너뛰는 것은 '삭제'뿐이라 잃는 것이 없다.
+         ★ 이 가드를 지우지 말 것. */
+      var _skipClean = units.some(function (u) {
+        return u && u._photosOnDisk && u._photosOnDisk.skipPhotoSync;
+      });
+      if (_skipClean) {
+        console.warn('[CloudPhotoSync] 사진 없이 열린 작업 → 클라우드 정리 건너뜀(업로드만 반영)');
+        return;
+      }
+
       var keep = {};
       var keepByFname = {};   // 파일명 → 지금 화면에서의 새 이름(cloudName)
       units.forEach(function (u) {
@@ -402,6 +418,17 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       Object.keys(_docByName).forEach(function (nm) { existing[nm] = 1; });
       Object.keys(_borrowedDocs).forEach(function (nm) { existing[nm] = 1; });
       _uploadedNames.forEach(function (nm) { existing[nm] = 1; });
+      /* ☠️ 두 번째 그물 — 화면에 내 사진이 한 장도 없는데 서버에는 있는 경우.
+           읽기 실패·초기화 중일 수 있다. 진짜로 다 지운 것이라면 서버에도 없어야 정상이므로
+           여기서 멈춰도 잃는 것이 없다. 반대로 오판이면 그 작업 사진이 통째로 사라진다.
+           ★ 이 가드를 지우지 말 것. */
+      if (!Object.keys(keep).length && !Object.keys(_localPids || {}).length
+          && Object.keys(_docByName).length) {
+        console.warn('[CloudPhotoSync] 화면에 내 사진이 없는데 서버에는 있음 → 정리 건너뜀(' +
+                     Object.keys(_docByName).length + '건 보존)');
+        return;
+      }
+
       var dels = [];
       Object.keys(_docByName).forEach(function (nm) {
         var rec0 = _docByName[nm];

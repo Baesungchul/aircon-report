@@ -148,7 +148,18 @@
     }
 
     async removeEntry(name, opts) {
-      const p = this._path + '/' + name;
+      /* ☠️ 2026-09-14 점검 — 이 앱의 로컬 삭제는 전부 이 한 줄을 지난다.
+           name 이 '' 이면 경로가 이 폴더 자신이 되고 '..' 이면 상위로 빠져나간다.
+           그대로 rmdir(recursive) 가 돌면 작업·사진이 통째로 사라진다.
+           실제로 그런 값이 들어오는 경로는 확인하지 못했지만, 네이티브 쪽 deletePath 에는
+           같은 가드를 넣어 둔 참이라 여기만 비워 둘 이유가 없다.
+         ★ 이 검사를 지우지 말 것. */
+      const _n = String(name == null ? '' : name).replace(/\\/g, '/').trim();
+      if (!_n || _n === '.' || _n === '..' || _n.indexOf('/') >= 0) {
+        console.error('[native-fs] 삭제 거부 — 폴더 자신이나 상위를 가리키는 이름:', JSON.stringify(name));
+        return;
+      }
+      const p = this._path + '/' + _n;
       try {
         if (opts && opts.recursive) {
           await FS().rmdir({ path: p, directory: DIR, recursive: true });

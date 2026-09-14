@@ -925,6 +925,9 @@ async function renderCustomerList(opts) {
     btn.addEventListener('click', async e => {
       e.stopPropagation();
       const folder = btn.dataset.folder;
+      /* ☠️ 폴더 이름이 비면 아래 removeEntry 가 저장 폴더 자신을 가리킨다.
+           같은 일을 하는 다른 삭제 버튼 8곳에는 다 있는 검사가 여기만 빠져 있었다(2026-09-14 점검). */
+      if (!folder) { showToast('폴더 이름을 알 수 없어 삭제하지 않았습니다', 'err'); return; }
       if (!confirm(`작업 "${folder}"을 삭제할까요?\n폴더의 모든 사진과 데이터가 삭제됩니다.`)) return;
 
       // 권한 체크 (빠름)

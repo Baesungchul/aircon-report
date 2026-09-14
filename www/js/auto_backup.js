@@ -113,8 +113,10 @@
   /* 설정 화면에서 손으로 다시 시킬 수 있게 열어 둔다 */
   AutoBackup.hideFromGallery = function () { return hideBackupFromGallery(true); };
 
-  /* 전용 백업 폴더 이름 — 네이티브(BackupFolderPlugin.OUR_BACKUP_DIR)와 같아야 한다 */
-  var OUR_DIR = '작업보고서백업';
+  /* 전용 백업 폴더 이름 — 네이티브(BackupFolderPlugin.OUR_BACKUP_DIR)와 **글자까지 같아야** 한다.
+     ☠️ 한글 이름은 쓰지 않는다. 기기에 따라 자모가 분리된 형태로 저장되면 글자로는 같아도
+        문자열 비교가 어긋나, 같은 폴더를 매번 새로 만들고 끝없이 겹쳐 들어간다. */
+  var OUR_DIR = 'work-report-backups';
 
   /* 고른 폴더 안에 전용 백업 폴더를 만들어 그 폴더를 쓰게 한다.
      사용자 요청(2026-09-13): 기본 위치를 Documents 로 두고, 그대로 고르면 백업용 새 폴더를 만들어 쓴다. */

@@ -155,12 +155,14 @@ chk('isSystemMediaDir 가 카메라·사진·저장소 루트를 막는다', () 
                 'documents', 'alarms', 'ringtones', 'notifications', 'podcasts',
                 'android', 'recordings', 'audiobooks'];
   const albums = ['dcim', 'pictures', 'movies', 'music'];
-  const OUR = '작업보고서백업';
+  const OUR = 'work-report-backups';   /* 네이티브 OUR_BACKUP_DIR 과 같아야 한다 */
   const sys = (rel) => {
     if (rel == null) return false;
     let r = String(rel).trim().replace(/\/+$/, '');
     if (!r) return true;
-    if (r === OUR || r.endsWith('/' + OUR)) return false;
+    /* endsWithOurDir — 마지막 칸만, 대소문자 무시 */
+    const last = r.indexOf('/') >= 0 ? r.slice(r.lastIndexOf('/') + 1) : r;
+    if (last.toLowerCase() === OUR.toLowerCase()) return false;
     const low = r.toLowerCase();
     if (tops.indexOf(low) >= 0) return true;
     for (const t of albums) {
@@ -174,8 +176,9 @@ chk('isSystemMediaDir 가 카메라·사진·저장소 루트를 막는다', () 
     must(sys(p) === true, '막아야 하는데 통과합니다: ' + (p || '(저장소 루트)'));
   });
   /* 통과해야 하는 것 — 사용자가 직접 만든 폴더와 우리 전용 폴더 */
-  ['Documents/작업보고서백업', 'Documents/내백업', 'Download/backup', '작업보고서백업',
-   'DCIM/Camera/작업보고서백업', 'MyBackup', 'Documents/내백업/2026'].forEach((p) => {
+  ['Documents/work-report-backups', 'Documents/내백업', 'Download/backup', 'work-report-backups',
+   'DCIM/Camera/work-report-backups', 'DCIM/Camera/Work-Report-Backups',   /* 대소문자가 달라도 우리 것 */
+   'MyBackup', 'Documents/내백업/2026'].forEach((p) => {
     must(sys(p) === false, '통과해야 하는데 막힙니다: ' + p);
   });
   return 'DCIM/Camera 차단 · Documents/내백업 허용';
@@ -192,24 +195,45 @@ chk('위험한 폴더를 고르면 그 안에 전용 폴더를 만들어 쓴다'
   must(/useChildDir\(r\.uri\)/.test(blk), '전용 폴더를 만들지 않고 고른 폴더를 그대로 씁니다');
   must(/setSaf\(_uri\)/.test(blk), '전용 폴더가 아니라 고른 폴더를 저장합니다');
   must(blk.indexOf('return false') > 0, '전용 폴더 준비 실패 시 그냥 진행합니다');
-  return 'Documents 를 그대로 골라도 Documents/작업보고서백업';
+  return 'Documents 를 그대로 골라도 Documents/work-report-backups';
 });
 
-chk('전용 폴더 이름이 네이티브와 같다', () => {
+chk('전용 폴더 이름이 네이티브와 같고, ASCII 다', () => {
   const s = read('auto_backup.js');
   const m = s.match(/var OUR_DIR = '([^']+)'/);
   must(m, 'JS 에 OUR_DIR 이 없습니다');
   const jm = jbody.match(/String OUR_BACKUP_DIR = "([^"]+)"/);
   must(jm, '네이티브에 OUR_BACKUP_DIR 이 없습니다');
   must(m[1] === jm[1], '이름이 어긋납니다: JS ' + m[1] + ' / 네이티브 ' + jm[1]);
+  /* ☠️ 한글·공백·특수문자 금지 — 자모 분리(NFD)나 이름 치환으로 비교가 어긋나면
+        같은 폴더를 매번 새로 만들어 끝없이 겹쳐 들어간다 */
+  must(/^[A-Za-z0-9._-]+$/.test(m[1]),
+       '전용 폴더 이름에 ASCII 가 아닌 글자가 있습니다: ' + m[1]);
+  must(m[1] === m[1].normalize('NFC') && m[1] === m[1].normalize('NFD'),
+       '정규화 형태에 따라 달라지는 이름입니다: ' + m[1]);
   return m[1];
+});
+
+chk('전용 폴더 안에서 또 만들지 않는다 (무한 겹침 방지)', () => {
+  const i = jbody.indexOf('public void ensureChildDir');
+  const blk = jbody.slice(i, i + 1400);
+  must(/endsWithOurDir\(parentRel\)/.test(blk), '이미 우리 폴더 안인지 확인하지 않습니다');
+  must(/alreadyOurs/.test(blk), '그 자리를 그대로 쓴다는 표시가 없습니다');
+  const g = blk.indexOf('endsWithOurDir(parentRel)'), cd = blk.indexOf('createDir(');
+  must(g > 0 && cd > g, '겹침 방지 검사가 폴더 생성보다 뒤에 있습니다');
+  must(/findChildDir\(/.test(blk), '대소문자 차이를 견디는 조회를 쓰지 않습니다');
+  must(/equalsIgnoreCase/.test(jbody.slice(jbody.indexOf('private String findChildDir'),
+                                           jbody.indexOf('private String findChildDir') + 1200)),
+       'findChildDir 이 대소문자를 구분해 같은 폴더를 또 만듭니다');
+  must(/equalsIgnoreCase\(OUR_BACKUP_DIR\)/.test(jbody), 'endsWithOurDir 이 대소문자를 구분합니다');
+  return null;
 });
 
 chk('우리가 만든 전용 폴더를 우리가 다시 거부하지 않는다', () => {
   const i = jbody.indexOf('boolean isSystemMediaDir');
   const blk = jbody.slice(i, i + 1400);
-  must(/OUR_BACKUP_DIR/.test(blk),
-       'Documents/작업보고서백업 이 다시 시스템 폴더로 판정됩니다 — 지정이 무한히 거부됩니다');
+  must(/endsWithOurDir\(r\)/.test(blk),
+       '우리 전용 폴더가 다시 시스템 폴더로 판정됩니다 — 지정이 무한히 거부됩니다');
   must(blk.indexOf('return false') > 0, '예외가 통과로 이어지지 않습니다');
   return null;
 });
@@ -217,7 +241,7 @@ chk('우리가 만든 전용 폴더를 우리가 다시 거부하지 않는다',
 chk('ensureChildDir 이 실제로 읽히는지 확인한 뒤 돌려준다', () => {
   const i = jbody.indexOf('public void ensureChildDir');
   must(i > 0, 'ensureChildDir 이 없습니다');
-  const blk = jbody.slice(i, i + 2400);
+  const blk = jbody.slice(i, i + 3600);
   must(/buildTreeDocumentUri/.test(blk), '자식 폴더의 트리 uri 를 만들지 않습니다');
   must(/usable/.test(blk) && /ret\.put\("ok", usable\)/.test(blk),
        '읽히는지 확인하지 않고 ok 를 돌려줍니다 — 백업이 조용히 안 됩니다');

@@ -151,7 +151,15 @@ public class BackupFolderPlugin extends Plugin {
     }
 
     /** 앱이 쓰는 전용 백업 폴더 이름 — 시스템 폴더를 골랐을 때 그 안에 이걸 만들어 쓴다 */
-    static final String OUR_BACKUP_DIR = "작업보고서백업";
+    /* ☠️ 2026-09-14 — 한글 이름을 쓰지 않는다.
+         한글은 기기·파일시스템에 따라 자모가 분리된 형태(NFD)로 저장되는 경우가 있어,
+         우리가 적은 이름("작업보고서백업", NFC)과 글자로는 같아도 문자열 비교가 어긋난다.
+         그러면 (1) 앱을 켤 때마다 같은 폴더를 못 찾아 새로 만들고,
+                (2) isSystemMediaDir 의 '우리 폴더' 예외도 빗나가 그 안에 또 만들어서
+                    사용자 사진 폴더에 폴더가 끝없이 겹쳐 들어간다.
+         앱 폴더 이름(work-report)·기본 백업 경로(work-report-backups)와도 맞는 ASCII 이름을 쓴다.
+         ★ 여기를 한글이나 공백·특수문자가 든 이름으로 바꾸지 말 것. */
+    static final String OUR_BACKUP_DIR = "work-report-backups";
 
     /** 1-b2) 고른 폴더 안에 전용 백업 폴더를 만들고(있으면 그대로) 그 폴더의 트리 uri 를 돌려준다.
      *
@@ -171,12 +179,32 @@ public class BackupFolderPlugin extends Plugin {
                 try {
                     ContentResolver resolver = getContext().getContentResolver();
                     Uri treeUri = Uri.parse(uriStr);
+
+                    /* ☠️ 겹쳐 만들기 방지 — 이미 우리 전용 폴더 안이면 그 자리를 그대로 쓴다.
+                         이 검사가 없으면 이름 비교가 한 번만 어긋나도 앱을 켤 때마다
+                         work-report-backups/work-report-backups/… 로 끝없이 파고든다. */
+                    String parentRel = relPathOfTree(treeUri);
+                    if (endsWithOurDir(parentRel)) {
+                        JSObject same = new JSObject();
+                        same.put("ok", true);
+                        same.put("uri", uriStr);
+                        same.put("name", name);
+                        same.put("created", false);
+                        same.put("alreadyOurs", true);
+                        same.put("relPath", parentRel);
+                        call.resolve(same);
+                        return;
+                    }
+
                     String parentId = DocumentsContract.getTreeDocumentId(treeUri);
-                    String childId = findChildByName(resolver, treeUri, parentId, name);
+                    String childId = findChildDir(resolver, treeUri, parentId, name);
                     boolean created = false;
                     if (childId == null) {
                         childId = createDir(resolver, treeUri, parentId, name);
                         created = (childId != null);
+                        /* 만든 직후 이름을 다시 확인한다 — 제공자가 이름을 바꿨을 수 있다
+                           (중복이면 'name (1)', 특수문자 치환 등). 그때는 만들어진 것을 그대로 찾아 쓴다. */
+                        if (childId == null) childId = findChildDir(resolver, treeUri, parentId, name);
                     }
                     JSObject ret = new JSObject();
                     if (childId == null) {
@@ -250,6 +278,14 @@ public class BackupFolderPlugin extends Plugin {
         return null;
     }
 
+    /** 이 경로의 마지막 칸이 우리 전용 백업 폴더인가 (대소문자 구분 없이 — 파일시스템이 바꿔 줄 수 있다) */
+    private static boolean endsWithOurDir(String path) {
+        if (path == null) return false;
+        int i = path.lastIndexOf('/');
+        String last = (i >= 0) ? path.substring(i + 1) : path;
+        return last.equalsIgnoreCase(OUR_BACKUP_DIR);
+    }
+
     /** 안드로이드가 쓰는 공용/시스템 미디어 폴더인가 (그 자체 또는 저장소 루트) */
     private boolean isSystemMediaDir(String rel) {
         if (rel == null) return false;              // 기본 저장소가 아니면 판단 불가 — 막지 않는다
@@ -258,7 +294,7 @@ public class BackupFolderPlugin extends Plugin {
         if (r.isEmpty()) return true;               // 저장소 루트
         /* 우리가 만든 전용 폴더는 어디에 있어도 안전하다 (Documents/작업보고서백업 등).
            이 예외가 없으면 방금 만든 우리 폴더를 우리가 다시 거부한다. */
-        if (r.equals(OUR_BACKUP_DIR) || r.endsWith("/" + OUR_BACKUP_DIR)) return false;
+        if (endsWithOurDir(r)) return false;
         String low = r.toLowerCase();
         /* ① 공용 최상위 폴더 그 자체는 모두 막는다 (Documents 를 그대로 골라도 그 안에 전용 폴더를 만든다) */
         String[] tops = {"dcim", "pictures", "movies", "music", "download", "downloads",
@@ -642,6 +678,35 @@ public class BackupFolderPlugin extends Plugin {
                 }
             }
         }).start();
+    }
+
+    /** 부모 docId 의 자식 **폴더** 중 이름이 같은 것 (대소문자 무시 — 파일시스템이 바꿔 줄 수 있다).
+     *  ☠️ 전용 백업 폴더를 찾을 때만 쓴다. 정확히 일치하는 것을 먼저 보고, 없으면 대소문자만 다른 것을 받는다.
+     *     이게 없으면 제공자가 'Work-Report-Backups' 로 돌려줄 때 같은 폴더를 매번 새로 만든다. */
+    private String findChildDir(ContentResolver resolver, Uri treeUri, String parentDocId, String name) {
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId);
+        Cursor c = null;
+        String loose = null;
+        try {
+            c = resolver.query(childrenUri, new String[]{
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE
+            }, null, null, null);
+            if (c != null) {
+                while (c.moveToNext()) {
+                    String nm = c.getString(1);
+                    if (nm == null) continue;
+                    if (!DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2))) continue;
+                    if (name.equals(nm)) return c.getString(0);
+                    if (loose == null && name.equalsIgnoreCase(nm)) loose = c.getString(0);
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) try { c.close(); } catch (Exception ignored) {}
+        }
+        return loose;
     }
 
     // 부모 docId의 자식 중 이름이 일치하는 문서 docId 반환 (없으면 null)

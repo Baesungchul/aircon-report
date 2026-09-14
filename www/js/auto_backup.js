@@ -526,9 +526,25 @@
     }
   };
 
+  /* 지우라고 넘어온 상대경로가 '백업 폴더 자체'를 가리키지 않는지 본다.
+     ☠️ 2026-09-13 점검에서 찾은 구멍: '/' · '.' · '..' 같은 값이 들어오면 경로가 한 칸도
+        내려가지 않고 **백업 폴더 통째로** 지워질 수 있었다. 폴더 이름이 어떤 이유로든
+        비거나 이상해지면 백업 전체가 날아간다 — 실제로 사진 유실 사고를 겪은 경로다.
+     ★ 이 검사를 지우지 말 것. */
+  function safeRelPath(relPath) {
+    var p = String(relPath == null ? '' : relPath).replace(/\\/g, '/').trim();
+    if (!p) return '';
+    var segs = p.split('/').filter(function (s) { return s && s !== '.' && s !== '..'; });
+    if (!segs.length) return '';                 // 실제로 내려갈 칸이 없다 → 거부
+    if (p.indexOf('..') >= 0) return '';         // 위로 올라가려는 시도 → 거부
+    return segs.join('/');
+  }
+
   // 특정 작업 폴더를 백업에서 즉시 제거 (작업 삭제 시 호출)
   AutoBackup.removeFromBackup = async function (relPath) {
-    if (!isNative() || !relPath) return;
+    if (!isNative()) return;
+    relPath = safeRelPath(relPath);
+    if (!relPath) { console.warn('[자동백업] 삭제 반영 거부 — 백업 폴더 자체를 가리키는 경로'); return; }
     // 1) 사용자가 지정한 백업 폴더(SAF)에서도 즉시 제거 (복원 시 삭제 작업 부활 방지)
     try {
       var saf = getSaf();

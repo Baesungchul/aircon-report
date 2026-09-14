@@ -131,14 +131,42 @@ chk('시스템 미디어 폴더에는 .nomedia 를 쓰지 않는다', () => {
 chk('isSystemMediaDir 가 카메라·사진·저장소 루트를 막는다', () => {
   const i = jbody.indexOf('boolean isSystemMediaDir');
   must(i > 0, 'isSystemMediaDir 가 없습니다');
-  const blk = jbody.slice(i, i + 1200);
+  const blk = jbody.slice(i, i + 1600);
   ['dcim', 'pictures', 'download', 'documents', 'movies', 'android'].forEach((t) => {
     must(blk.indexOf('"' + t + '"') > 0, t + ' 가 목록에 없습니다');
   });
   must(/r\.isEmpty\(\)/.test(blk), '저장소 루트를 막지 않습니다');
-  must(/indexOf\('\/'\) < 0/.test(blk),
-       '1단계 하위(DCIM/Camera)를 막지 않거나, 사용자 폴더까지 막습니다');
-  return null;
+  must(/albums/.test(blk), '사진 앨범 1단계 하위(DCIM/Camera)를 구분하지 않습니다');
+
+  /* 자바 구현을 그대로 옮겨 실제 경로로 확인한다 */
+  const tops = ['dcim', 'pictures', 'movies', 'music', 'download', 'downloads',
+                'documents', 'alarms', 'ringtones', 'notifications', 'podcasts',
+                'android', 'recordings', 'audiobooks'];
+  const albums = ['dcim', 'pictures', 'movies', 'music'];
+  const OUR = '작업보고서백업';
+  const sys = (rel) => {
+    if (rel == null) return false;
+    let r = String(rel).trim().replace(/\/+$/, '');
+    if (!r) return true;
+    if (r === OUR || r.endsWith('/' + OUR)) return false;
+    const low = r.toLowerCase();
+    if (tops.indexOf(low) >= 0) return true;
+    for (const t of albums) {
+      if (low.startsWith(t + '/') && low.indexOf('/', t.length + 1) < 0) return true;
+    }
+    return false;
+  };
+  /* 막아야 하는 것 */
+  ['', 'DCIM', 'DCIM/Camera', 'Pictures', 'Pictures/Screenshots', 'Documents',
+   'Download', 'Android', 'Movies/Camera'].forEach((p) => {
+    must(sys(p) === true, '막아야 하는데 통과합니다: ' + (p || '(저장소 루트)'));
+  });
+  /* 통과해야 하는 것 — 사용자가 직접 만든 폴더와 우리 전용 폴더 */
+  ['Documents/작업보고서백업', 'Documents/내백업', 'Download/backup', '작업보고서백업',
+   'DCIM/Camera/작업보고서백업', 'MyBackup', 'Documents/내백업/2026'].forEach((p) => {
+    must(sys(p) === false, '통과해야 하는데 막힙니다: ' + p);
+  });
+  return 'DCIM/Camera 차단 · Documents/내백업 허용';
 });
 
 console.log('\n[4] 지정 시점과 옛 지정을 구제하는가');
@@ -230,6 +258,46 @@ chk('mirror 는 선택된 트리 안에서만 삭제한다', () => {
   must(/buildDocumentUriUsingTree/.test(blk),
        '삭제가 선택된 트리(treeUri) 기준이 아닙니다 — 권한 밖까지 닿을 수 있습니다');
   return null;
+});
+
+chk('백업 폴더 자체를 지우라는 요청은 거부한다', () => {
+  /* ☠️ '/' · '.' · '..' 이 들어오면 경로가 한 칸도 내려가지 않아 백업 폴더가 통째로 지워질 수 있었다 */
+  const i = jbody.indexOf('public void deletePath');
+  must(i > 0, 'deletePath 가 없습니다');
+  const blk = jbody.slice(i, i + 2600);
+  must(/int depth = 0/.test(blk) && /depth\+\+/.test(blk), '내려간 칸을 세지 않습니다');
+  must(/if \(depth == 0\)/.test(blk), '한 칸도 못 내려갔을 때를 막지 않습니다');
+  must(blk.indexOf('"refused"') > 0, '거부를 알려주지 않습니다');
+  const rf = blk.indexOf('if (depth == 0)'), dd = blk.indexOf('boolean ok = deleteDoc');
+  must(rf > 0 && dd > rf, '거부 검사가 삭제보다 뒤에 있습니다');
+  must(/seg\.equals\("\."\)/.test(blk), "'.' 세그먼트를 건너뛰지 않습니다");
+  return null;
+});
+
+chk('JS 쪽에서도 같은 경로를 걸러낸다', () => {
+  const s = read('auto_backup.js');
+  must(/function safeRelPath/.test(s), 'safeRelPath 가 없습니다');
+  const i = s.indexOf('AutoBackup.removeFromBackup');
+  const blk = s.slice(i, i + 500);
+  must(/safeRelPath\(relPath\)/.test(blk), 'removeFromBackup 이 경로를 검사하지 않습니다');
+  must(/if \(!relPath\) \{[^}]*return/.test(blk), '거부된 경로로 그대로 진행합니다');
+
+  /* 구현을 그대로 옮겨 확인 */
+  const safe = (relPath) => {
+    let p = String(relPath == null ? '' : relPath).replace(/\\/g, '/').trim();
+    if (!p) return '';
+    const segs = p.split('/').filter((x) => x && x !== '.' && x !== '..');
+    if (!segs.length) return '';
+    if (p.indexOf('..') >= 0) return '';
+    return segs.join('/');
+  };
+  ['', '/', '//', '.', '..', './', '../', '../..', ' ', null, undefined].forEach((p) => {
+    must(safe(p) === '', '백업 폴더 자체를 가리키는 값을 통과시킵니다: ' + JSON.stringify(p));
+  });
+  must(safe('2026-09-05_120000') === '2026-09-05_120000', '정상 경로를 막습니다');
+  must(safe('2026-09-05/work1') === '2026-09-05/work1', '정상 하위 경로를 막습니다');
+  must(safe('a/../../b') === '', '위로 올라가는 경로를 통과시킵니다');
+  return '빈값·루트·상위이동 모두 거부';
 });
 
 chk('보호한 항목 수를 결과로 알려준다', () => {

@@ -11,7 +11,7 @@
    version_gate.js 의 강제 업데이트 판정(minVersion 비교)도 엉뚱해진다.
    배포할 때 build.gradle(versionCode +1, versionName) 과 여기를 같이 고칠 것. */
 const APP_VERSION = '3.2.26';
-const APP_VERSION_DATE = '2026-09-13';
+const APP_VERSION_DATE = '2026-09-14';
 
 // 버전 표시 갱신 함수
 function applyAppVersion() {

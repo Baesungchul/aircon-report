@@ -260,17 +260,21 @@ public class BackupFolderPlugin extends Plugin {
            이 예외가 없으면 방금 만든 우리 폴더를 우리가 다시 거부한다. */
         if (r.equals(OUR_BACKUP_DIR) || r.endsWith("/" + OUR_BACKUP_DIR)) return false;
         String low = r.toLowerCase();
+        /* ① 공용 최상위 폴더 그 자체는 모두 막는다 (Documents 를 그대로 골라도 그 안에 전용 폴더를 만든다) */
         String[] tops = {"dcim", "pictures", "movies", "music", "download", "downloads",
                          "documents", "alarms", "ringtones", "notifications", "podcasts",
                          "android", "recordings", "audiobooks"};
         for (String t : tops) {
-            if (low.equals(t)) return true;                     // DCIM
-            if (low.startsWith(t + "/")) {
-                /* DCIM/Camera, Pictures/Screenshots 같은 1단계 하위도 시스템 앨범이라 막는다.
-                   단, 사용자가 그 아래에 직접 만든 2단계 이상 폴더(Documents/내백업/2026)는 허용. */
-                String restOf = low.substring(t.length() + 1);
-                if (restOf.indexOf('/') < 0) return true;
-            }
+            if (low.equals(t)) return true;
+        }
+        /* ② 사진·영상 앨범의 1단계 하위도 막는다 (DCIM/Camera, Pictures/Screenshots).
+              갤러리가 앨범으로 보여 주는 자리라, 여기에 .nomedia 를 두면 사용자 갤러리가 빈다.
+              Documents / Download 아래는 사용자가 직접 만드는 자리라 막지 않는다 —
+              막으면 Documents/내백업 을 골라도 한 단계 더 파고들어가 번거로워진다.
+              그런 폴더에 남의 파일이 있으면 foreignCount 쪽에서 전용 폴더를 만들어 쓴다. */
+        String[] albums = {"dcim", "pictures", "movies", "music"};
+        for (String t : albums) {
+            if (low.startsWith(t + "/") && low.indexOf('/', t.length() + 1) < 0) return true;
         }
         return false;
     }
@@ -596,9 +600,14 @@ public class BackupFolderPlugin extends Plugin {
                     ContentResolver resolver = getContext().getContentResolver();
                     Uri treeUri = Uri.parse(uriStr);
                     String docId = DocumentsContract.getTreeDocumentId(treeUri);
-                    String[] segs = relPath.split("/");
+                    /* ☠️ 2026-09-13 — 한 칸도 내려가지 않으면 백업 폴더 자체를 지우게 된다.
+                         '/' · '.' · '..' 같은 값이 들어오면 아래 루프가 전부 건너뛰고
+                         docId 가 루트인 채로 삭제가 돌았다. 내려간 칸을 세서 막는다.
+                         ★ 이 검사를 지우지 말 것. */
+                    int depth = 0;
+                    String[] segs = relPath.replace('\\', '/').split("/");
                     for (String seg : segs) {
-                        if (seg == null || seg.isEmpty() || seg.equals("..")) continue;
+                        if (seg == null || seg.isEmpty() || seg.equals(".") || seg.equals("..")) continue;
                         String childId = findChildByName(resolver, treeUri, docId, seg);
                         if (childId == null) {
                             JSObject r0 = new JSObject();
@@ -608,6 +617,14 @@ public class BackupFolderPlugin extends Plugin {
                             return;
                         }
                         docId = childId;
+                        depth++;
+                    }
+                    if (depth == 0) {           // 한 칸도 못 내려갔다 = 백업 폴더 자체 → 절대 안 지운다
+                        JSObject r0 = new JSObject();
+                        r0.put("deleted", false);
+                        r0.put("refused", true);
+                        call.resolve(r0);
+                        return;
                     }
                     boolean ok = deleteDoc(resolver, treeUri, docId);
                     JSObject ret = new JSObject();

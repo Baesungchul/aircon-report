@@ -290,12 +290,14 @@ public class BackupFolderPlugin extends Plugin {
         Cursor c = null;
         try {
             c = resolver.query(childrenUri, new String[]{
-                    DocumentsContract.Document.COLUMN_DISPLAY_NAME }, null, null, null);
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE }, null, null, null);
             if (c != null) {
                 while (c.moveToNext()) {
                     String nm = c.getString(0);
                     if (nm == null || ".nomedia".equals(nm)) continue;
-                    if (isOursTopLevel(nm)) continue;
+                    boolean isDir = DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(1));
+                    if (isOursTopLevel(nm, isDir)) continue;
                     foreign++;
                     if (sample.length() < 120) {
                         if (sample.length() > 0) sample.append(", ");
@@ -313,19 +315,23 @@ public class BackupFolderPlugin extends Plugin {
     }
 
     /**
-     * 백업 폴더 '맨 위'에서 우리가 만든 이름인가.
-     *   앱 폴더(work-report)의 최상위는 날짜/작업 폴더(YYYY-MM-DD…), '_' 로 시작하는 것들
-     *   (_shared, _appdata.json), 수동일정(m_…), 그리고 *.json 뿐이다.
-     *   ☠️ prune(원본에 없는 대상 삭제)은 맨 위에서 이 목록만 지운다. 사용자가 백업 폴더를
-     *      DCIM/Camera 로 잘못 골라도 IMG_…jpg / 20260905_…jpg / Camera 같은 남의 것은 건드리지 않는다.
+     * 백업 폴더 '맨 위'에서 우리가 만든 것인가 — 이름 + 종류(폴더/파일)를 함께 본다.
+     *
+     *   앱 폴더(work-report)의 최상위에는 **폴더**(날짜/작업 YYYY-MM-DD…, _shared, m_…)와
+     *   **.json 파일** 말고는 아무것도 없다. 사진·영상 파일이 맨 위에 놓이는 일은 없다.
+     *
+     *   ☠️ 그래서 맨 위의 prune 은 '폴더이거나 .json 인 것'만 대상으로 한다. 이름만 보면
+     *      '2026-09-05 14.30.12.jpg' 처럼 날짜로 시작하는 카메라 파일이 우리 작업 폴더로
+     *      오인돼 지워진다 — 일부 카메라·메신저 앱이 실제로 이런 이름을 쓴다.
      *      2026-09-13 사진 유실 사고의 재발 방지 — 이 게이트를 느슨하게 고치지 말 것.
      */
-    private static boolean isOursTopLevel(String name) {
+    private static boolean isOursTopLevel(String name, boolean isDir) {
         if (name == null || name.isEmpty()) return false;
         if (".nomedia".equals(name)) return false;          // 우리가 뒀지만 지우지 않는다
-        if (name.charAt(0) == '_') return true;             // _shared, _appdata.json …
-        if (name.startsWith("m_")) return true;             // 수동일정
         if (name.toLowerCase().endsWith(".json")) return true;
+        if (!isDir) return false;                           // ★ 폴더가 아니면 우리 것이 아니다
+        if (name.charAt(0) == '_') return true;             // _shared …
+        if (name.startsWith("m_")) return true;             // 수동일정
         if (name.length() < 10) return false;
         for (int i = 0; i < 10; i++) {
             char ch = name.charAt(i);
@@ -449,7 +455,8 @@ public class BackupFolderPlugin extends Plugin {
         for (Map.Entry<String, String[]> e : destMap.entrySet()) {
             String nm = e.getKey();
             if (srcNames.contains(nm)) continue;
-            if (isRoot && !isOursTopLevel(nm)) {
+            boolean isDir = DocumentsContract.Document.MIME_TYPE_DIR.equals(e.getValue()[1]);
+            if (isRoot && !isOursTopLevel(nm, isDir)) {
                 counts[4]++;                      // 남의 파일 — 건드리지 않고 세어만 둔다
                 continue;
             }

@@ -85,13 +85,19 @@ chk('isOursTopLevel 이 카메라 파일명을 우리 것으로 보지 않는다
   const i = jbody.indexOf('static boolean isOursTopLevel');
   must(i > 0, 'isOursTopLevel 이 없습니다');
   const blk = jbody.slice(i, i + 900);
+  must(/boolean isDir/.test(jbody.slice(i, i + 200)),
+       '폴더/파일 종류를 보지 않습니다 — 날짜로 시작하는 카메라 파일이 지워질 수 있습니다');
+  must(/if \(!isDir\) return false/.test(blk), '파일을 우리 폴더로 오인할 수 있습니다');
+  must(/isOursTopLevel\(nm, isDir\)/.test(jbody), '호출부가 종류를 넘기지 않습니다');
+
   /* 자바 구현을 그대로 JS 로 옮겨 실제 이름들로 확인한다 */
-  const ours = (name) => {
+  const ours = (name, isDir) => {
     if (!name) return false;
     if (name === '.nomedia') return false;
+    if (name.toLowerCase().endsWith('.json')) return true;
+    if (!isDir) return false;
     if (name[0] === '_') return true;
     if (name.indexOf('m_') === 0) return true;
-    if (name.toLowerCase().endsWith('.json')) return true;
     if (name.length < 10) return false;
     for (let k = 0; k < 10; k++) {
       const ch = name[k], dash = (k === 4 || k === 7);
@@ -99,21 +105,27 @@ chk('isOursTopLevel 이 카메라 파일명을 우리 것으로 보지 않는다
     }
     return true;
   };
-  must(/'_'/.test(blk) && /m_/.test(blk) && /\.json/.test(blk),
-       '구현이 바뀐 것 같습니다 — 이 검사의 모형도 같이 고쳐 주세요');
-  /* 남의 것 — 절대 지워선 안 된다 */
-  ['IMG_20260905_143012.jpg', '20260905_143012.jpg', 'Camera', 'Screenshots',
-   'Screenshot_20260905_143012.jpg', 'PXL_20260905_143012.jpg', 'KakaoTalk_20260905.jpg',
-   'VID_20260905.mp4', '.thumbnails', 'my-photos'].forEach((n) => {
-    must(ours(n) === false, '남의 파일을 우리 것으로 봅니다: ' + n);
+  /* 남의 파일 — 절대 지워선 안 된다 (전부 파일) */
+  ['IMG_20260905_143012.jpg', '20260905_143012.jpg', 'Screenshot_20260905_143012.jpg',
+   'PXL_20260905_143012.jpg', 'KakaoTalk_20260905.jpg', 'VID_20260905.mp4',
+   '2026-09-05 14.30.12.jpg',        // ☠️ 날짜로 시작하는 카메라 파일 — 이름만 보면 우리 것처럼 보인다
+   '2026-09-05_143012.jpg', '2026-09-05.png', '_DSC0001.jpg', 'm_20260905.mp4',
+   ].forEach((n) => {
+    must(ours(n, false) === false, '남의 파일을 우리 것으로 봅니다: ' + n);
+  });
+  /* 남의 폴더 — 이름이 우리 규칙과 안 겹친다 */
+  ['Camera', 'Screenshots', '.thumbnails', 'my-photos', 'WhatsApp'].forEach((n) => {
+    must(ours(n, true) === false, '남의 폴더를 우리 것으로 봅니다: ' + n);
   });
   /* 우리 것 — 정리는 계속 돼야 한다 */
-  ['2026-09-05_143012', '2026-09-05', '_shared', '_appdata.json', 'm_1757000000000',
-   'work-index.json'].forEach((n) => {
-    must(ours(n) === true, '우리 폴더를 못 알아봅니다: ' + n);
+  ['2026-09-05_143012', '2026-09-05', '_shared', 'm_1757000000000'].forEach((n) => {
+    must(ours(n, true) === true, '우리 폴더를 못 알아봅니다: ' + n);
   });
-  must(ours('.nomedia') === false, '.nomedia 를 매 백업마다 지웁니다');
-  return '카메라·스크린샷·카톡 이름 모두 보호';
+  ['_appdata.json', 'work-index.json'].forEach((n) => {
+    must(ours(n, false) === true, '우리 json 을 못 알아봅니다: ' + n);
+  });
+  must(ours('.nomedia', false) === false, '.nomedia 를 매 백업마다 지웁니다');
+  return '날짜로 시작하는 카메라 파일까지 보호';
 });
 
 console.log('\n[3] .nomedia 로 갤러리를 통째로 숨기지 않는가');

@@ -236,6 +236,9 @@ chk('옛 빌드에서 잘못 지정된 폴더를 앱 켤 때 옮긴다 (기존 �
        '구제 과정에서 파일을 지웁니다 — 이미 유실 사고가 난 경로라 절대 안 됩니다');
   must(/inspectFolder/.test(jbody), '네이티브 inspectFolder 가 없습니다');
   must(/한 번만 알린다|UNSAFE_LS/.test(blk), '앱을 켤 때마다 같은 알림이 뜹니다');
+  must(/hideBackupFromGallery\(true\)/.test(blk),
+       '옮긴 폴더에 .nomedia 를 다시 넣지 않습니다 — 백업 사진이 갤러리에 보입니다');
+  must(/백업 폴더 바꾸기/.test(blk), '직접 다시 지정할 수 있다는 안내가 없습니다');
   return '전용 폴더로 이사 + 1회 안내';
 });
 

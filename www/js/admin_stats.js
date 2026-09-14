@@ -28,6 +28,14 @@
     '</div>';
   }
   function sechead(t) { return '<div style="font-size:12px;font-weight:800;color:var(--ac);margin:14px 0 4px;">' + t + '</div>'; }
+  /* ★ 손봐야 할 값은 빨간색으로 세운다 — 회색 숫자에 섞이면 못 본다 (2026-09-14) */
+  function bad(txt) { return '<span style="color:#e5484d;font-weight:800;">' + esc(txt) + '</span>'; }
+  function _fmtAgo(h) {
+    if (h < 0) return '없음';
+    if (h < 1) return '방금';
+    if (h < 24) return h + '시간 전';
+    return Math.floor(h / 24) + '일 전';
+  }
   function _thisYm() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
   function _manualClaude() { try { var o = JSON.parse(localStorage.getItem('admin_claude_cost') || 'null'); return (o && o.ym === _thisYm()) ? o : null; } catch (e) { return null; } }
   function _editClaudeCost(ov, j) {
@@ -315,6 +323,69 @@
           + (_d.fullOver ? (' · ⚠️ 임계 초과 ' + _d.fullOver + '건') : ''));
       }
     } catch (e) {}
+
+    /* ── 계정 정리 작업 (2026-09-14) ──
+       계정 삭제는 되돌릴 수 없다. 매일 새벽 4시에 도는 이 작업이 무엇을 했는지
+       Cloud Functions 로그를 뒤지지 않고 여기서 바로 보게 한다.
+       ★ 손봐야 할 상태는 전부 빨간색으로 세운다 — 회색 글자에 섞이면 못 본다. */
+    try {
+      var _cu = j.cleanup;
+      h += sechead('🧹 계정 정리 (매일 04:00)');
+      if (!_cu) {
+        h += row('상태', bad('기록 없음'),
+                 '아직 한 번도 돌지 않았거나 서버 함수가 배포되지 않았습니다');
+      } else {
+        var _ageH = _cu.at ? Math.floor((Date.now() - _cu.at) / 3600000) : -1;
+        var _stale = (_ageH < 0 || _ageH > 48);   // 하루 1회인데 48시간 넘으면 이상
+        h += row('마지막 실행',
+                 _cu.at ? (_stale ? bad(_fmtAgo(_ageH)) : esc(_fmtAgo(_ageH))) : bad('없음'),
+                 _cu.at ? new Date(_cu.at).toLocaleString('ko-KR')
+                        : '스케줄러가 도는지 확인이 필요합니다');
+
+        h += row('모드',
+                 _cu.dryRun ? '<span style="color:#f5a524;font-weight:800;">드라이런</span>' : '실제 삭제',
+                 _cu.dryRun ? '삭제 대상만 기록하고 실제로는 지우지 않는 중 (config/app 의 purgeDryRun)'
+                            : '조건에 맞으면 계정을 실제로 지웁니다');
+
+        h += row('후보', esc(String(_cu.candidates)) + '명',
+                 _cu.capHit ? bad('상한 500 에 걸렸습니다 — 처리되지 못한 사용자가 남아 있습니다')
+                            : '삭제 예정일이 다가온 사용자만 추려낸 수');
+
+        h += row('경고 발송', esc(String(_cu.warned)) + '명', '삭제 30일 전 안내를 보낸 사람');
+        h += row('예정 취소', esc(String(_cu.cleared)) + '명', '재구독 등으로 삭제 예약이 풀린 사람');
+        h += row('실제 삭제',
+                 _cu.purged ? bad(_cu.purged + '명') : '0명',
+                 _cu.purged ? '되돌릴 수 없습니다 — 아래 목록에서 누구였는지 확인하세요'
+                            : '이번 실행에서 지워진 계정 없음');
+
+        var _dry = (_cu.targets || []).filter(function (t) { return t && t.what === 'dryRun'; });
+        if (_dry.length) {
+          h += row('지워질 뻔한 사람', bad(_dry.length + '명'),
+                   '드라이런이 아니었다면 지워졌습니다. 아래 목록을 확인하세요');
+        }
+
+        if ((_cu.targets || []).length) {
+          var _lbl = { 'purged': '삭제됨', 'purged-requested': '본인요청 삭제',
+                       'dryRun': '삭제 대상(보류)', 'warned': '경고', 'kept-recheck': '재확인 후 보존' };
+          var _isBad = { 'purged': 1, 'dryRun': 1 };
+          h += '<div style="margin:8px 0 2px;font-size:11px;color:var(--mu);">대상 목록 (최근 ' + _cu.targets.length + '건)</div>';
+          h += '<div style="max-height:150px;overflow:auto;border:1px solid var(--sf2,#eee);border-radius:8px;padding:6px 8px;">';
+          _cu.targets.forEach(function (t) {
+            var nm = _lbl[t.what] || t.what;
+            h += '<div style="font-size:11px;padding:3px 0;border-bottom:1px solid var(--sf2,#f2f2f2);">' +
+                 (_isBad[t.what] ? bad(nm) : '<span style="color:var(--mu);">' + esc(nm) + '</span>') +
+                 ' <span style="font-weight:700;">' + esc(t.plan || 'free') + '</span>' +
+                 ' <span style="color:var(--mu);">' + esc(String(t.uid || '').slice(0, 10)) + '…</span>' +
+                 '</div>';
+          });
+          h += '</div>';
+        }
+      }
+    } catch (e) {
+      /* 조용히 사라지면 '정리 작업에 문제가 없다'로 오해한다 — 화면에도 남긴다 */
+      console.warn('[관리자] 계정 정리 표시 실패', e && e.message);
+      h += row('계정 정리', bad('표시 실패'), '이 항목을 그리지 못했습니다: ' + esc((e && e.message) || ''));
+    }
 
     h += '<div style="text-align:center;margin-top:14px;"><button class="btn b-ghost" id="asDiag" style="font-size:12px;">🔧 공유 진단 (팀원 작업 표시 문제)</button></div>';
     h += '<div style="font-size:10px;color:var(--mu);margin-top:10px;text-align:center;">생성: ' + esc((j.generatedAt || '').replace('T', ' ').slice(0, 16)) + ' · 금액은 참고용(추정 포함)</div>';

@@ -512,6 +512,7 @@ exports.cleanupAccounts = onSchedule(
     if (_PURGE_DRY_RUN) console.warn('[cleanupAccounts] ★ 드라이런 모드 — 계정을 실제로 지우지 않습니다');
 
     const CAND_LIMIT = 500;
+    let _capHit = false;
     const cands = new Map();
     const _add = (snap) => { snap.docs.forEach((d) => { if (!cands.has(d.id)) cands.set(d.id, d); }); };
     /* 경고를 보내야 하는 시점(삭제 30일 전)부터가 대상이다 */
@@ -530,11 +531,21 @@ exports.cleanupAccounts = onSchedule(
     ]);
     parts.forEach(_add);
     parts.forEach((snap, i) => {
-      if (snap.docs.length >= CAND_LIMIT) console.warn('[cleanupAccounts] 후보 쿼리 ' + i + ' 가 상한(' + CAND_LIMIT + ')에 걸렸습니다 — 나머지는 다음 실행에서 처리됩니다');
+      if (snap.docs.length >= CAND_LIMIT) { _capHit = true; console.warn('[cleanupAccounts] 후보 쿼리 ' + i + ' 가 상한(' + CAND_LIMIT + ')에 걸렸습니다 — 나머지는 다음 실행에서 처리됩니다'); }
     });
     console.log('[cleanupAccounts] 후보 ' + cands.size + '명 (예전에는 전체 사용자를 읽었다)');
 
     let warned = 0, purged = 0, cleared = 0;
+    /* 관리자 화면에 보여줄 실행 요약 — 누가 왜 대상이 됐는지 남긴다 */
+    const _targets = [];
+    const _note = (uid, what, u2) => {
+      _targets.push({
+        uid: uid,
+        what: what,                                        // purged | dryRun | warned | kept
+        plan: (u2 && (u2.billingPlan || u2.plan)) || 'free',
+        at: new Date().toISOString().slice(0, 16).replace('T', ' ')
+      });
+    };
 
     for (const doc of cands.values()) {
       const u = doc.data() || {};
@@ -543,7 +554,7 @@ exports.cleanupAccounts = onSchedule(
       const pendingMs = (u.pendingDeletionAt && u.pendingDeletionAt.toMillis) ? u.pendingDeletionAt.toMillis() : 0;
 
       // (1) 직접 삭제 요청 → 유예 없이 즉시 정리 (구독 여부와 무관, 본인 의사)
-      if (explicit) { await _purgeAccount(db, uid); purged++; continue; }
+      if (explicit) { _note(uid, 'purged-requested', u); await _purgeAccount(db, uid); purged++; continue; }
 
       // (2) 구독 활성 → 데이터 유지. 예약/경고가 남아 있으면 취소(재구독 반영).
       if (_isSubscribed(u, now)) {
@@ -579,14 +590,17 @@ exports.cleanupAccounts = onSchedule(
         if (!_fresh) { console.warn('[cleanupAccounts] 문서가 이미 없음 → 건너뜀:', uid); continue; }
         if (_fresh.deletionRequestedAt) { await _purgeAccount(db, uid); purged++; continue; }
         if (_isSubscribed(_fresh, Date.now())) {
+          _note(uid, 'kept-recheck', _fresh);
           console.log('[cleanupAccounts] 재확인에서 구독 확인 → 보존:', uid);
           continue;
         }
         if (_PURGE_DRY_RUN) {
+          _note(uid, 'dryRun', _fresh);
           console.warn('[cleanupAccounts] (드라이런) 삭제 대상이지만 지우지 않음:', uid,
                        'plan=', (_fresh.billingPlan || _fresh.plan || 'free'));
           continue;
         }
+        _note(uid, 'purged', _fresh);
         await _purgeAccount(db, uid); purged++; continue;
       }
 
@@ -599,10 +613,30 @@ exports.cleanupAccounts = onSchedule(
         await _pushTo(db, uid, '⚠️ 데이터 삭제 예정 안내',
           '구독 해지 후 6개월이 다가와, 30일 후 클라우드에 저장된 사진·일정이 삭제될 예정입니다. 다시 구독하면 유지됩니다.',
           { type: 'deletionWarning' });
+        _note(uid, 'warned', u);
         warned++; continue;
       }
     }
     console.log(`[cleanupAccounts] 경고 ${warned} / 정리 ${purged} / 예정취소 ${cleared}`);
+
+    /* ── 실행 요약을 남긴다 (2026-09-14) ──
+       계정 삭제는 되돌릴 수 없어서, 무슨 일이 있었는지 확인할 자리가 필요하다.
+       Cloud Functions 로그를 뒤지지 않고 앱의 관리자 화면에서 바로 보게 한다.
+       ⚠️ config/{doc} 은 규칙상 누구나 읽을 수 있으므로 여기에 쓰면 안 된다.
+          admin/ 아래에 쓰고, 관리자 인증을 거치는 adminStats 가 대신 읽어 내려준다.
+       ⚠️ 요약 쓰기가 실패해도 정리 작업 자체는 성공으로 둔다(부가 기능). */
+    try {
+      await db.collection('admin').doc('cleanupLast').set({
+        at: admin.firestore.FieldValue.serverTimestamp(),
+        dryRun: _PURGE_DRY_RUN,
+        candidates: cands.size,
+        warned: warned,
+        purged: purged,
+        cleared: cleared,
+        capHit: _capHit,
+        targets: _targets.slice(0, 30)   // 문서가 커지지 않게 30건까지만
+      }, { merge: false });
+    } catch (e) { console.warn('[cleanupAccounts] 요약 기록 실패:', e && e.message); }
   }
 );
 
@@ -1140,7 +1174,29 @@ exports.adminStats = onRequest(
         _statsPlayEarnings()
       ]);
       if (authTotal != null) users.authTotal = authTotal;   // 가입 계정 수(권위)
-      res.json({ ok: true, generatedAt: new Date().toISOString(), users, claude, storage, play, earnings });
+
+      /* 계정 정리 작업의 마지막 실행 요약 (2026-09-14)
+         admin/ 아래 문서는 클라이언트가 직접 못 읽는다 — 관리자 인증을 거친 여기서 대신 읽어 내려준다.
+         읽기 실패는 통계 전체를 막지 않는다. */
+      let cleanup = null;
+      try {
+        const _cl = await admin.firestore().collection('admin').doc('cleanupLast').get();
+        if (_cl.exists) {
+          const c = _cl.data() || {};
+          cleanup = {
+            at: (c.at && c.at.toMillis) ? c.at.toMillis() : 0,
+            dryRun: !!c.dryRun,
+            candidates: Number(c.candidates) || 0,
+            warned: Number(c.warned) || 0,
+            purged: Number(c.purged) || 0,
+            cleared: Number(c.cleared) || 0,
+            capHit: !!c.capHit,
+            targets: Array.isArray(c.targets) ? c.targets.slice(0, 30) : []
+          };
+        }
+      } catch (e) { console.warn('[adminStats] cleanupLast 읽기 실패:', e && e.message); }
+
+      res.json({ ok: true, generatedAt: new Date().toISOString(), users, claude, storage, play, earnings, cleanup });
     } catch (e) {
       res.status(500).json({ error: String((e && e.message) || e) });
     }

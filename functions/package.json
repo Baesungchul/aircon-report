@@ -3,7 +3,7 @@
   "description": "Claude API 프록시 (Anthropic 키를 서버에 숨김)",
   "main": "index.js",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "dependencies": {
     "firebase-admin": "^12.6.0",

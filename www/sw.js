@@ -1,4 +1,9 @@
 // 서비스워커 v609 (앱 v3.2.8 · 2026-09-04) — 빌드 대기
+//   ★ 다음 빌드: 그날 지도(스케줄 목록 머리줄 [지도]) + 지도에서 주소 찍기(주소칸 🗺)
+//     ⚠️ www/js/config_map.js 의 KAKAO_JS_KEY 를 채우고 카카오 콘솔에 https://localhost 를
+//        등록해야 켜진다. 비어 있으면 두 기능이 조용히 꺼진 채 나머지는 그대로 돈다.
+//     ⚠️ 새 파일 4개(config_map · geocode · cal_map · map_pick)가 index.html 에 실린다 →
+//        빌드 전에 `npx cap copy android` 가 반드시 돌아야 한다(bump-version.js 가 직접 실행한다).
 //   ★ v609: release 빌드 minifyEnabled 켜기 (Play 콘솔 "난독화 4%" 경고 대응) +
 //     버전 올림(3.2.7→3.2.8). www 쪽 코드 변경은 없음(네이티브/버전 표기만).
 //   ★ v608: 관리자 저장소 섹션에 확인용 3줄 추가 (실기기에서 콘솔을 못 보니 앱이 대신 보여준다)

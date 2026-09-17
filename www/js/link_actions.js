@@ -70,6 +70,22 @@
     if (!el || el._laDone) return; el._laDone = true;
     var wrap = wrapInput(el);
     wrap.appendChild(mkIcon('🧭', '길안내', function () { nav(el.value); }));
+    /* ★ 2026-09-17 지도에서 주소 찍기 (2단계)
+       주소칸이 비었거나 아파트 이름만 적힌 작업은 지도에 안 뜬다 — 그 원인을
+       입력하는 자리에서 막는다. 지도를 길게 눌러 그 자리 주소를 넣을 수 있다.
+       ⚠️ 지도 키(config_map.js)가 없으면 버튼 자체를 안 만든다.
+          눌러도 아무 일 없는 버튼을 두는 것보다, 없는 편이 덜 헷갈린다. */
+    if (window.MapPick && MapPick.available()) {
+      wrap.appendChild(mkIcon('🗺', '지도에서 찍기', function () {
+        MapPick.open(el.value, function (addr) {
+          el.value = addr;
+          /* 입력칸을 코드로 바꾸면 사람이 친 것과 달리 아무 신호도 안 난다.
+             저장 여부를 input/change 로 판단하는 화면들이 있어 직접 알려 준다. */
+          try { el.dispatchEvent(new Event('input',  { bubbles: true })); } catch (e) {}
+          try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+        });
+      }));
+    }
   }
   function scan() {
     PHONE_IDS.forEach(function (id) { enhancePhone(document.getElementById(id)); });

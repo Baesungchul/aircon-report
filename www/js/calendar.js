@@ -201,6 +201,9 @@
               specials: (u.specials || []).map(function (s) {
                 return { desc: (s && s.desc) || '', photoCount: (s && (s.photoCount || (s.photosMeta && s.photosMeta.length))) || 0 };
               }),
+              /* ⚠️ 2026-09-17 — '그날 지도'가 주소를 여기서 읽는다(_workAddrOf).
+                 customer 를 필드별로 추리는 순간 주소가 빠져, 앱을 껐다 켜면 그날 지도가
+                 텅 비게 된다(업종 아이콘이 사라지던 2026-08-16 버그와 같은 뿌리). 통째로 둔다. */
               customer: u.customer || null
             };
           }),
@@ -1781,6 +1784,28 @@
     var ov = _ovOf(w); if (ov && ov.target) t = ov.target;
     return t || '';
   }
+  /* 작업의 주소 — 시설은 facilityCustomer, 일반은 주소가 적힌 첫 호수.
+     ⚠️ _workTargetOf 와 같은 규칙(시설 먼저 → 호수 순서대로)을 쓴다. 규칙이 갈라지면
+        같은 작업이 화면마다 다른 곳에 찍힌다. */
+  function _workAddrOf(w) {
+    if (!w) return '';
+    var isFac = !!(w.session && w.session.workType === 'facility') || w.workType === 'facility';
+    if (isFac && w.session && w.session.facilityCustomer) {
+      var fa = w.session.facilityCustomer.address || '';
+      if (fa) return fa;
+    }
+    for (var i = 0; i < (w.units || []).length; i++) {
+      var c = w.units[i].customer;
+      if (c && c.address) return c.address;
+    }
+    return '';
+  }
+  function _itemAddr(it) {
+    if (!it || !it.data) return '';
+    if (it.type === 'work')   return _workAddrOf(it.data);
+    if (it.type === 'shared') return it.data.address || '';
+    return '';
+  }
   /* 호수 글자 (2개까지, 나머지는 +N) — 아젠다 줄과 줄 메뉴가 같은 표기를 쓰도록 */
   function _itemUnitsText(it) {
     var d = it && it.data; if (!d) return '';
@@ -2531,6 +2556,28 @@
   ══════════════════════════════════════════ */
   // doScroll: 사용자가 날짜를 '직접 눌렀을 때'만 true → 목록으로 스크롤.
   //   (백그라운드 갱신/사진 다운로드로 인한 재렌더 때는 스크롤하지 않음 → 화면이 제멋대로 내려가는 문제 방지)
+  /* ── 그날 지도에 넘길 목록 ──
+     목록에 보이는 순서(시간순) 그대로 넘긴다 — 지도 번호와 목록 순서가 어긋나면
+     "2번이 왜 여기 있지" 가 된다. 리마인더·고객은 갈 곳이 아니므로 뺀다.
+     _idx 는 원래 items 배열에서의 자리 — '주소 넣기' 로 그 작업을 되찾을 때 쓴다. */
+  function _mapStops(items) {
+    var out = [];
+    (items || []).forEach(function (it, i) {
+      if (!it || (it.type !== 'work' && it.type !== 'shared')) return;
+      var d = it.data || {};
+      var st = (it.type === 'work') ? _workStart(d) : (d.startTime || '');
+      var et = (it.type === 'work') ? _workEnd(d)   : (d.endTime   || '');
+      out.push({
+        _idx: i,
+        title: _itemTitle(it),
+        sub: _itemSub(it),
+        time: (st && et) ? (st + '~' + et) : (st || et || ''),
+        addr: _itemAddr(it)
+      });
+    });
+    return out;
+  }
+
   function renderDayDetail(dateStr, doScroll) {
     var panel = document.getElementById('calDetail');
     if (!panel) return;
@@ -2711,13 +2758,36 @@
       }
     }
 
+    /* ★ 2026-09-17 그날 지도 — 갈 곳이 둘 이상일 때만 머리줄에 [지도] 를 둔다.
+       한 곳뿐이면 지도를 볼 이유가 없다(카드의 주소칸 🧭 길안내가 이미 한 번에 간다).
+       주소가 하나도 없는 날도 마찬가지로 안 띄운다 — 눌러도 빈 지도만 나온다. */
+    var _stops = _mapStops(items);
+    var _mapBtn = (_stops.filter(function (s) { return s.addr; }).length >= 2)
+      ? '<button type="button" class="cal-detail-map" id="calDetailMap">지도</button>' : '';
+
     panel.innerHTML =
       '<div class="cal-detail-head">' +
         '<span class="cal-detail-date">' + label + '</span>' +
-        '<span class="cal-detail-cnt">' + items.length + '건</span>' +
+        '<span class="cal-detail-hd-rt">' + _mapBtn +
+          '<span class="cal-detail-cnt">' + items.length + '건</span>' +
+        '</span>' +
       '</div>' +
       '<div class="cal-detail-list">' + cards + '</div>';
     panel.style.display = 'flex';
+
+    var _mb = panel.querySelector('#calDetailMap');
+    if (_mb) _mb.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!window.CalMap) return;
+      CalMap.open(label, _stops, {
+        /* '주소 넣기' 를 누르면 그 작업의 상세 창을 연다 — 거기 주소칸에서
+           지도로 찍어 넣을 수 있으므로(link_actions 🗺), 한 바퀴가 닫힌다. */
+        onEdit: function (i) {
+          var st = _stops[i];
+          if (st && items[st._idx]) openWorkEdit(items[st._idx]);
+        }
+      });
+    });
 
     /* ★ 카드 버튼(열기/정보/삭제): 패널 갱신 때마다 새 노드에 직접 바인딩 */
     panel.querySelectorAll('.cal-card-open').forEach(function (btn) {

@@ -24,14 +24,16 @@ window.kakao = { maps: {
   LatLng: function(a,b){ this.getLat=()=>a; this.getLng=()=>b; },
   LatLngBounds: function(){ this.extend=()=>{}; },
   Point: function(x,y){ this.x=x; this.y=y; },
-  Map: function(box, o){ box.setAttribute('data-map','1');
+  Map: function(box, o){ box.setAttribute('data-map','1'); this._box=box;
     this.setBounds=()=>{}; this.setLevel=()=>{}; this.panTo=()=>{ window.__panned=(window.__panned||0)+1; };
     this.getCenter=()=>({getLat:()=>37,getLng:()=>127});
     this.getProjection=()=>({coordsFromContainerPoint:()=>new kakao.maps.LatLng(37,127)}); },
   Marker: function(o){ window.__markers=(window.__markers||0)+1; this.setMap=()=>{}; },
   Polyline: function(o){ window.__poly=o; },
   CustomOverlay: function(o){ window.__pins=(window.__pins||0)+1;
-    if(o.content && o.map) document.querySelector('#calMapBox').appendChild(o.content); },
+    var box = (o.map && o.map._box) || document.querySelector('#calMapBox');
+    if(o.content && box) box.appendChild(o.content);
+    this.setPosition=function(){}; this.setMap=function(){}; },
   InfoWindow: function(){ this.open=()=>{}; },
   event: { addListener: (t,e,f)=>{ (t.__h=t.__h||{})[e]=f; } },
   services: {
@@ -112,6 +114,22 @@ window.kakao = { maps: {
   ok('오버레이가 떴다', await page.locator('#mapPickOverlay').count() === 1);
   ok('주소칸 값이 검색어로 들어온다', await page.locator('#mpQ').inputValue() === '평택시 비전동 1');
   ok('지도가 그려졌다', await page.locator('#mpMap[data-map="1"]').count() === 1);
+  /* ☠️ 2026-09-17 — 여기서 실제로 사고가 났다. 안내 문구를 두 줄로 나눠 적으면서 + 를
+       빠뜨렸더니, 자바스크립트가 앞 줄에서 문장을 끝내 버려 **아래 막대가 통째로 사라졌다**.
+       문법 오류가 아니라서 node --check 도 npm test 도 멀쩡히 통과했다.
+       → 화면에 실제로 붙어 있는지, 그리고 화면 밖으로 밀려나지 않았는지를 잰다. */
+  ok('주소 자리에 표시(핀)가 찍힌다', await page.locator('.cm-pin-dot').count() === 1);
+  ok('고르는 법 안내가 보인다', await page.locator('.mp-tip').count() === 1);
+  const box = await page.evaluate(() => {
+    const e = document.querySelector('.mp-sel');
+    if (!e) return null;
+    const r = e.getBoundingClientRect();
+    return { bottom: Math.round(r.bottom), h: Math.round(r.height), vh: window.innerHeight };
+  });
+  ok('아래 막대가 화면 안에 있다' + (box ? ` (${box.bottom}/${box.vh})` : ' — 아예 없음'),
+     !!box && box.h > 0 && box.bottom <= box.vh + 1);
+  ok('지금 주소를 아래 막대에 적어 준다',
+     (await page.locator('.mp-sel-ad').innerText()).includes('비전동'));
 
   await page.locator('#mpFind').click();
   await page.waitForTimeout(200);

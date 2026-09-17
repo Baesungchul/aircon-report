@@ -36,6 +36,7 @@
   var DEFAULT_CENTER = { lat: 36.9921, lng: 127.1129 };   // 평택시청 — 이 앱의 주 활동 지역
   var _ov = null;
   var _picked = null;
+  var _pin = null;        // 고른 자리 표시 — 하나만 두고 자리만 옮긴다
   var _lpCancel = null;   // 지금 떠 있는 지도의 '누르기 취소' — 아래 visibilitychange 가 부른다
 
   /* ☠️ 손 뗀 신호가 유실되면(두 번째 손가락 · OS 제스처 · 전화 수신 · 앱 내림) 타이머와
@@ -58,8 +59,29 @@
     try { localStorage.setItem(LAST_KEY, JSON.stringify({ lat: g.lat, lng: g.lng })); } catch (e) {}
   }
 
+  /* ── 고른 자리 핀 ──
+     ★ 2026-09-17 사용자 지적: "지도를 눌렀을 때 주소에 해당하는 자리에 표시가 없어 허전하다".
+       지도만 그 자리로 옮겨 놓고 아무 표시를 안 했더니, 어디를 보고 있는 건지 알 수 없었다.
+     · 모양은 그날 지도(cal_map.js)의 번호 핀과 **같은 클래스(.cm-pin)** 를 쓴다 —
+       한 앱에서 지도 핀이 두 가지로 보이면 안 된다.
+     · 다만 여기는 자리가 하나뿐이라 번호가 뜻이 없다. .cm-pin-dot 으로 점 하나만 찍는다.
+     ⚠️ 핀은 하나만 두고 자리만 옮긴다(setPosition). 새로 만들어 쌓으면 길게 누를 때마다
+        옛 핀이 지도에 남는다. */
+  function setPin(map, latlng) {
+    if (!_pin) {
+      var el = document.createElement('div');
+      el.className = 'cm-pin cm-pin-dot';
+      el.innerHTML = '<span class="cm-pin-core"></span>';
+      _pin = new kakao.maps.CustomOverlay({ map: map, position: latlng, content: el, yAnchor: 1, zIndex: 4 });
+    } else {
+      _pin.setPosition(latlng);
+      _pin.setMap(map);
+    }
+  }
+
   function close() {
     if (_lpCancel) { _lpCancel(); _lpCancel = null; }
+    _pin = null;
     if (_ov && _ov.parentNode) _ov.parentNode.removeChild(_ov);
     _ov = null; _picked = null;
   }
@@ -70,7 +92,7 @@
     var sel = _ov && _ov.querySelector('#mpSel');
     if (!sel) return;
     if (!d) {
-      sel.innerHTML = '<span class="mp-hint">지도를 길게 눌러 그 자리 주소를 고르거나, 위에서 찾아보세요</span>';
+      sel.innerHTML = '<span class="mp-hint">위에서 찾거나, 지도에서 고르세요</span>';
       return;
     }
     sel.innerHTML =
@@ -171,8 +193,17 @@
         '<button type="button" class="mp-close" id="mapPickClose" aria-label="닫기">✕</button>' +
       '</div>' +
       '<div class="mp-map" id="mpMap"><div class="mp-msg">지도를 불러오는 중…</div></div>' +
+      /* ★ 2026-09-17 사용자 요청: "지점을 눌러서 주소로 등록이 가능한 것도 안내해야 한다".
+         고르는 길이 둘(표시 누르기 · 빈 곳 길게 누르기)인데 둘 다 화면에 안 적혀 있어
+         아는 사람만 쓰는 기능이었다. 아래 막대는 고른 자리에 따라 내용이 바뀌므로,
+         쓰는 법은 자리가 고정된 줄에 따로 적어 늘 보이게 한다. */
+      /* ⚠️ 두 줄로 나눠 적을 때 + 를 빠뜨리면, 자바스크립트가 앞 줄에서 문장을 끝내 버리고
+         뒤 줄은 아무 일도 안 하는 문장이 된다(문법 오류가 아니라 검사에 안 걸린다).
+         2026-09-17 에 실제로 이렇게 아래 막대가 통째로 사라졌다. */
+      '<div class="mp-tip">표시를 누르면 그 자리가 골라져요<br>' +
+        '빈 곳을 <b>길게</b> 누르면 그 자리 주소가 잡혀요</div>' +
       '<div class="mp-sel" id="mpSel">' +
-        '<span class="mp-hint">지도를 길게 눌러 그 자리 주소를 고르거나, 위에서 찾아보세요</span>' +
+        '<span class="mp-hint">위에서 찾거나, 지도에서 고르세요</span>' +
       '</div>';
     document.body.appendChild(ov);
     _ov = ov;
@@ -181,17 +212,30 @@
     var box = document.getElementById('mpMap');
 
     Geocode.loadSdk().then(function () {
-      /* 시작 위치 — 주소칸 값 → 지난번 자리 → 평택 */
+      /* 시작 위치 — 주소칸 값 → 지난번 자리 → 평택.
+         ⚠️ 주소로 찾아낸 것인지(found)를 같이 들고 간다. 지난번 자리나 평택 기본값에
+            핀을 꽂으면 '거기가 이 작업 주소'라는 거짓말이 된다. */
       return Geocode.lookup(initialAddr).then(function (g) {
-        return g || lastCenter() || DEFAULT_CENTER;
+        return g ? { at: g, found: true } : { at: lastCenter() || DEFAULT_CENTER, found: false };
       });
-    }).then(function (center) {
+    }).then(function (start) {
       if (_ov !== ov) return;
       box.innerHTML = '';
       var map = new kakao.maps.Map(box, {
-        center: new kakao.maps.LatLng(center.lat, center.lng),
-        level: 4
+        center: new kakao.maps.LatLng(start.at.lat, start.at.lng),
+        level: start.found ? 3 : 4        // 주소를 찾았으면 한 단계 더 당겨서 보여준다
       });
+
+      /* 지금 주소칸에 있는 자리 — 핀을 꽂고 아래 막대에 그대로 적어 준다.
+         '이 주소 쓰기' 는 붙이지 않는다. 이미 들어 있는 값이라 누를 이유가 없다. */
+      if (start.found) {
+        setPin(map, new kakao.maps.LatLng(start.at.lat, start.at.lng));
+        var sel0 = ov.querySelector('#mpSel');
+        if (sel0) sel0.innerHTML =
+          '<div class="mp-sel-tx"><b>지금 주소</b>' +
+            '<span class="mp-sel-ad">' + esc(initialAddr || '') + '</span></div>' +
+          '';
+      }
       var marks = [];
       function clearMarks() { marks.forEach(function (m) { m.setMap(null); }); marks = []; }
 
@@ -213,8 +257,7 @@
             return;
           }
           clearMarks();
-          var mk = new kakao.maps.Marker({ map: map, position: latlng });
-          marks.push(mk);
+          setPin(map, latlng);
           showPick({ name: '', address: addr });
         });
       });
@@ -238,6 +281,7 @@
             var mk = new kakao.maps.Marker({ map: map, position: pos, title: d.place_name || '' });
             marks.push(mk);
             kakao.maps.event.addListener(mk, 'click', function () {
+              setPin(map, pos);     // 후보 중 어느 것을 고른 상태인지 눈에 보이게
               showPick({
                 name: d.place_name || '',
                 address: d.road_address_name || d.address_name || ''
@@ -245,6 +289,7 @@
             });
           });
           map.setBounds(bounds, 40, 40, 40, 40);
+          setPin(map, new kakao.maps.LatLng(parseFloat(r[0].y), parseFloat(r[0].x)));
           showPick({
             name: r[0].place_name || '',
             address: r[0].road_address_name || r[0].address_name || ''

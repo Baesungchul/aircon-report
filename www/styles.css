@@ -3168,6 +3168,14 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .mp-sel-tx b{font-size:13.5px;color:var(--tx);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
 .mp-sel-ad{font-size:11.5px;color:var(--mu);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
 .mp-use{flex:0 0 auto;min-height:38px;padding:8px 12px;font-size:12.5px;}
+/* 고른 자리 표시 — 그날 지도의 번호 핀과 같은 모양(.cm-pin)에 번호 대신 점 하나.
+   여기는 고르는 자리가 하나뿐이라 번호가 뜻이 없다. */
+.cm-pin-dot{min-width:24px;width:24px;padding:0;}
+.cm-pin-core{width:8px;height:8px;border-radius:50%;background:#fff;display:block;}
+/* 쓰는 법 한 줄 — 지도와 아래 막대 사이에 늘 붙어 있다 */
+.mp-tip{flex:0 0 auto;padding:7px 12px;background:var(--sf2);border-top:1px solid var(--bd);
+  font-size:11px;color:var(--mu);line-height:1.5;text-align:center;}
+.mp-tip b{color:var(--tx);font-weight:800;}
 /* 누르는 동안 손끝에 자라는 원 — 눌림이 잡혔는지 눈으로 바로 확인된다 */
 .mp-ripple{position:absolute;z-index:99999;pointer-events:none;width:26px;height:26px;margin:-13px 0 0 -13px;
   border-radius:50%;background:rgba(15,95,107,.22);border:2px solid var(--ac);

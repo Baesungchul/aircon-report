@@ -37,6 +37,22 @@ if (!/^\d+\.\d+\.\d+$/.test(next)) { console.error('❌ 버전 형식 오류 (�
 let d = new Date();
 let today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
+/* ☠️ 업데이트 안내(whatsnew.js)는 NOTES[APP_VERSION] 으로 **정확히** 찾는다.
+     그래서 안내를 써 두고 배포 전에 버전을 한 번 더 올리면, 그 안내는 조용히 안 뜬다.
+     오류도 안 나고 화면도 멀쩡해서 배포가 끝난 뒤에야 "왜 안 떴지"가 된다.
+     → 올리기 직전 버전에 안내가 달려 있는데 새 버전에는 없으면 여기서 알려 준다.
+     ⚠️ 막지는 않는다. 안내 없이 버전만 올리는 일(핫픽스 등)이 정상적으로 있다. */
+const P_WN = path.join(root, 'www', 'js', 'whatsnew.js');
+try {
+  const wn = read(P_WN);
+  const has = (v) => new RegExp("^\\s*'" + v.replace(/\./g, '\\.') + "':\\s*\\{", 'm').test(wn);
+  if (has(cur) && !has(next)) {
+    console.log('\n\u26a0\ufe0f  ' + cur + ' 에 업데이트 안내가 있는데 ' + next + ' 에는 없습니다.');
+    console.log('   아직 스토어에 안 올린 안내라면 whatsnew.js 의 키를 ' + next + ' 로 옮기세요.');
+    console.log('   (이미 ' + cur + ' 로 배포했다면 그대로 두는 게 맞습니다)\n');
+  }
+} catch (e) { /* whatsnew 를 못 읽어도 버전 올리기는 계속한다 */ }
+
 // 1) version.js
 ver = ver.replace(/APP_VERSION\s*=\s*'[\d.]+'/, "APP_VERSION = '" + next + "'");
 ver = ver.replace(/APP_VERSION_DATE\s*=\s*'[^']*'/, "APP_VERSION_DATE = '" + today + "'");

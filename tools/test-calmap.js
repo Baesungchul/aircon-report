@@ -222,6 +222,28 @@ chk('지도는 갈 곳이 둘 이상일 때만 권한다', () => {
   return '주소 2곳 이상';
 });
 
+chk('업데이트 안내가 들어 있다', () => {
+  const wn = read('whatsnew.js');
+  const at = wn.indexOf("'3.2.29': {");
+  must(at > 0, '지도 안내(3.2.29)가 whatsnew.js 에 없습니다');
+  const blk = wn.slice(at, at + 2200);
+  must(/\[지도\]/.test(blk) && /길게 눌러/.test(blk),
+       '안내에 지도 보기·주소 찍기 두 가지가 다 적혀 있지 않습니다');
+  return '2가지 · 3.2.29';
+});
+
+chk('배포 전에 버전을 더 올리면 안내 키를 옮기라고 알려 준다', () => {
+  /* ☠️ whatsnew 는 NOTES[APP_VERSION] 으로 정확히 찾는다. 안내를 써 두고 버전을 한 번 더
+       올리면 그 안내는 조용히 안 뜬다 — 오류도 안 나고 배포가 끝난 뒤에야 알게 된다.
+       bump-version.js 가 그 순간에 알려 주도록 해 뒀다. 그 경고를 지우지 못하게 막는다. */
+  const bv = fs.readFileSync(path.join(ROOT, 'bump-version.js'), 'utf8');
+  must(/whatsnew\.js/.test(bv), 'bump-version.js 가 whatsnew 를 보지 않습니다');
+  must(/에 업데이트 안내가 있는데/.test(bv), '안내 키 이월 경고가 사라졌습니다');
+  must(/process\.exit/.test(bv.slice(bv.indexOf('whatsnew'), bv.indexOf('// 1) version.js'))) === false,
+       '경고가 빌드를 막습니다 — 안내 없이 버전만 올리는 일은 정상입니다');
+  return '경고만 (막지 않음)';
+});
+
 console.log('\n[4] 팝업 정책 — 새 기능에 성공 토스트를 붙이지 않았는가');
 
 chk('새 파일에 성공 토스트가 없다', () => {

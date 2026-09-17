@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════
    LINK ACTIONS ─ 전화/주소 필드 옆 바로가기 아이콘
    - 전화번호: 📞 전화앱 / 💬 문자앱
-   - 주소: 🗺️ 지도(카카오·네이버·구글) / 🧭 길안내(구글·티맵·카카오)
+   - 주소: 🧭 길안내(설치된 지도·내비 앱 선택창) / 지도에서 찍기(앱 안 지도, 2026-09-17)
    - 작업탭·스케줄수정·일정추가 등 알려진 입력 id에 자동 부착(MutationObserver)
 ═══════════════════════════════════════════════ */
 (function () {
@@ -41,10 +41,25 @@
   LinkActions.nav = nav;
 
   /* 아이콘 버튼 */
-  function mkIcon(emoji, title, fn) {
+  /* ★ 2026-09-17 — 지도 버튼은 이모지 대신 직접 그린 아이콘을 쓴다.
+       · 이모지 🗺 는 기기·OS 마다 그림이 제각각이고, 작은 칸에서 뭉개진다.
+       · 선 색을 currentColor 로 두어 테마(다크·미드나잇·포레스트)를 그대로 따라간다.
+     ⚠️ 카카오맵 로고를 쓰지 않는다. 카카오 마크는 '카카오맵 앱으로 넘어가는' 버튼에
+        쓰라고 배포되는 상표다. 이 버튼은 앱 안에서 우리 화면을 여는 것이라 맞지 않는다.
+        접힌 지도 모양은 어느 지도 앱에서나 통하는 일반적인 표시다. */
+  var IC_MAP =
+    '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M9 4 3 6.2v13.3L9 17l6 2.5 6-2.2V4l-6 2.2z"/>' +
+      '<path d="M9 4v13"/><path d="M15 6.2v13.3"/>' +
+    '</svg>';
+
+  /* icon 이 '<' 로 시작하면 그림(SVG), 아니면 글자·이모지로 본다 */
+  function mkIcon(icon, title, fn) {
     var b = document.createElement('button');
     b.type = 'button';
-    b.textContent = emoji;
+    if (String(icon).charAt(0) === '<') b.innerHTML = icon;
+    else b.textContent = icon;
     b.title = title;
     b.style.cssText = 'flex:0 0 auto;width:34px;height:34px;border-radius:9px;border:1px solid var(--bd);background:var(--sf2,#2a2f3a);color:var(--tx);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;';
     b.onclick = function (e) { e.preventDefault(); e.stopPropagation(); fn(); };
@@ -76,7 +91,7 @@
        ⚠️ 지도 키(config_map.js)가 없으면 버튼 자체를 안 만든다.
           눌러도 아무 일 없는 버튼을 두는 것보다, 없는 편이 덜 헷갈린다. */
     if (window.MapPick && MapPick.available()) {
-      wrap.appendChild(mkIcon('🗺', '지도에서 찍기', function () {
+      wrap.appendChild(mkIcon(IC_MAP, '지도에서 찍기', function () {
         MapPick.open(el.value, function (addr) {
           el.value = addr;
           /* 입력칸을 코드로 바꾸면 사람이 친 것과 달리 아무 신호도 안 난다.

@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════
    LINK ACTIONS ─ 전화/주소 필드 옆 바로가기 아이콘
-   - 전화번호: 📞 전화앱 / 💬 문자앱
-   - 주소: 🧭 길안내(설치된 지도·내비 앱 선택창) / 지도에서 찍기(앱 안 지도, 2026-09-17)
+   - 전화번호: 전화 걸기 / 문자 보내기
+   - 주소: 길안내(설치된 지도·내비 앱 선택창) / 지도에서 찍기(앱 안 지도, 2026-09-17)
+   - 아이콘은 이모지가 아니라 선 그림(SVG)이다 — 아래 svgIcon 주석 참고
    - 작업탭·스케줄수정·일정추가 등 알려진 입력 id에 자동 부착(MutationObserver)
 ═══════════════════════════════════════════════ */
 (function () {
@@ -40,19 +41,29 @@
   }
   LinkActions.nav = nav;
 
-  /* 아이콘 버튼 */
-  /* ★ 2026-09-17 — 지도 버튼은 이모지 대신 직접 그린 아이콘을 쓴다.
-       · 이모지 🗺 는 기기·OS 마다 그림이 제각각이고, 작은 칸에서 뭉개진다.
-       · 선 색을 currentColor 로 두어 테마(다크·미드나잇·포레스트)를 그대로 따라간다.
+  /* ── 아이콘 버튼 ──
+     ★ 2026-09-17 — 네 버튼 모두 이모지에서 직접 그린 선 아이콘으로 바꿨다.
+       · 이모지는 기기·OS·글꼴마다 그림이 다르고, 34px 칸에서 뭉갠다.
+       · 컬러 이모지는 테마를 안 따라가서 다크 모드에서 혼자 튄다.
+       · 선 색이 currentColor 라 테마(다크·미드나잇·포레스트)를 그대로 물려받는다.
      ⚠️ 카카오맵 로고를 쓰지 않는다. 카카오 마크는 '카카오맵 앱으로 넘어가는' 버튼에
-        쓰라고 배포되는 상표다. 이 버튼은 앱 안에서 우리 화면을 여는 것이라 맞지 않는다.
-        접힌 지도 모양은 어느 지도 앱에서나 통하는 일반적인 표시다. */
-  var IC_MAP =
-    '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" ' +
+        쓰라고 배포되는 상표인데, 이 버튼은 앱 안에서 우리 화면을 연다.
+        접힌 지도·수화기·말풍선·화살표는 어디서나 통하는 일반적인 표시다.
+     ⚠️ 굵기(1.7)와 크기(19)를 넷이 똑같이 쓴다. 하나만 다르면 줄이 어긋나 보인다. */
+  function svgIcon(inner) {
+    return '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" ' +
       'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<path d="M9 4 3 6.2v13.3L9 17l6 2.5 6-2.2V4l-6 2.2z"/>' +
-      '<path d="M9 4v13"/><path d="M15 6.2v13.3"/>' +
-    '</svg>';
+      inner + '</svg>';
+  }
+  var IC_TEL = svgIcon(
+    '<path d="M21.5 16.9v2.7a2 2 0 0 1-2.2 2 19.6 19.6 0 0 1-8.5-3 19.3 19.3 0 0 1-6-6 19.6 19.6 0 0 1-3-8.6 2 2 0 0 1 2-2.2h2.7a2 2 0 0 1 2 1.7c.13.94.36 1.86.7 2.74a2 2 0 0 1-.46 2.1L8.2 9.7a16 16 0 0 0 6 6l1.4-1.24a2 2 0 0 1 2.1-.45c.88.33 1.8.57 2.74.7a2 2 0 0 1 1.7 2z"/>');
+  var IC_SMS = svgIcon(
+    '<path d="M20.5 11.6a7.9 7.9 0 0 1-8.5 7.9 9 9 0 0 1-3.6-.7L3.5 20.5l1.7-4.9a7.9 7.9 0 0 1-.7-3.6A7.9 7.9 0 0 1 12.5 4a7.9 7.9 0 0 1 8 7.6z"/>');
+  var IC_NAV = svgIcon(
+    '<path d="M21 3 3 10.5l7.6 2.9L13.5 21z"/>');
+  var IC_MAP = svgIcon(
+    '<path d="M9 4 3 6.2v13.3L9 17l6 2.5 6-2.2V4l-6 2.2z"/>' +
+    '<path d="M9 4v13"/><path d="M15 6.2v13.3"/>');
 
   /* icon 이 '<' 로 시작하면 그림(SVG), 아니면 글자·이모지로 본다 */
   function mkIcon(icon, title, fn) {
@@ -78,13 +89,13 @@
   function enhancePhone(el) {
     if (!el || el._laDone) return; el._laDone = true;
     var wrap = wrapInput(el);
-    wrap.appendChild(mkIcon('📞', '전화 걸기', function () { tel(el.value); }));
-    wrap.appendChild(mkIcon('💬', '문자 보내기', function () { sms(el.value); }));
+    wrap.appendChild(mkIcon(IC_TEL, '전화 걸기', function () { tel(el.value); }));
+    wrap.appendChild(mkIcon(IC_SMS, '문자 보내기', function () { sms(el.value); }));
   }
   function enhanceAddr(el) {
     if (!el || el._laDone) return; el._laDone = true;
     var wrap = wrapInput(el);
-    wrap.appendChild(mkIcon('🧭', '길안내', function () { nav(el.value); }));
+    wrap.appendChild(mkIcon(IC_NAV, '길안내', function () { nav(el.value); }));
     /* ★ 2026-09-17 지도에서 주소 찍기 (2단계)
        주소칸이 비었거나 아파트 이름만 적힌 작업은 지도에 안 뜬다 — 그 원인을
        입력하는 자리에서 막는다. 지도를 길게 눌러 그 자리 주소를 넣을 수 있다.

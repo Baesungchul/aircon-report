@@ -12,6 +12,37 @@
   var PHONE_IDS = ['wePhone', 'qwPhone', 'cePhone', 'custEditPhone', 'asPhone', 'facilityPhone'];
   var ADDR_IDS = ['weAddr', 'qwAddr', 'ceAddr', 'custEditAddr', 'asAddr', 'facilityAddress'];
 
+  /* ★ 2026-09-17 — 지도 아래 막대에 그날 지도 카드와 같은 정보(시간·이름·대상)를 띄우려면
+       지금 열려 있는 창의 다른 입력칸을 읽어야 한다. 주소칸 id 하나로 그 창을 알 수 있다.
+     ⚠️ 값은 **열 때마다 새로 읽는다.** 창을 열어 두고 시간을 고친 뒤 지도를 열면
+        고친 값이 보여야 한다.
+     ⚠️ 여기 없는 주소칸(고객 정보 등)은 그냥 주소만 보여 준다 — 작업이 아닌 화면도 있다. */
+  var ADDR_FORM = {
+    weAddr:   { apt: 'weApt', unit: 'weUnit', target: 'weTarget', start: 'weStart', end: 'weEnd' },
+    qwAddr:   { apt: 'qwApt', unit: 'qwUnit', target: 'qwTarget', start: 'qwStart', end: 'qwEnd' },
+    asAddr:   { apt: 'asApt', unit: 'asUnit', target: 'asTarget', start: 'asStart', end: 'asEnd' },
+    ceAddr:   { apt: 'ceApt', unit: 'ceUnit', target: 'ceTarget', start: 'ceStart', end: 'ceEnd' },
+    facilityAddress: { target: 'facilityWorkTarget', start: 'facilityStartTime', end: 'facilityEndTime' },
+    custEditAddr:    { apt: 'custEditName' }
+  };
+  function val(id) {
+    var el = id && document.getElementById(id);
+    return (el && String(el.value || '').trim()) || '';
+  }
+  /* 그날 지도 카드와 같은 규칙으로 고른다:
+       제목 = 작업명, 없으면 호수 / 아래 = 작업대상, 없으면 호수 / 시간 = 시작~종료 */
+  function metaOf(el) {
+    var f = ADDR_FORM[el && el.id];
+    if (!f) return {};
+    var apt = val(f.apt), unit = val(f.unit), target = val(f.target);
+    var st = val(f.start), et = val(f.end);
+    return {
+      title: apt || unit || '',
+      sub: target || (apt ? unit : ''),
+      time: (st && et) ? (st + '~' + et) : (st || et || '')
+    };
+  }
+
   function toast(m, t) { if (typeof showToast === 'function') showToast(m, t || 'ok'); else if (t === 'err') alert(m); }
   function enc(s) { return encodeURIComponent(String(s || '').trim()); }
 
@@ -109,7 +140,7 @@
              저장 여부를 input/change 로 판단하는 화면들이 있어 직접 알려 준다. */
           try { el.dispatchEvent(new Event('input',  { bubbles: true })); } catch (e) {}
           try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
-        });
+        }, metaOf(el));
       }));
     }
   }

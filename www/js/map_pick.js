@@ -86,22 +86,54 @@
     _ov = null; _picked = null;
   }
 
-  /* 아래 막대 — 고른 자리를 보여주고 [이 주소 쓰기] 를 준다 */
+  /* ── 아래 막대 ──
+     ★ 2026-09-17 사용자 요청: "상세의 지도에서도 스케줄의 지도처럼 시간·이름·대상·길안내를
+       동일하게 넣어줘". 그래서 그날 지도(cal_map.js)의 카드와 **같은 클래스**로 그린다 —
+       두 지도의 아래쪽이 서로 다른 모양이면 같은 앱으로 안 보인다.
+
+     ⚠️ 윗부분(시간·이름·대상)은 **이 작업의 정보**라 지도에서 뭘 고르든 바뀌지 않는다.
+        바뀌는 건 주소 줄뿐이다 — 여기서 하는 일이 '이 작업의 주소를 바꾸는 것'이기 때문이다.
+     ⚠️ [이 주소 쓰기] 는 주소가 실제로 달라졌을 때만 낸다. 지금 값과 같은데 버튼이 보이면
+        '눌러야 하나' 하고 멈칫하게 된다.
+     ⚠️ 고른 자리에 상호가 있으면 주소 줄 앞에 붙인다. 이름 줄(작업명)에 넣으면
+        작업명이 상호로 바뀐 것처럼 보인다. */
   function showPick(d) {
     _picked = d;
     var sel = _ov && _ov.querySelector('#mpSel');
     if (!sel) return;
-    if (!d) {
-      sel.innerHTML = '<span class="mp-hint">위에서 찾거나, 지도에서 고르세요</span>';
-      return;
-    }
+    if (!d) { sel.innerHTML = '<span class="mp-hint">위에서 찾거나, 지도에서 고르세요</span>'; return; }
+
+    var m    = (_ov && _ov._meta) || {};
+    var addr = d.address || '';
+    var same = Geocode.norm(addr) === Geocode.norm(_ov && _ov._baseAddr);
+    var head = [];
+    if (m.time)  head.push('<span class="cm-time">' + esc(m.time) + '</span>');
+    var title = m.title || d.name || '이 자리';
+    var sub   = m.sub || '';
+
     sel.innerHTML =
-      '<div class="mp-sel-tx"><b>' + esc(d.name || '이 자리') + '</b>' +
-        '<span class="mp-sel-ad">' + esc(d.address || '') + '</span></div>' +
-      '<button type="button" class="btn b-blue mp-use" id="mpUse">이 주소 쓰기</button>';
-    sel.querySelector('#mpUse').addEventListener('click', function () {
+      '<div class="mp-card">' +
+        '<div class="cm-card-top">' +
+          '<span class="cm-num"><span class="cm-pin-core"></span></span>' +
+          (head.length ? head.join('') : '<span class="cm-time">' + (same ? '지금 주소' : '고른 자리') + '</span>') +
+        '</div>' +
+        '<div class="cm-card-ti">' + esc(title) + '</div>' +
+        (sub ? '<div class="cm-card-sub">' + esc(sub) + '</div>' : '') +
+        '<div class="cm-card-addr">' +
+          (d.name && !same ? '<b>' + esc(d.name) + '</b> · ' : '') + esc(addr) +
+        '</div>' +
+        '<div class="mp-btns">' +
+          '<button type="button" class="btn b-ghost mp-btn" id="mpNav">길안내</button>' +
+          (same ? '' : '<button type="button" class="btn b-blue mp-btn" id="mpUse">이 주소 쓰기</button>') +
+        '</div>' +
+      '</div>';
+
+    sel.querySelector('#mpNav').addEventListener('click', function () {
+      if (window.LinkActions && LinkActions.nav) LinkActions.nav(addr);
+    });
+    var use = sel.querySelector('#mpUse');
+    if (use) use.addEventListener('click', function () {
       var cb = _ov && _ov._onPick;
-      var addr = d.address || '';
       close();
       if (cb) cb(addr);
     });
@@ -172,8 +204,11 @@
 
   /* ── 열기 ──
      initialAddr : 주소칸에 이미 들어 있는 값 (시작 위치·검색어의 밑바탕)
-     onPick      : 고른 주소 글자를 받는 함수 */
-  function open(initialAddr, onPick) {
+     onPick      : 고른 주소 글자를 받는 함수
+     meta        : { time, title, sub } — 이 작업의 시간·작업명·작업대상.
+                   같은 창에 떠 있는 입력칸에서 읽어 온다(link_actions.js).
+                   없으면 주소만 보여 준다 — 고객 정보처럼 작업이 아닌 화면도 있다. */
+  function open(initialAddr, onPick, meta) {
     if (!window.Geocode || !Geocode.available()) {
       toastErr('지도 키가 설정되지 않았습니다 (www/js/config_map.js)');
       return;
@@ -185,6 +220,8 @@
     ov.className = 'mp-ov ov-lock';
     ov.id = 'mapPickOverlay';
     ov._onPick = onPick;
+    ov._meta = meta || {};
+    ov._baseAddr = initialAddr || '';     // '지금 주소' 판정 기준
     ov.innerHTML =
       '<div class="mp-head">' +
         '<input class="cust-inp mp-q" id="mpQ" type="text" placeholder="이름이나 주소로 찾기" ' +
@@ -229,11 +266,7 @@
          '이 주소 쓰기' 는 붙이지 않는다. 이미 들어 있는 값이라 누를 이유가 없다. */
       if (start.found) {
         setPin(map, new kakao.maps.LatLng(start.at.lat, start.at.lng));
-        var sel0 = ov.querySelector('#mpSel');
-        if (sel0) sel0.innerHTML =
-          '<div class="mp-sel-tx"><b>지금 주소</b>' +
-            '<span class="mp-sel-ad">' + esc(initialAddr || '') + '</span></div>' +
-          '';
+        showPick({ name: '', address: initialAddr || '' });   // 같은 카드 모양으로 통일
       }
       var marks = [];
       function clearMarks() { marks.forEach(function (m) { m.setMap(null); }); marks = []; }

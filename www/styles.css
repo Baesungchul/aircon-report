@@ -3160,14 +3160,18 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .mp-map{flex:1 1 auto;min-height:200px;background:var(--sf2);position:relative;overflow:hidden;}
 .mp-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
   padding:24px 20px;font-size:13px;color:var(--tx);line-height:1.7;}
-.mp-sel{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px;
-  padding-bottom:calc(12px + env(safe-area-inset-bottom,0));background:var(--sf);border-top:1px solid var(--bd);
-  min-height:62px;}
-.mp-hint{font-size:11.5px;color:var(--mu);line-height:1.6;}
-.mp-sel-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
-.mp-sel-tx b{font-size:13.5px;color:var(--tx);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-.mp-sel-ad{font-size:11.5px;color:var(--mu);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-.mp-use{flex:0 0 auto;min-height:38px;padding:8px 12px;font-size:12.5px;}
+/* 아래 막대 — 그날 지도의 카드(.cm-card-*)와 같은 글자 규칙을 쓴다.
+   ★ 2026-09-17 사용자 요청: "상세의 지도에서도 스케줄의 지도처럼 시간·이름·대상·길안내를
+      동일하게". 두 지도의 아래쪽이 서로 다르면 같은 앱으로 안 보인다. */
+.mp-sel{flex:0 0 auto;display:block;padding:10px 12px;
+  padding-bottom:calc(10px + env(safe-area-inset-bottom,0));background:var(--sf);border-top:1px solid var(--bd);
+  min-height:56px;}
+.mp-hint{display:block;padding:6px 0;font-size:11.5px;color:var(--mu);line-height:1.6;text-align:center;}
+.mp-card{display:flex;flex-direction:column;gap:3px;}
+.mp-card .cm-card-addr{white-space:normal;}   /* 주소는 길어도 잘리지 않게 — 여기선 한 곳뿐이다 */
+.mp-card .cm-card-addr b{color:var(--tx);font-weight:800;}
+.mp-btns{display:flex;gap:8px;margin-top:7px;}
+.mp-btn{flex:1;justify-content:center;min-height:38px;padding:8px 10px;font-size:12.5px;}
 /* 고른 자리 표시 — 그날 지도의 번호 핀과 같은 모양(.cm-pin)에 번호 대신 점 하나.
    여기는 고르는 자리가 하나뿐이라 번호가 뜻이 없다. */
 .cm-pin-dot{min-width:24px;width:24px;padding:0;}

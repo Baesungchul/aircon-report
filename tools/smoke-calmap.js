@@ -108,7 +108,8 @@ window.kakao = { maps: {
 
   console.log('\n[C] 주소 찍기 시트 (2단계)');
   await page.evaluate(() => {
-    MapPick.open('평택시 비전동 1', (addr) => { window.__picked = addr; });
+    MapPick.open('평택시 비전동 1', (addr) => { window.__picked = addr; },
+      { title: '삼원빌딩', sub: '벽걸이 1대', time: '10:00~12:00' });
   });
   await page.waitForTimeout(400);
   ok('오버레이가 떴다', await page.locator('#mapPickOverlay').count() === 1);
@@ -129,11 +130,26 @@ window.kakao = { maps: {
   ok('아래 막대가 화면 안에 있다' + (box ? ` (${box.bottom}/${box.vh})` : ' — 아예 없음'),
      !!box && box.h > 0 && box.bottom <= box.vh + 1);
   ok('지금 주소를 아래 막대에 적어 준다',
-     (await page.locator('.mp-sel-ad').innerText()).includes('비전동'));
+     (await page.locator('.cm-card-addr').innerText()).includes('비전동'));
+  /* ★ 2026-09-17 — 그날 지도 카드와 같은 정보(시간·이름·대상)를 띄운다 */
+  const card = await page.evaluate(() => ({
+    time: (document.querySelector('.mp-card .cm-time') || {}).innerText,
+    ti:   (document.querySelector('.mp-card .cm-card-ti') || {}).innerText,
+    sub:  (document.querySelector('.mp-card .cm-card-sub') || {}).innerText,
+    nav:  !!document.querySelector('#mpNav'),
+    use:  !!document.querySelector('#mpUse')
+  }));
+  ok('시간·이름·대상이 그날 지도 카드처럼 나온다',
+     card.time === '10:00~12:00' && card.ti === '삼원빌딩' && card.sub === '벽걸이 1대');
+  ok('길안내 버튼이 있다', card.nav === true);
+  ok('주소가 그대로면 [이 주소 쓰기] 는 안 낸다', card.use === false);
 
   await page.locator('#mpFind').click();
   await page.waitForTimeout(200);
-  ok('찾으면 아래 막대에 후보가 뜬다', (await page.locator('.mp-sel-ad').innerText()).includes('테스트로 2'));
+  ok('찾으면 아래 막대에 후보가 뜬다', (await page.locator('.cm-card-addr').innerText()).includes('테스트로 2'));
+  ok('주소가 바뀌면 [이 주소 쓰기] 가 나온다', await page.locator('#mpUse').count() === 1);
+  ok('작업 정보(이름·대상)는 그대로 있다',
+     (await page.locator('.mp-card .cm-card-ti').innerText()) === '삼원빌딩');
   ok('바로 채우지 않는다 (확인 버튼을 거친다)', await page.evaluate(() => window.__picked) === undefined);
   await page.locator('#mpUse').click();
   ok('[이 주소 쓰기] 를 눌러야 들어간다', await page.evaluate(() => window.__picked) === '경기 평택시 테스트로 2');

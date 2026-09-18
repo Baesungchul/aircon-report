@@ -291,14 +291,33 @@
     return true;
   }
 
+  /* ★ G1 (2026-09-18) — 동기화가 '조용히' 멈추는 것을 막는다.
+     ☠️ 여기가 한 달치 일정이 통째로 안 올라갈 수 있었던 자리다.
+        자동 동기화는 언제나 silent 라, 저장 폴더가 안 잡혀 있으면 **아무 말 없이 그냥 돌아간다.**
+        폴더 권한이 풀린 경우엔 배너가 뜨지만(state.js folderReconnectBanner), 폴더 핸들
+        자체가 없으면 그 배너도 못 돈다. 사용자는 몇 달이고 모른 채 지낸다.
+     → 성공 시각과 막힌 이유를 남기고, sync_watch.js 가 그걸 읽어 화면에 띄운다.
+     ⚠️ 값 이름을 바꾸면 sync_watch.js 도 같이 고칠 것. */
+  var OK_KEY = 'cloudSyncOkAt';        // 마지막으로 '실제로 스캔해서' 끝난 시각(ms)
+  var WHY_KEY = 'cloudSyncBlocked';    // 막혀 있으면 그 이유, 되면 지운다
+  function noteOk(){ try { localStorage.setItem(OK_KEY, String(Date.now())); localStorage.removeItem(WHY_KEY); } catch(e){} }
+  function noteBlocked(why){ try { localStorage.setItem(WHY_KEY, why); } catch(e){} }
+  CloudSync.status = function(){
+    var okAt = 0, why = '';
+    try { okAt = parseInt(localStorage.getItem(OK_KEY) || '0', 10) || 0; } catch(e){}
+    try { why = localStorage.getItem(WHY_KEY) || ''; } catch(e){}
+    return { okAt: okAt, blocked: why, days: okAt ? Math.floor((Date.now() - okAt) / 86400000) : -1 };
+  };
+
   // ── 핵심 동기화: 업로드(변경분) + 삭제 반영 ──
   var _syncing = false;
   var _lastRun = null;      // 마지막 동기화 결과 { scanned, changed, removed } — resync 가 읽는다
   async function syncAll(silent, opts){
     opts = opts || {};
-    if (!loggedIn()) { if (!silent && typeof showToast==='function') showToast('먼저 로그인해주세요','err'); return; }
+    if (!loggedIn()) { noteBlocked('login'); if (!silent && typeof showToast==='function') showToast('먼저 로그인해주세요','err'); return; }
     if (_syncing) return;
     if (typeof photoFolderHandle === 'undefined' || !photoFolderHandle) {
+      noteBlocked('folder');   // ★ G1 — 조용히 돌아가되, 돌아갔다는 사실은 남긴다
       if (!silent && typeof showToast==='function') showToast('저장 폴더를 먼저 연결해주세요','err'); return;
     }
     _syncing = true;
@@ -457,6 +476,28 @@
           /* ☠️ '다시 맞추기'(resync)에서는 여기서 멈춘다. 그 버튼을 누르는 상황은
                "일정이 안 보인다" 일 때고, 그때 더 지우면 고치러 온 손이 피해를 키운다.
                올리는 쪽(위 업로드·R1 복구)은 이미 다 했다. */
+          /* ★ G3 (2026-09-18) — 두 번 연속 확인해야 지운다.
+             ☠️ 지금까지는 '이번 스캔에 없으면' 바로 휴지통으로 보냈다. 스캔이 한 번만
+                어긋나도(폴더가 늦게 붙음·일시적 읽기 실패·권한 지연) 멀쩡한 일정이 사라졌고,
+                그게 팀원 달력에서 한 달치가 통째로 빈 것처럼 보일 수 있다.
+             → 후보를 적어 두고, **다음 전체 대조에서도 여전히 없을 때만** 지운다.
+                한 번 스쳐 지나간 실수로는 아무것도 사라지지 않는다.
+             ⚠️ 이번에 로컬에 다시 나타난 것은 후보에서 뺀다. */
+          try {
+            var PEND_KEY = 'cloudCleanupPending_' + uid;
+            var pend = {};
+            try { pend = JSON.parse(localStorage.getItem(PEND_KEY) || '{}') || {}; } catch (e) {}
+            var confirmed = [], nextPend = {};
+            delIds.forEach(function (id) {
+              if (pend[id]) confirmed.push(id);        // 지난번에도 없었다 → 이제 지운다
+              else nextPend[id] = Date.now();          // 처음 보는 후보 → 다음 기회에
+            });
+            var held = delIds.length - confirmed.length;
+            if (held) console.warn('[CloudSync] 정리 후보 ' + held + '건은 다음 대조까지 보류합니다');
+            delIds = confirmed;
+            try { localStorage.setItem(PEND_KEY, JSON.stringify(nextPend)); } catch (e) {}
+          } catch (e) { console.warn('[CloudSync] 정리 보류 목록 처리 실패 → 이번엔 지우지 않습니다', e); delIds = []; }
+
           if (opts.noCleanup && delIds.length) {
             console.warn('[CloudSync] 다시 맞추기 — 정리 대상 ' + delIds.length + '건은 건드리지 않습니다');
             delIds = [];
@@ -480,6 +521,9 @@
          비교하게 된다(안전장치가 스스로 헐거워지는 톱니). 온전할 때만 갱신한다. */
       if (scanOk) setSyncedIds(uid, currentIds);
       if (badDates) console.warn('[CloudSync] 날짜 형식이 어긋난 작업 ' + badDates + '건 — 팀원에게 안 보입니다');
+      /* ⚠️ '스캔이 온전했을 때만' 성공으로 친다. 폴더를 반만 읽고 성공으로 기록하면
+           경고가 안 뜨는 채로 절반만 올라가는 상태가 굳는다. */
+      if (scanOk) noteOk(); else noteBlocked('partial');
       _lastRun = { scanned: items.length, changed: writes, removed: removed, repaired: repaired,
                    scanFailed: scanFailed, badDates: badDates };
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
@@ -487,6 +531,7 @@
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
     } catch (e) {
       console.warn('[CloudSync] 동기화 오류', e);
+      noteBlocked((e && e.message === 'NO_FOLDER') ? 'folder' : 'error');
       if (!silent && typeof showToast==='function') showToast('동기화 오류: ' + (e && e.message), 'err');
     } finally {
       _syncing = false;

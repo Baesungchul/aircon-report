@@ -205,7 +205,9 @@ const WORK = (n) => '2026-09-0' + n;
     return '보존';
   });
 
-  await achk('내 기기가 올린 찌꺼기는 정리한다', async () => {
+  await achk('한 번 어긋난 스캔으로는 아무것도 안 지운다 (G3)', async () => {
+    /* ☠️ 스캔이 한 번만 어긋나도(폴더가 늦게 붙음·일시적 읽기 실패) 멀쩡한 일정이 사라졌다.
+         그게 팀원 달력에서 한 달치가 통째로 빈 것처럼 보일 수 있다. 이제 두 번 확인한다. */
     const env = load({
       folders: [WORK(1)],
       server: {
@@ -215,8 +217,43 @@ const WORK = (n) => '2026-09-0' + n;
       ls: { 'ac_device_id_v1': 'MYDEV' }
     });
     await runSync(env);
-    must(env.srv[WORK(9)].trashed === true, '내 기기가 올린 유령 문서가 그대로 남았습니다');
-    return '정리됨';
+    must(!env.srv[WORK(9)].trashed, '첫 대조에서 바로 지웠습니다 — 한 번의 실수로 일정이 사라집니다');
+    return '보류';
+  });
+
+  await achk('두 번 연속 없으면 그때 정리한다', async () => {
+    const env = load({
+      folders: [WORK(1)],
+      server: {
+        [WORK(1)]: { workId: WORK(1), date: WORK(1), deviceId: 'MYDEV' },
+        [WORK(9)]: { workId: WORK(9), date: WORK(9), deviceId: 'MYDEV' }
+      },
+      ls: { 'ac_device_id_v1': 'MYDEV' }
+    });
+    await runSync(env);          // 1차 — 후보로만 적어 둔다
+    await runSync(env);          // 2차 — 여전히 없다 → 정리
+    must(env.srv[WORK(9)].trashed === true, '두 번 확인했는데도 유령 문서가 남았습니다');
+    return '2차에서 정리';
+  });
+
+  await achk('사이에 다시 나타나면 후보에서 빠진다', async () => {
+    /* 폴더가 늦게 붙는 상황 — 1차엔 안 보이고 2차엔 보인다. 지우면 안 된다. */
+    const folders = [WORK(1)];                            // ⚠️ 같은 배열을 계속 읽으므로 나중에 늘리면 반영된다
+    const env = load({
+      folders: folders,
+      server: {
+        [WORK(1)]: { workId: WORK(1), date: WORK(1), deviceId: 'MYDEV' },
+        [WORK(9)]: { workId: WORK(9), date: WORK(9), deviceId: 'MYDEV' }
+      },
+      ls: { 'ac_device_id_v1': 'MYDEV' }
+    });
+    await runSync(env);                                   // 1차 — 9번이 후보로 적힌다
+    must(!env.srv[WORK(9)].trashed, '1차에서 지웠습니다');
+    folders.push(WORK(9));                                // 폴더가 뒤늦게 붙었다
+    await runSync(env);                                   // 2차 — 다시 보이므로 후보에서 빠져야 한다
+    must(!env.srv[WORK(9)].trashed,
+         '다시 나타났는데도 지웠습니다 — 폴더가 늦게 붙는 것만으로 일정이 사라집니다');
+    return '지우지 않음';
   });
 
   await achk('올릴 때 기기 식별자를 찍는다', async () => {

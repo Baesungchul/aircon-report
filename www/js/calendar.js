@@ -3351,6 +3351,16 @@
           }
 
           w.dirHandle = targetDir; w.folderName = newName; item.data.folderName = newName;
+
+          /* ★ 2026-09-18 — 옛 클라우드 문서 뒷정리.
+             위 cloud:false 는 '지금 당장 지우지 말라'는 뜻이지 '영원히 두라'는 뜻이 아니었다.
+             예전엔 cloud_sync 의 자동 정리가 나중에 치워 줬는데, 그 자동 정리를 껐다
+             (멀쩡한 일정을 한 달치 쓸어간 적이 있다). 그래서 여기서 직접 마무리한다.
+             ⚠️ 새 문서가 서버에 보인 뒤에 옛 것을 치운다 — 반대로 하면 상대 화면에서
+                이 일정이 잠깐 사라진다. 기다리는 동안 화면을 붙잡지 않는다(await 하지 않는다). */
+          try {
+            if (window.CloudSync && CloudSync.retireRenamedItem) CloudSync.retireRenamedItem(oldName, newName);
+          } catch (e) {}
         }
         try {
           if (typeof scheduleIndexUpdate === 'function' && typeof sessionToIndexEntry === 'function') {

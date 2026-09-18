@@ -255,7 +255,50 @@ const WORK = (n) => '2026-09-0' + n;
     return '보류';
   });
 
-  console.log('\n[4] F4 — 날짜 형식이 어긋난 작업');
+  console.log('\n[4] 날짜를 바꿔 폴더 이름이 바뀌었을 때');
+
+  await achk('새 문서가 올라간 뒤 옛 문서를 치운다', async () => {
+    /* 날짜 변경 = 새 폴더 + 옛 폴더 삭제. 클라우드 옛 문서를 안 치우면 상대 화면에
+       옛 날짜·새 날짜 두 곳에 뜬다. 예전엔 자동 정리가 치워 줬는데 그걸 껐다. */
+    const env = load({
+      folders: [WORK(5)],
+      server: {
+        [WORK(1)]: { workId: WORK(1), date: WORK(1) },   // 옛 것
+        [WORK(5)]: { workId: WORK(5), date: WORK(5) }    // 새 것 — 이미 올라가 있다
+      }
+    });
+    const ok = await env.CloudSync.retireRenamedItem(WORK(1), WORK(5), { gap: 5, max: 3 });
+    must(ok === true, '치우지 못했습니다');
+    must(env.srv[WORK(1)].trashed === true, '옛 문서가 그대로 남았습니다 — 상대에게 두 개로 보입니다');
+    must(!env.srv[WORK(5)].trashed, '새 문서를 치웠습니다');
+    return '옛 것만 치움';
+  });
+
+  await achk('새 문서가 끝내 안 보이면 아무것도 치우지 않는다', async () => {
+    /* ☠️ 둘 다 없어지는 건 못 고친다. 두 개로 보이는 건 고칠 수 있다.
+         확신이 없으면 지우지 않는 쪽으로 기운다. */
+    const env = load({
+      folders: [WORK(5)],
+      server: { [WORK(1)]: { workId: WORK(1), date: WORK(1) } }   // 새 것이 아직 없다
+    });
+    const ok = await env.CloudSync.retireRenamedItem(WORK(1), WORK(5), { gap: 5, max: 3 });
+    must(ok === false, '새 문서도 없는데 치웠다고 합니다');
+    must(!env.srv[WORK(1)].trashed, '새 문서가 없는데 옛 것을 치웠습니다 — 일정이 통째로 사라집니다');
+    return '그대로 둠';
+  });
+
+  await achk('달력이 실제로 이 뒷정리를 부른다', async () => {
+    const c = fs.readFileSync(path.join(JS, 'calendar.js'), 'utf8');
+    must(/CloudSync\.retireRenamedItem\(oldName, newName\)/.test(c),
+         '날짜 변경 경로가 옛 클라우드 문서를 안 치웁니다');
+    const at = c.indexOf('CloudSync.retireRenamedItem');
+    const before = c.slice(Math.max(0, at - 1200), at);
+    must(/cloud: false/.test(before),
+         '기존 cloud:false 뒷정리와 같은 자리가 아닙니다 (검사 기준이 낡았습니다)');
+    return '날짜 변경 경로';
+  });
+
+  console.log('\n[5] F4 — 날짜 형식이 어긋난 작업');
 
   await achk('형식이 다른 날짜는 올리지 않는다', async () => {
     /* ☠️ 팀원 구독은 where('date','>=',...) 다. Firestore 는 필드가 없거나 문자열이 아니면

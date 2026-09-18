@@ -634,6 +634,46 @@
   // ── 단일 작업 즉시 삭제(휴지통) ──
   //   삭제 시 syncAll의 자동정리(부분스캔/빈스캔 가드로 건너뛸 수 있음)에 의존하지 않고
   //   해당 작업 문서 하나만 곧바로 휴지통 처리 → 작업 수가 적은 공유작업자도 즉시 반영됨.
+  /* ★ 2026-09-18 — 날짜를 바꿔 폴더 이름이 바뀐 뒤, 옛 문서를 치운다.
+     ☠️ 왜 필요한가
+        날짜 변경은 사실상 '새 폴더 생성 + 옛 폴더 삭제'다. 그런데 클라우드 쪽은
+        calendar.js 가 일부러 cloud:false 로 남겨 둔다(옛 문서를 먼저 지우면 새 문서가
+        올라가기 전까지 상대 화면에서 그 일정이 잠깐 사라지기 때문).
+        그 뒷정리를 **자동 정리(스캔 대조)에 맡기고 있었는데**, 2026-09-18 에 그걸 껐다.
+        그대로 두면 상대 화면에 옛 날짜·새 날짜 두 곳에 뜬 채로 영영 남는다.
+     ⭐ 이건 자동 정리와 다르다. 스캔 결과로 '없는 것 같으니 지운다'고 추측하는 게 아니라,
+        사용자가 **날짜를 바꿨다고 분명히 시킨 일**의 뒷정리다. 대상도 문서 하나로 특정된다.
+     ⚠️ 순서를 지킨다 — **새 문서가 서버에 보인 뒤에** 옛 것을 치운다. 반대로 하면
+        상대 화면에서 그 일정이 잠깐 사라졌다 나타난다(원래 cloud:false 로 둔 이유).
+     ⚠️ 새 문서가 끝내 안 보이면 아무것도 지우지 않는다. 두 개가 보이는 건 고칠 수 있지만
+        둘 다 없어지는 건 못 고친다. */
+  CloudSync.retireRenamedItem = function (oldWorkId, newWorkId, opts) {
+    if (!loggedIn() || !oldWorkId || !newWorkId || oldWorkId === newWorkId) return Promise.resolve(false);
+    opts = opts || {};
+    var newId = safeId(newWorkId);
+    var tries = 0;
+    var MAX = opts.max || 12, GAP = opts.gap || 2500;   // 기본 최대 30초쯤 기다린다(검사에서만 줄인다)
+    CloudSync.autoSync();                          // 새 문서를 얼른 올려 달라고 재촉
+    return new Promise(function (res) {
+      (function look() {
+        itemsCol().doc(newId).get().then(function (snap) {
+          if (snap.exists && !(snap.data() || {}).trashed) {
+            CloudSync.trashWorkItem(oldWorkId).then(function () { res(true); }, function () { res(false); });
+            return;
+          }
+          if (++tries >= MAX) {
+            console.warn('[CloudSync] 새 문서가 안 보여 옛 문서를 그대로 둡니다', oldWorkId, '→', newWorkId);
+            res(false); return;
+          }
+          setTimeout(look, GAP);
+        }).catch(function () {
+          if (++tries >= MAX) { res(false); return; }
+          setTimeout(look, GAP);
+        });
+      })();
+    });
+  };
+
   CloudSync.trashWorkItem = function (workId) {
     if (!loggedIn() || !workId) return Promise.resolve();
     var uid = Cloud.user.uid;

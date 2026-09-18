@@ -222,14 +222,18 @@ chk('지도는 갈 곳이 둘 이상일 때만 권한다', () => {
   return '주소 2곳 이상';
 });
 
-chk('업데이트 안내가 들어 있다', () => {
+chk('업데이트 안내가 지금 버전에 달려 있다', () => {
+  /* ⚠️ 버전을 박아 두지 않는다 — 배포 전에 버전을 올릴 때마다 이 검사를 같이 고쳐야 하면
+     결국 검사를 끄게 된다. 지금 APP_VERSION 에 달린 안내를 찾아 내용만 본다. */
+  const ver = (read('version.js').match(/APP_VERSION\s*=\s*'([\d.]+)'/) || [])[1];
+  must(ver, 'APP_VERSION 을 못 읽었습니다');
   const wn = read('whatsnew.js');
-  const at = wn.indexOf("'3.2.29': {");
-  must(at > 0, '지도 안내(3.2.29)가 whatsnew.js 에 없습니다');
+  const at = wn.indexOf("'" + ver + "': {");
+  must(at > 0, ver + ' 에 업데이트 안내가 없습니다 — 버전을 올릴 때 키를 같이 옮기세요');
   const blk = wn.slice(at, at + 2200);
   must(/\[지도\]/.test(blk) && /길게 눌러/.test(blk),
        '안내에 지도 보기·주소 찍기 두 가지가 다 적혀 있지 않습니다');
-  return '2가지 · 3.2.29';
+  return '2가지 · v' + ver;
 });
 
 chk('배포 전에 버전을 더 올리면 안내 키를 옮기라고 알려 준다', () => {

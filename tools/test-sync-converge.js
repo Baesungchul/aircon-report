@@ -30,7 +30,11 @@ const JS = path.join(ROOT, 'www', 'js');
 let fails = 0, oks = 0;
 function achk(name, fn) {
   return fn().then(r => { console.log('  ✅ ' + name + (r ? ' — ' + r : '')); oks++; })
-             .catch(e => { console.log('  ❌ ' + name + ' — ' + e.message); fails++; });
+             .catch(e => {
+               /* 거부 객체({code:...})로 떨어지는 경우가 있어 message 만 찍으면 undefined 가 된다 */
+               var m = (e && e.message) || (e && e.code) || JSON.stringify(e);
+               console.log('  ❌ ' + name + ' — ' + m); fails++;
+             });
 }
 function chk(name, fn) {
   try { const r = fn(); console.log('  ✅ ' + name + (r ? ' — ' + r : '')); oks++; }
@@ -435,6 +439,133 @@ async function correctHash(opt) {
     must(src.indexOf('st.stuck') > 0, '배너가 멈춘 건수를 안 봅니다');
     must(src.indexOf('stuckDays') > 0, '하루는 기다렸다 말하는 조건이 없습니다');
     return '하루 뒤 알림';
+  });
+
+  console.log('\n[8] 시계가 틀린 폰에서도 수정이 그냥 저장되는가');
+
+  /* ── 규칙을 흉내 내는 가짜 서버 ──
+     서버 시각 + 5분을 넘는 savedAt 은 거부한다(firestore.rules partnerSafe 와 같은 조건).
+     서버 시각은 '진짜 시각'이고, 앱이 보는 Date.now() 는 clockMs 만큼 틀어져 있다. */
+  function shareEnv(opts) {
+    opts = opts || {};
+    const skewMs = opts.skewMs || 0;          // 이 폰 시계가 앞선 정도
+    const deny = !!opts.deny;                 // 공유가 끊긴 경우(무조건 거부)
+    const serverNow = () => Date.now();       // 검사 프로세스의 시각 = 서버 시각
+    const doc = { workId: 'w1', apt: '원래', savedAt: serverNow() - 3600000,
+                  updatedAt: { toMillis: () => serverNow() - 3600000 } };
+    const tries = [];
+    const ref = {
+      get: () => Promise.resolve({ exists: true, data: () => doc }),
+      update: (p) => {
+        tries.push(p.savedAt);
+        if (deny) return Promise.reject({ code: 'permission-denied' });
+        if (typeof p.savedAt === 'number' && p.savedAt > serverNow() + 5 * 60 * 1000) {
+          return Promise.reject({ code: 'permission-denied' });
+        }
+        Object.assign(doc, p);
+        doc.updatedAt = { toMillis: () => serverNow() };
+        return Promise.resolve();
+      }
+    };
+    const store = {};
+    const toasts = [];
+    const ctx = {
+      console: { log(){}, warn(){}, error(){} },
+      setTimeout, clearTimeout, String, Math, JSON, Object, Array, Promise,
+      parseInt, parseFloat, isNaN, isFinite, Error,
+      /* 앱이 보는 시계만 틀어 놓는다 */
+      Date: new Proxy(Date, { apply: (t, s, a) => Reflect.apply(t, s, a),
+                              get: (t, k) => (k === 'now' ? () => Date.now() + skewMs : t[k]) }),
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => { store[k] = String(v); },
+        removeItem: (k) => { delete store[k]; }
+      },
+      document: { addEventListener(){}, createElement: () => ({ style:{}, classList:{add(){},remove(){}},
+                    appendChild(){}, addEventListener(){}, setAttribute(){}, querySelector: () => null }),
+                  body: { appendChild(){}, removeChild(){} }, getElementById: () => null,
+                  querySelector: () => null, querySelectorAll: () => [] },
+      showToast: (m, t) => toasts.push({ m, t }),
+      firebase: { firestore: { FieldValue: { serverTimestamp: () => 'TS', delete: () => 'DEL',
+                                             arrayUnion: () => 'AU', arrayRemove: () => 'AR' } } },
+      Cloud: { ready: true, user: { uid: 'me', email: 'me@x.com', displayName: '나' },
+               db: { collection: () => ({ where: () => ({ get: () => Promise.resolve({ docs: [], forEach(){} }),
+                                                          onSnapshot: () => function(){} }),
+                                          doc: () => ({ collection: () => ({ doc: () => ref,
+                                                                             where: () => ({ onSnapshot: () => function(){} }),
+                                                                             onSnapshot: () => function(){} }),
+                                                        onSnapshot: () => function(){},
+                                                        get: () => Promise.resolve({ exists: false, data: () => ({}) }),
+                                                        set: () => Promise.resolve(), update: () => Promise.resolve() }) }) } }
+    };
+    ctx.window = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(read('cloud_share.js'), ctx, { filename: 'cloud_share.js' });
+    must(ctx.CloudShare && ctx.CloudShare.editItem, 'CloudShare 가 안 올라왔습니다');
+    return { CS: ctx.CloudShare, doc, tries, toasts, store, serverNow };
+  }
+  const errs = (env) => env.toasts.filter(t => t.t === 'err');
+
+  await achk('시계가 맞으면 한 번에 저장된다', async () => {
+    const env = shareEnv();
+    await env.CS.editItem('owner', 'w1', { apt: '고친 이름' });
+    must(env.doc.apt === '고친 이름', '저장이 안 됐습니다');
+    must(env.tries.length === 1, '쓸데없이 여러 번 보냈습니다: ' + env.tries.length);
+    must(!errs(env).length, '멀쩡한데 오류를 보여줬습니다');
+    return '1회';
+  });
+
+  await achk('폰 시계가 하루 빨라도 조용히 저장된다', async () => {
+    /* ☠️ 여기가 사용자가 지적한 자리다 — '수정 권한이 없습니다'를 보여 봐야
+         사용자가 할 수 있는 일이 없다. 앱이 알아서 맞춘다. */
+    const env = shareEnv({ skewMs: 24 * 60 * 60 * 1000 });
+    await env.CS.editItem('owner', 'w1', { apt: '고친 이름' });
+    must(env.doc.apt === '고친 이름', '저장이 안 됐습니다 — 시계 때문에 수정이 막혔습니다');
+    must(!errs(env).length,
+         '오류를 보여줬습니다: ' + JSON.stringify(errs(env).map(t => t.m)));
+    return '재시도 후 저장';
+  });
+
+  await achk('다시 보낸 값도 기존 값보다는 최신이다', async () => {
+    /* 여기서 과거 값을 보내면 수정은 저장되지만 원작업자가 곧 덮어쓴다 —
+       저장됐는데 되돌아가는, 더 나쁜 상태가 된다. */
+    const env = shareEnv({ skewMs: 24 * 60 * 60 * 1000 });
+    const before = env.doc.savedAt;
+    await env.CS.editItem('owner', 'w1', { apt: '고친 이름' });
+    must(env.doc.savedAt > before,
+         '저장시각이 안 올라갔습니다 — 원작업자가 이 수정을 덮어씁니다');
+    must(env.doc.savedAt <= env.serverNow() + 5 * 60 * 1000, '또 미래 값을 보냈습니다');
+    return '기존 + 1초 이상';
+  });
+
+  await achk('한 번 겪으면 그 뒤로는 처음부터 통과한다', async () => {
+    const env = shareEnv({ skewMs: 24 * 60 * 60 * 1000 });
+    await env.CS.editItem('owner', 'w1', { apt: 'A' });
+    const n1 = env.tries.length;
+    await env.CS.editItem('owner', 'w1', { apt: 'B' });
+    must(env.tries.length - n1 === 1,
+         '매번 두 번씩 보냅니다 — 시계 차이를 안 배웠습니다: ' + (env.tries.length - n1));
+    must(env.doc.apt === 'B', '두 번째 수정이 저장 안 됐습니다');
+    return '1회';
+  });
+
+  await achk('진짜로 권한이 없으면 제대로 알린다', async () => {
+    /* 실패를 숨기지는 않는다 — 공유가 끊긴 경우는 사용자가 할 일이 있다. */
+    const env = shareEnv({ deny: true });
+    let threw = false;
+    try { await env.CS.editItem('owner', 'w1', { apt: 'X' }); } catch (e) { threw = true; }
+    must(threw, '실패했는데 성공처럼 끝났습니다');
+    must(errs(env).length === 1, '오류를 안 알렸습니다');
+    must(errs(env)[0].m.indexOf('공유') >= 0,
+         '무슨 뜻인지 알 수 없는 문구입니다: ' + errs(env)[0].m);
+    return errs(env)[0].m;
+  });
+
+  chk('규칙 이야기를 사용자에게 하지 않는다', () => {
+    const src = read('cloud_share.js');
+    must(src.indexOf("toast('수정 권한이 없습니다 — Firestore 규칙에서 막혀 있습니다'") < 0,
+         'Firestore 규칙을 사용자 문구에 그대로 노출합니다');
+    return '앱 말투';
   });
 
   console.log(fails ? ('\n❌ 실패 ' + fails + '건 / 통과 ' + oks + '건')

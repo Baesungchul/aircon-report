@@ -997,6 +997,47 @@
     return Object.keys(_applyFails).filter(function (w) { return (_applyFails[w] || 0) >= 3; });
   };
 
+  /* ★★ 2026-09-18 — 내 시계와 서버 시계의 차이를 배운다.
+     ☠️ 왜 필요한가
+        상대 수정은 savedAt 에 Date.now() 를 찍어 보내고, 원작업자 앱은 그 숫자로
+        '누가 더 최신인가'를 판정한다. 그래서 수정하는 폰의 시계가 앞서 있으면
+        원작업자의 이후 수정이 그만큼 막혀 버린다(이 앱에서 실제로 난 문제).
+        규칙(firestore.rules)에서 **서버 시각 기준** +5분을 넘는 savedAt 을 거부해
+        그 경로를 막았는데, 그러면 시계가 틀린 폰에서는 수정이 **실패**한다.
+     ⭐ 실패를 숨기는 건 답이 아니다 — 그 팝업이 뜰 땐 수정이 진짜로 저장이 안 된 것이다.
+        애초에 막히지 않는 값을 보내는 게 답이다.
+     → 서버가 찍어 준 시각(updatedAt, serverTimestamp)을 한 번 되읽어 내 시계와의 차이를
+       배워 두고, 그 차이를 뺀 값을 보낸다. 시계가 맞는 폰은 차이가 0 이라 달라지는 게 없다.
+     ⚠️ 하루 한 번만 배운다. 이 확인은 읽기 1건이고, 시계 차이는 하루 사이에 크게 안 변한다.
+     ⚠️ 30초 안쪽은 차이로 치지 않는다 — 왕복 지연이지 시계 차이가 아니다. */
+  var SKEW_KEY = 'ac_clock_skew_v1';      // 내 시계 - 서버 시계 (ms)
+  var SKEW_AT_KEY = 'ac_clock_skew_at';   // 마지막으로 배운 시각
+  function skew(){ try { return parseInt(localStorage.getItem(SKEW_KEY) || '0', 10) || 0; } catch(e){ return 0; } }
+  function nowForServer(){ return Date.now() - skew(); }
+  function noteSkew(ms){
+    if (typeof ms !== 'number' || !isFinite(ms)) return;
+    if (Math.abs(ms) < 30000) ms = 0;
+    try {
+      localStorage.setItem(SKEW_KEY, String(Math.round(ms)));
+      localStorage.setItem(SKEW_AT_KEY, String(Date.now()));
+    } catch(e){}
+  }
+  /* 방금 쓴 문서를 되읽어 서버가 찍은 시각을 본다. 실패해도 그냥 넘어간다 */
+  function learnSkew(ref, t0){
+    try {
+      var at = parseInt(localStorage.getItem(SKEW_AT_KEY) || '0', 10) || 0;
+      if (Date.now() - at < 24 * 60 * 60 * 1000) return;
+    } catch(e){}
+    try {
+      ref.get().then(function(s){
+        var d = (s && s.exists && s.data()) || null;
+        var u = d && d.updatedAt;
+        if (u && u.toMillis) noteSkew(t0 - u.toMillis());
+      }).catch(function(){});
+    } catch(e){}
+  }
+  CloudShare._clockSkew = { get: skew, note: noteSkew, nowForServer: nowForServer };
+
   /* ════════ 공유 일정 수정 (텍스트) ════════ */
   CloudShare.editItem = function(ownerUid, workId, fields){
     if (!loggedIn()) { toast('먼저 로그인해주세요','err'); return Promise.reject(); }
@@ -1024,16 +1065,47 @@
        → 상대 수정이 더 최신임을 표시해 원작업자의 옛 업로드를 막는다.
        원작업자 로컬에 반영되면(applyCloudEditToLocal) 거기서 savedAt 을 다시 올리므로
        원작업자의 이후 저장이 막히지 않는다. 반영에 실패하면 계속 막혀서 상대 수정이 살아남는다. */
-    patch.savedAt = Date.now();
-    return db().collection('schedules').doc(ownerUid).collection('items').doc(safeIdShare(workId)).update(patch)
-      .then(function(){ toast('수정되었습니다','ok'); refreshCal(); })
+    /* ★ 2026-09-18 — Date.now() 가 아니라 '서버 시계로 환산한 지금'을 보낸다(위 skew 주석). */
+    var _t0 = Date.now();
+    patch.savedAt = nowForServer();
+    var _ref = db().collection('schedules').doc(ownerUid).collection('items').doc(safeIdShare(workId));
+    var _ok = function(){ toast('수정되었습니다','ok'); refreshCal(); };
+    return _ref.update(patch)
+      .then(function(){ learnSkew(_ref, _t0); _ok(); })
+      .catch(function(e){
+        /* ★★ 2026-09-18 — 저장시각이 앞서서 규칙에 막힌 경우는 **조용히 한 번 더** 보낸다.
+           ☠️ 사용자에게 '수정 권한이 없습니다'를 보여 봐야 할 수 있는 일이 없다.
+              시계가 틀린 것뿐이고, 그건 앱이 알아서 맞추면 되는 일이다.
+           → 서버 문서가 이미 갖고 있는 시각(updatedAt·savedAt) 중 큰 값 + 1초로 다시 보낸다.
+              · 그 값은 서버가 이미 받아들인 과거 시각이라 규칙에 막히지 않는다.
+              · 그러면서도 기존 savedAt 보다는 크므로 '내 수정이 더 최신'이 유지된다.
+           ⚠️ 이건 시계 문제일 때만이다. 공유가 끊겼거나 팀에서 빠진 경우도 같은 코드로
+              오는데, 그때는 이 두 번째 시도도 막히므로 아래에서 제대로 알린다. */
+        var _c = String((e && e.code) || '');
+        if (_c.indexOf('permission-denied') < 0) throw e;
+        return _ref.get().then(function(s){
+          var d = (s && s.exists && s.data()) || {};
+          var base = 0;
+          try { if (d.updatedAt && d.updatedAt.toMillis) base = d.updatedAt.toMillis(); } catch(e2){}
+          patch.savedAt = Math.max(base, d.savedAt || 0) + 1000;
+          var _t1 = Date.now();
+          return _ref.update(patch).then(function(){
+            /* 한 번 성공했으니 여기서 시계 차이를 배워 다음부터는 처음에 통과한다 */
+            try { localStorage.removeItem(SKEW_AT_KEY); } catch(e3){}
+            learnSkew(_ref, _t1);
+            _ok();
+          });
+        });
+      })
       .catch(function(e){
         console.warn('[CloudShare] 수정 실패', e);
         /* ★ 2026-08-13: 권한 거부는 Firestore 규칙이 그 필드/사용자의 쓰기를 막은 것이다.
-           'permission-denied' 코드만 보여주면 원인을 알 수 없어 문구를 나눈다. */
+           'permission-denied' 코드만 보여주면 원인을 알 수 없어 문구를 나눈다.
+           ⚠️ 2026-09-18 — 여기까지 왔다는 건 위의 재시도도 막혔다는 뜻이다.
+              시계 문제는 이미 걸러졌으므로, 남은 건 진짜로 고칠 권한이 없는 경우다. */
         var _c = (e && e.code) || '';
         if (String(_c).indexOf('permission-denied') >= 0) {
-          toast('수정 권한이 없습니다 — Firestore 규칙에서 막혀 있습니다','err');
+          toast('이 일정을 고칠 수 없습니다 — 공유가 끊겼는지 확인해 주세요','err');
         } else {
           toast('수정 실패: ' + (_c || (e && e.message) || '알 수 없음'),'err');
         }

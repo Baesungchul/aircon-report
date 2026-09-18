@@ -135,6 +135,56 @@
   function hashOf(p){ try { var j = JSON.stringify(p); return j.length + ':' + fnv1a(j); } catch(e){ return String(Math.random()); } }
   function hkey(uid, id){ return 'cloudSyncHash_' + uid + '_' + id; }
 
+  /* ★★ R4 (2026-09-18) — '서버가 지금 무슨 내용을 들고 있는지'를 서버 문서 자신이 말하게 한다.
+     ☠️ 왜 필요한가
+        올릴지 말지는 **로컬 해시**(cloudSyncHash_)로만 판단한다. 그런데 그 해시가 기록하는 것은
+        "서버에 이게 있다"가 아니라 **"내가 이걸 올리려고 했다"** 다. 그래서 어떤 이유로든
+        서버 내용이 내 로컬과 달라지면(충돌 가드가 건너뛰면서 해시를 써 버린 경우가 대표적이다)
+        아무도 그 사실을 모른 채 영원히 '동기화됨'으로 남는다.
+        R1 은 **없는 것**만 찾는다. 있는데 **다른 것**은 못 본다.
+     → 올릴 때 내용 지문을 같이 실어 두면, 전체 대조에서 문서를 읽는 김에
+       `d.syncHash !== hashOf(지금 로컬)` 한 줄로 불일치를 알 수 있다. 읽기는 늘지 않는다.
+     ⚠️ 지문은 **휘발 필드(updatedAt·savedAt·deviceId·editedBy·syncHash)를 붙이기 전**의
+        payload 로 계산한다. 그래서 이 필드를 더해도 지문 자체는 안 바뀌고,
+        도입 첫 실행에 전량 재업로드가 나지 않는다. */
+  var HASH_FIELD = 'syncHash';
+
+  /* ★ 2026-09-18 — 기기 시계를 믿지 않는다.
+     ☠️ 충돌 가드는 숫자 하나로 돈다: 서버 savedAt > 내 로컬 savedAt 이면 내 업로드를 건너뛴다.
+        그런데 그 서버 값은 **수정한 팀원 폰이 Date.now() 로 찍어 보낸 것**이다(cloud_share.editItem).
+        팀원 폰 시계가 하루 빠르면, 그 한 번의 수정으로 원작업자의 이후 수정이
+        **하루 동안 통째로 안 올라간다.** 조용히, 경고도 없이.
+     → 지금보다 뚜렷하게 미래인 저장시각은 가드로 치지 않는다(= 내 업로드를 막지 못한다).
+
+     ⚠️ 진짜 방어는 규칙(firestore.rules)에 있다 — 거기서는 **서버 시각** 기준으로
+        savedAt 이 +5분을 넘으면 쓰기 자체를 거부한다. 기기 시계와 무관하니 그게 정확하다.
+        여기(받는 쪽)는 **규칙이 게시되기 전에 이미 잘못 찍힌 문서**를 풀어 주는 뒷문이다.
+     ⚠️ 그래서 여기 여유는 **일부러 넉넉히(1시간) 잡는다.** 이 판정은 내 폰 시계로 하는데,
+        내 시계가 몇 분 느리면 멀쩡한 상대 수정이 '미래'로 보여 내 옛 값으로 덮어써 버린다.
+        규칙이 지키는 한 정상 문서는 실제 시각 +5분을 절대 못 넘으므로,
+        1시간을 넘는 값은 '규칙 이전에 오염된 문서'로 봐도 된다.
+        반대로 이보다 더 넉넉하게 잡으면, 문제의 시작이었던 '하루 빠른 시계'를 못 푼다. */
+  var CLOCK_SKEW_MS = 60 * 60 * 1000;
+  function serverNewer(sv, lsaved){
+    if (!sv || !lsaved) return false;
+    if (sv <= lsaved) return false;
+    if (sv > Date.now() + CLOCK_SKEW_MS) {
+      console.warn('[CloudSync] 서버 저장시각이 미래입니다 → 충돌 가드에서 제외', sv);
+      return false;
+    }
+    return true;
+  }
+  /* 로컬 _session.json 의 저장시각(ms). 없으면 0 — 가드가 안 걸린다(옛 데이터) */
+  function localSavedOf(it){
+    try {
+      var s = it && it.data && it.data.session;
+      if (s && s.savedAt) { var t = Date.parse(s.savedAt); if (!isNaN(t)) return t; }
+    } catch (e) {}
+    return 0;
+  }
+  CloudSync._internals = { serverNewer: serverNewer, localSavedOf: localSavedOf,
+                           hashOf: hashOf, CLOCK_SKEW_MS: CLOCK_SKEW_MS, HASH_FIELD: HASH_FIELD };
+
   /* ★ R3 (2026-09-18) — 기기 식별자.
      ☠️ 왜 필요한가: 같은 계정을 기기 둘에서 쓰면 각 기기의 '권위적 정리'가 **서로의 작업**을
         휴지통으로 보낸다. 기기 B 가 작업 X 를 치울 때 지우는 건 B 의 해시라, A 는 자기 해시가
@@ -267,16 +317,16 @@
   function pushOne(uid, it, p, id, force){
     var h = hashOf(p);
     if (!force && hashUnchanged(uid, id, p, h)) return false;   // 변경 없음(옛 형식이면 조용히 갈아끼운다)
-    var lsaved = 0;
-    try { if (it.data.session && it.data.session.savedAt) { var t = Date.parse(it.data.session.savedAt); if (!isNaN(t)) lsaved = t; } } catch (e) {}
+    var lsaved = localSavedOf(it);
     p.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     p.editedBy = uid;
     p.savedAt = lsaved;
     p.deviceId = deviceId();      // ★ R3 — 어느 기기가 올렸는지. 정리가 이걸 본다
+    p[HASH_FIELD] = h;            // ★ R4 — 서버가 들고 있는 내용의 지문(위 HASH_FIELD 주석 참고)
     gate(function () { return itemsCol().doc(id).get().then(function (snap) {
       var sd = (snap.exists && snap.data()) || null;
       var sv = (sd && sd.savedAt) || 0;
-      if (sv && lsaved && sv > lsaved) {
+      if (serverNewer(sv, lsaved)) {
         /* 서버가 더 최신 = 그 사이 공유 상대가 고쳤다. 내 옛 값으로 덮지 않는다. */
         if (!force) {
           console.warn('[CloudSync] 서버가 최신 → 업로드 건너뜀(충돌 방지)', id);
@@ -318,11 +368,29 @@
   var WHY_KEY = 'cloudSyncBlocked';    // 막혀 있으면 그 이유, 되면 지운다
   function noteOk(){ try { localStorage.setItem(OK_KEY, String(Date.now())); localStorage.removeItem(WHY_KEY); } catch(e){} }
   function noteBlocked(why){ try { localStorage.setItem(WHY_KEY, why); } catch(e){} }
+
+  /* ★ R4 (2026-09-18) — 자동으로 못 푼 불일치가 **며칠째** 남아 있으면 사람에게 말해야 한다.
+     ☠️ R4 는 대부분을 스스로 고치지만, 로컬 폴더가 아예 없는 작업(기기를 바꿨거나 폴더가
+        덜 넘어온 경우)은 아무리 다시 시도해도 반영되지 않는다. 그걸 조용히 두면
+        '팀원과 다른 일정'이 그대로 굳는다. 처음 본 시각을 남겨 며칠째인지 셀 수 있게 한다.
+     ⚠️ 0 이 되면 시각까지 지운다 — 안 그러면 한 번 났던 경고가 영영 안 꺼진다. */
+  var STUCK_N_KEY = 'cloudSyncStuckN';
+  var STUCK_AT_KEY = 'cloudSyncStuckSince';
+  function noteStuck(n){
+    try {
+      if (!n) { localStorage.removeItem(STUCK_N_KEY); localStorage.removeItem(STUCK_AT_KEY); return; }
+      localStorage.setItem(STUCK_N_KEY, String(n));
+      if (!localStorage.getItem(STUCK_AT_KEY)) localStorage.setItem(STUCK_AT_KEY, String(Date.now()));
+    } catch (e) {}
+  }
   CloudSync.status = function(){
-    var okAt = 0, why = '';
+    var okAt = 0, why = '', sn = 0, sat = 0;
     try { okAt = parseInt(localStorage.getItem(OK_KEY) || '0', 10) || 0; } catch(e){}
     try { why = localStorage.getItem(WHY_KEY) || ''; } catch(e){}
-    return { okAt: okAt, blocked: why, days: okAt ? Math.floor((Date.now() - okAt) / 86400000) : -1 };
+    try { sn = parseInt(localStorage.getItem(STUCK_N_KEY) || '0', 10) || 0; } catch(e){}
+    try { sat = parseInt(localStorage.getItem(STUCK_AT_KEY) || '0', 10) || 0; } catch(e){}
+    return { okAt: okAt, blocked: why, days: okAt ? Math.floor((Date.now() - okAt) / 86400000) : -1,
+             stuck: sn, stuckDays: sat ? Math.floor((Date.now() - sat) / 86400000) : -1 };
   };
 
   // ── 핵심 동기화: 업로드(변경분) + 삭제 반영 ──
@@ -347,6 +415,7 @@
       if (!scanOk) console.warn('[CloudSync] 폴더 ' + scanFailed + '개를 못 읽었습니다 → 정리·기준선 갱신 건너뜀');
       var currentIds = [];
       var byId = {};            // id -> item (R1 복구에서 다시 올릴 때 쓴다)
+      var pushedNow = {};       // ★ R4 — 이번 실행에서 이미 올리기로 한 id (중복 업로드 방지)
       var writes = 0, badDates = 0;
       items.forEach(function(it){
         var p = toPayload(it);
@@ -368,7 +437,9 @@
             window._pendingTakeClaim = null;
           }
         } catch(e){}
-        if (pushOne(uid, it, p, id, false)) writes++;
+        /* ★ R4 — 이번 실행에서 이미 올리기로 한 것은 내용 대조에서 다시 보지 않는다.
+           안 보면 '다시 맞추기'(해시를 전부 비운다)에서 전 작업이 두 번씩 올라간다. */
+        if (pushOne(uid, it, p, id, false)) { writes++; pushedNow[id] = 1; }
       });
       // ★ "클라우드 실제 문서 ↔ 로컬 폴더" 대조 (2026-07-24)
       //    ⚠️ 2026-09-18 부터 이 대조는 **지우지 않는다.** 두 가지에만 쓴다:
@@ -377,6 +448,7 @@
       //    지우는 일은 사용자가 작업을 삭제할 때 trashWorkItem 이 한다 — 사람이 시킨 것만.
       var curSet = {}; currentIds.forEach(function(i){ curSet[i]=1; });
       var repaired = 0, ghosts = 0;
+      var diverged = 0, stuck = 0;   // ★ R4 — 내용이 다른 것 / 상대 수정을 못 받은 것
       /* ⚠️ 이 블록은 이제 '지우는 곳'이 아니라 **'빠진 것을 찾아 메우는 곳'(R1)** 이다.
            자동 삭제는 2026-09-18 에 껐다 — 아래 긴 주석 참고. */
       if (currentIds.length > 0 && scanOk) {
@@ -406,6 +478,8 @@
             var cloudSnap = await itemsCol().get();
             var cloudWork = 0;   // 클라우드의 정상 '작업' 문서 수(수동/휴지통/claim 제외)
             var cloudHas = {};   // ★ R1 — 서버에 '멀쩡히' 있는 문서 id
+            var cloudHash = {};  // ★ R4 — 그 문서가 들고 있다고 말하는 내용 지문
+            var cloudSaved = {}; // ★ R4 — 그 문서의 저장시각(내가 못 받은 상대 수정 찾기)
             var legacy = [];     // 기기 식별자가 없는 옛 문서(조건부로만 정리한다)
             cloudSnap.forEach(function (doc) {
               var id = doc.id;
@@ -415,6 +489,8 @@
               /* ★ R1 — 정리로 휴지통에 간 것(cleanupTrashed)은 '있다'로 치지 않는다.
                  사람이 손으로 버린 것(trashed 만 있고 cleanupTrashed 없음)은 그대로 존중한다. */
               if (!d.cleanupTrashed) cloudHas[id] = 1;
+              cloudHash[id] = d[HASH_FIELD] || '';
+              cloudSaved[id] = d.savedAt || 0;
               if (curSet[id]) return;                                              // 로컬에 있음 → 유지
               if (d.manual || String(d.workId || id).indexOf('m_') === 0) return;  // 수동 일정 보존
               if (d.trashed) return;                                               // 휴지통 보존
@@ -460,6 +536,62 @@
               if (pushOne(uid, it, p2, id, true)) repaired++;
             });
             if (repaired) console.warn('[CloudSync] 서버에 없던 일정 ' + repaired + '건을 다시 올렸습니다');
+
+            /* ★★ R4 (2026-09-18) — 있는데 '다른' 것. R1 이 못 보던 절반이다.
+               R1 은 문서가 **있는지**만 본다. 있는데 내용이 어긋난 문서는 영원히 그대로다.
+               여기서 두 가지를 따로 본다 — 원인이 반대라 처방도 반대이기 때문이다.
+
+                 (a) 내 올리기가 반영되지 않았다   → 서버 지문 ≠ 지금 로컬 지문
+                     대표 사례: 충돌 가드가 '서버가 최신'이라 건너뛰면서 **해시를 써 버린** 경우.
+                     그 순간부터 로컬 ≠ 서버인데 시스템은 '동기화됨'으로 표시한다.
+                     처방: 로컬 해시만 지운다. **강제로 올리지 않는다** — 평소 경로(pushOne)가
+                           savedAt 가드를 그대로 지나며 올려야 상대 수정을 덮지 않는다.
+
+                 (b) 상대 수정을 내가 못 받았다     → 서버 savedAt 이 내 로컬보다 뚜렷이 최신
+                     대표 사례: applyCloudEditToLocal 이 3회 실패해 포기된 작업.
+                     이건 올려서 해결되는 게 아니라 **받아와야** 풀린다. 그대로 올리면
+                     상대 수정이 되돌아간다.
+                     처방: 반영을 다시 시도하게 한다(CloudShare.retryApply).
+                           그게 성공하면 로컬 savedAt 이 올라가 다음 업로드로 저절로 수렴한다.
+
+               ⚠️ (b) 는 '방금 상대가 고쳤고 아직 반영 중'일 수도 있다. 그건 정상이다.
+                  그래서 어느 정도 묵은 것만 센다(SETTLE_MS). */
+            var SETTLE_MS = 10 * 60 * 1000;
+            var RETRY_MAX = 5, retryN = 0;
+            currentIds.forEach(function (id) {
+              if (!cloudHas[id]) return;              // 없는 것은 위(R1)에서 이미 처리했다
+              var it = byId[id]; if (!it) return;
+              var lsv = localSavedOf(it);
+              /* (b) 먼저 본다 — 서버가 더 최신이면 올리기가 아니라 받아오기가 답이다 */
+              if (serverNewer(cloudSaved[id], lsv) && (Date.now() - cloudSaved[id]) > SETTLE_MS) {
+                stuck++;
+                /* ⚠️ 한 번에 몇 건만 시도한다. applyCloudEditToLocal 은 성공하면 그 달의
+                   캐시를 버리고 달력을 다시 그린다 — 수십 건을 한꺼번에 부르면 앱이 멎는다.
+                   12시간마다 도는 대조라 남은 것은 다음 차례에 이어서 풀린다. */
+                if (retryN < RETRY_MAX) {
+                  retryN++;
+                  try {
+                    var wid = (it.data && it.data.folderName) || id;
+                    if (window.CloudShare && CloudShare.retryApply) CloudShare.retryApply(wid);
+                  } catch (e) {}
+                }
+                return;
+              }
+              /* (a) 지문 비교. 지문이 아직 없는 옛 문서는 건너뛴다 —
+                 다음 업로드에서 자연히 붙으므로 여기서 헛쓰기를 만들 이유가 없다. */
+              if (pushedNow[id]) return;              // 이번 실행에서 이미 올리는 중
+              var have = cloudHash[id];
+              if (!have) return;
+              var p2 = toPayload(it);
+              if (hashOf(p2) === have) return;        // 같다
+              diverged++;
+              try { localStorage.removeItem(hkey(uid, id)); } catch (e) {}
+              pushFull(uid, it, p2, id);
+              pushOne(uid, it, p2, id, false);
+            });
+            if (diverged) console.warn('[CloudSync] 서버 내용이 다른 일정 ' + diverged + '건 → 다시 올립니다');
+            if (stuck) console.warn('[CloudSync] 상대 수정을 아직 못 받은 일정 ' + stuck + '건 → 반영을 다시 시도합니다');
+            noteStuck(stuck);
 
             try { localStorage.setItem(_lastFullKey, String(Date.now())); } catch (e) {}
             console.log('[CloudSync] 전체 대조 수행(클라우드 ' + cloudSnap.size + '건 읽음)');
@@ -516,11 +648,13 @@
            경고가 안 뜨는 채로 절반만 올라가는 상태가 굳는다. */
       if (scanOk) noteOk(); else noteBlocked('partial');
       _lastRun = { scanned: items.length, changed: writes, repaired: repaired,
-                   scanFailed: scanFailed, badDates: badDates, ghosts: ghosts };
+                   scanFailed: scanFailed, badDates: badDates, ghosts: ghosts,
+                   diverged: diverged, stuck: stuck };
       /* ⚠️ '휴지통정리' 항목은 뺐다 — 자동 삭제를 끈 뒤로 언제나 0 이라 읽는 사람을 헷갈리게 한다.
            대신 repaired(다시 올린 것)·ghosts(서버에만 있는 것)를 남긴다. */
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes +
-                  ', 복구 ' + repaired + ', 서버에만 ' + ghosts);
+                  ', 복구 ' + repaired + ', 내용불일치 ' + diverged + ', 못받음 ' + stuck +
+                  ', 서버에만 ' + ghosts);
       try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: 0 }); } catch (e) {}
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
     } catch (e) {
@@ -583,7 +717,8 @@
     var done = await gateIdle(180000);
     var r = _lastRun || { scanned: 0, changed: 0 };
     return { ok: true, cleared: cleared, scanned: r.scanned, changed: r.changed,
-             repaired: r.repaired || 0, scanFailed: r.scanFailed || 0, finished: done };
+             repaired: r.repaired || 0, diverged: r.diverged || 0, stuck: r.stuck || 0,
+             scanFailed: r.scanFailed || 0, finished: done };
   };
 
   // ── 디바운스 자동 동기화 ──
@@ -595,7 +730,17 @@
   };
   CloudSync.fullSync = function(){ return syncAll(false); };
 
-  // 달력 월 로드 피기백(즉시 반영용, 변경분만)
+  /* 달력 월 로드 피기백(즉시 반영용, 변경분만)
+     ★★ 2026-09-18 — 여기 있던 업로드 코드를 **통째로 지우고 pushOne 을 부른다.**
+     ☠️ 왜: 같은 문서를 쓰는 코드가 둘이었고, 이미 갈라져 있었다.
+          · pushOne 은 deviceId 를 찍는데 여기는 안 찍었다 → 달력을 먼저 연 작업은
+            '기기 식별자 없는 옛 문서'로 만들어져 자가복구·정리 판정이 어긋났다.
+          · pushOne 은 자동정리로 휴지통에 간 문서를 되살리는데 여기는 안 했다.
+          · 내용 지문(syncHash)·시계 방어도 여기에는 없었다 — 새로 넣으면 또 두 벌이 된다.
+        업로드 경로가 둘이면 **언제 어느 쪽을 탔는지에 따라 서버 문서가 달라진다.**
+        사용자가 잡으라고 한 바로 그 문제의 한 원인이라 하나로 합친다.
+     ⚠️ 동작은 그대로다 — pushOne 이 예전 이 자리의 가드를 이미 전부 갖고 있다
+        (해시 비교 → 1건 읽기 → savedAt 비교 → merge 저장). */
   CloudSync.pushWorkItems = function (calItems) {
     if (!loggedIn() || !Array.isArray(calItems)) return;
     var uid = Cloud.user.uid;
@@ -613,38 +758,7 @@
           }
         } catch(e){}
         pushFull(uid, it, p, id);   // ★ 전체본 업로드 (items 해시와 별개 - 경합 누락 방지)
-        var h = hashOf(p);
-        if (hashUnchanged(uid, id, p, h)) return;  // 변경 없음(옛 형식이면 여기서 조용히 갈아끼운다)
-        /* ⭐⭐ 2026-08-13 근본버그 — 여기엔 충돌 가드가 통째로 없었다.
-           pushWorkItems 는 달력을 열 때마다 호출된다(loadCalendarData). 그래서 공유 상대가
-           작업자·날짜를 고쳐 서버에 잘 저장해도, 원작업자가 달력을 여는 순간
-           자기 로컬(옛 값)을 merge 로 덮어써 상대 수정이 사라졌다.
-           syncAll 에는 있던 'savedAt 비교 후 서버가 최신이면 건너뛰기'가 여기엔 없었고,
-           p.savedAt 조차 안 실어서 서버 값이 갱신되지도 않았다.
-           (2026-08-13 toPayload 에 posts 를 추가하면서 모든 작업의 해시가 바뀌어
-            전량 재업로드가 돌았고, 그래서 증상이 더 확실해졌다)
-           → syncAll 과 같은 가드를 넣는다. 해시가 바뀐 항목에서만 1건 읽으므로 비용도 같다. */
-        var _lsaved = 0;
-        try { if (it.data.session && it.data.session.savedAt) { var _tt = Date.parse(it.data.session.savedAt); if (!isNaN(_tt)) _lsaved = _tt; } } catch (e) {}
-        p.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-        p.editedBy = uid;
-        p.savedAt = _lsaved;
-        (function (p2, id2, h2, lsaved2) {
-          gate(function () { return itemsCol().doc(id2).get().then(function (snap) {
-            var sd = (snap.exists && snap.data()) || null;
-            var sv = (sd && sd.savedAt) || 0;
-            if (sv && lsaved2 && sv > lsaved2) {
-              console.warn('[CloudSync] 서버가 최신 → 업로드 건너뜀(상대 수정 보호)', id2);
-              // 해시를 기록해 둔다: 매번 다시 읽어 읽기 비용이 늘지 않게.
-              // 내 로컬이 실제로 바뀌면 해시가 달라져 다시 시도된다.
-              try { localStorage.setItem(hkey(uid, id2), h2); } catch (e) {}
-              return;
-            }
-            return itemsCol().doc(id2).set(p2, { merge: true })
-              .then(function(){ try { localStorage.setItem(hkey(uid, id2), h2); } catch(e){} })
-              .catch(function(e){ console.warn('[CloudSync] 업로드 실패', id2, e && e.code); });
-          }).catch(function (e) { console.warn('[CloudSync] savedAt 확인 실패', id2, e && e.code); }); });
-        })(p, id, h, _lsaved);
+        pushOne(uid, it, p, id, false);
       } catch(e){}
     });
   };

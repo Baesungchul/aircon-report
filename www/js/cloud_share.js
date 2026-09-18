@@ -956,6 +956,47 @@
   }
   CloudShare.getOverride = function(workId){ return (workId && _myOverrides[workId]) || null; };
 
+  /* ★★ 2026-09-18 — 멈춘 반영을 되살린다.
+     ☠️ 무엇이 멈추나
+        상대가 내 일정을 고치면 서버 savedAt 이 올라가고, cloud_sync 의 충돌 가드는
+        '서버가 더 최신'이라며 **내 업로드를 건너뛴다.** 정상 흐름은 여기서 끝나지 않는다 —
+        buildOverrides 가 그 수정을 내 _session.json 에 써 넣고(applyCloudEditToLocal)
+        거기서 로컬 savedAt 을 올려, 다음 업로드로 서버와 로컬이 다시 같아진다.
+        그런데 그 쓰기가 3회 실패하면 위 _applyFails 상한에 걸려 **포기한다.**
+        그때부터 로컬은 옛 값, 서버는 상대 값 — 둘 다 그대로 멈춘다.
+        내 업로드도 가드에 막혀 영영 안 올라간다. **사라지는 게 아니라 멈추는 것**이고,
+        앱을 껐다 켜도 안 풀렸다(포기 기록은 세션 것이지만, 다시 켜도 같은 이유로 또 3회 실패한다).
+     ⭐ 이 함수가 그 고리를 끊는 유일한 자리다. cloud_sync 의 전체 대조(R4)가
+        '서버가 뚜렷이 최신인데 아직 로컬에 없다'를 찾아 여기를 부른다.
+     ⚠️ 실패 횟수만 0 으로 되돌리지 않는다 — 그러면 다음 스냅샷이 올 때까지 아무 일도 안 난다.
+        여기서 **직접 한 번 더 시도한다.**
+     ⚠️ 폴더가 아직 안 붙었으면('retry') 실패로 세지 않는다. 폴더가 붙는 순간 평소 경로가 처리한다. */
+  CloudShare.retryApply = function (workId) {
+    var w = String(workId || '');
+    if (!w || String(w).indexOf('m_') === 0) return Promise.resolve(false);   // 수동일정은 로컬 폴더가 없다
+    var ov = _myOverrides[w];
+    if (!ov) return Promise.resolve(false);                                   // 상대가 고친 게 없다
+    if (typeof window.applyCloudEditToLocal !== 'function') return Promise.resolve(false);
+    _applyFails[w] = 0;
+    delete _appliedHash[w];       // '이미 반영했다'는 기록을 지워야 같은 내용도 다시 쓴다
+    delete _lastTriedHash[w];
+    if (_applyingLocal[w]) return Promise.resolve(false);                     // 이미 진행 중
+    _applyingLocal[w] = 1;
+    var hh = JSON.stringify(ov);
+    return Promise.resolve(window.applyCloudEditToLocal(w, ov))
+      .then(function (ok) {
+        if (ok === true) { _appliedHash[w] = hh; _applyFails[w] = 0; return true; }
+        if (ok !== 'retry') _applyFails[w] = 1;
+        return false;
+      })
+      .catch(function () { _applyFails[w] = 1; return false; })
+      .then(function (r) { delete _applyingLocal[w]; return r; });
+  };
+  /* 검사·진단용 — 지금 포기 상태인 작업 목록 */
+  CloudShare.applyGaveUp = function () {
+    return Object.keys(_applyFails).filter(function (w) { return (_applyFails[w] || 0) >= 3; });
+  };
+
   /* ════════ 공유 일정 수정 (텍스트) ════════ */
   CloudShare.editItem = function(ownerUid, workId, fields){
     if (!loggedIn()) { toast('먼저 로그인해주세요','err'); return Promise.reject(); }

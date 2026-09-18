@@ -1,0 +1,258 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   firestore.rules — 현장매니저 보안 규칙
+
+   ☠️ 이 파일은 **사본이 아니라 원본**으로 관리한다 (2026-09-18 부터).
+      예전에는 규칙이 파이어베이스 콘솔에만 있었다. 그래서 코드를 고칠 때
+      규칙을 같이 볼 수 없었고, 실제로 '코드는 막는데 규칙은 안 막는' 자리가
+      오래 남아 있었다(아래 팀원 update 참고).
+      → 고칠 일이 생기면 **이 파일을 먼저 고치고**, 콘솔에 붙여넣어 게시한다.
+
+   게시 방법: Firebase 콘솔 → Firestore Database → 규칙 → 전체 붙여넣기 → 게시
+   게시 확인: 로그인 없이 REST 로 없는 문서를 읽어 404 면 게시됨, 403 이면 미게시.
+
+   이력
+     2026-08-26 콘솔 게시 (2026-08-27 재확인)
+     2026-08-31 admin_grants 블록 추가
+     2026-09-18 일정 문서(schedules/{uid}/items)의 팀원 update 를 필드 단위로 제한
+   ═══════════════════════════════════════════════════════════════════════ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ★ 앱 버전 게이트: 버전 정보는 누구나(로그인 안 해도) 읽기, 수정은 콘솔에서만
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+    function isAccepted(pairId) {
+      return exists(/databases/$(database)/documents/shares/$(pairId))
+          && get(/databases/$(database)/documents/shares/$(pairId)).data.status == 'accepted';
+    }
+    function shared(uid) {
+      return isAccepted(uid + '_' + request.auth.uid) || isAccepted(request.auth.uid + '_' + uid);
+    }
+    // ★ 팀 공유: 나와 uid 가 같은 팀(users.teamIds 교집합)이면 true
+    function sameTeam(uid) {
+      return request.auth != null
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          && exists(/databases/$(database)/documents/users/$(uid))
+          && ('teamIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+          && ('teamIds' in get(/databases/$(database)/documents/users/$(uid)).data)
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamIds
+               .hasAny(get(/databases/$(database)/documents/users/$(uid)).data.teamIds);
+    }
+    function isAdmin() {
+      return request.auth != null
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.admin == true;
+    }
+    match /users/{uid} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && !request.resource.data.keys().hasAny(['admin'])
+                    && (!request.resource.data.keys().hasAny(['plan']) || request.resource.data.plan == 'free');
+      allow update: if isAdmin()
+                    || ( request.auth.uid == uid
+                         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan','admin']) );
+      allow delete: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+    }
+    /* 🆕 2026-08-31 추가: "사용자 플랜 관리" 화면에서 관리자가 부여한 내역(감사 로그).
+         admin_grants/{관리자uid}/log/{자동id} — 관리자 본인만 자기 로그를 읽고 쓸 수
+         있다. 로그는 감사 기록이라 수정·삭제는 아무도 못 한다(추가만 가능). */
+    match /admin_grants/{uid}/log/{grantId} {
+      allow read:   if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid && isAdmin();
+      allow update, delete: if false;
+    }
+    // ★ 팀 문서
+    match /teams/{teamId} {
+      allow read:   if request.auth != null;   // 초대코드 조회 + 멤버 표시
+      allow create: if request.auth != null
+                    && request.resource.data.owner == request.auth.uid
+                    && request.auth.uid in request.resource.data.members;
+      // 참여/나가기: 팀장·이름 불변이면 허용(본인이 members 에 자신 추가/제거)
+      allow update: if request.auth != null && (
+                      resource.data.owner == request.auth.uid ||
+                      ( request.resource.data.owner == resource.data.owner
+                        && request.resource.data.name == resource.data.name )
+                    );
+      allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
+    }
+    match /coupons/{code} {
+      allow get:            if request.auth != null;
+      allow list:           if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update:         if isAdmin()
+                            || ( request.auth != null
+                                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedCount','usedBy']) );
+    }
+    match /shares/{pairId} {
+      allow read: if request.auth != null && request.auth.uid in resource.data.members;
+      allow create: if request.auth != null
+                    && request.auth.uid in request.resource.data.members
+                    && request.resource.data.status == 'pending';
+      allow update, delete: if request.auth != null && request.auth.uid in resource.data.members;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       일정 요약 문서 — 팀 달력이 보는 바로 그 문서
+       ═══════════════════════════════════════════════════════════════════
+       ☠️ 2026-09-18 이전에는 이랬다:
+            allow update: if 본인 || shared(uid) || sameTeam(uid);
+          필드 제한이 전혀 없었다. 같은 팀이면 **내 일정 문서의 아무 필드나**
+          바꿀 수 있었다는 뜻이다. users·coupons 에는 affectedKeys() 로 묶어
+          뒀으면서 정작 제일 중요한 일정만 열려 있었다.
+
+       ⭐ 왜 이게 '일정이 서로 달라지는' 문제의 마지막 방어선인가
+          앱의 충돌 방지는 숫자 하나로 돈다 — **서버 savedAt > 내 로컬 savedAt 이면
+          내 업로드를 건너뛴다**(cloud_sync.js pushOne). 그런데 그 savedAt 은
+          수정하는 팀원 폰이 Date.now() 로 찍어 보낸다.
+          → 팀원 폰 시계가 하루 빠르면, 그 팀원이 한 번 고친 순간부터
+            **원작업자의 수정이 하루 동안 아무것도 안 올라간다.** 경고도 없다.
+          앱 쪽에서도 막지만(미래 시각 무시), 규칙에서 애초에 못 쓰게 한다.
+
+       ⚠️ 아래 목록은 **앱이 실제로 쓰는 필드 전부**다. 팀원 쪽 쓰기를 새로 만들면
+          여기에 같이 넣어야 한다 — 빠지면 permission-denied 로 조용히 실패한다.
+          검사: tools/test-rules-fields.js 가 코드와 이 목록을 대조한다.
+       ⚠️ 여기 **없는** 것이 핵심이다: workId·deviceId·syncHash·manual·totalPhotos·
+          posts 는 원작업자만 쓴다. 이것들이 남의 손에 바뀌면 자가복구가
+          '내가 올린 게 아니다'라고 오판하거나, 내용 대조가 영영 어긋난다. */
+    match /schedules/{uid}/items/{itemId} {
+      // 소유자가 아닌 사람(공유 상대·같은 팀)이 바꿔도 되는 필드
+      function partnerKeys() {
+        return [
+          // 상세창에서 고치는 일정 정보 (cloud_share.editItem)
+          'apt', 'name', 'target', 'phone', 'address', 'price', 'startTime', 'endTime',
+          'memo', 'worker', 'date', 'endDate', 'workType', 'unitNames', 'totalUnits',
+          'profileId', 'profileIcon', 'profileName', 'profileSnap',
+          // 사진 순서 편집 (cloud_photo_sync)
+          'photoOrder', 'orderedBy', 'orderedAt',
+          // 공유작업자가 보탠 사진 수·알림 신호
+          'addedPhotos', 'lastBorrowedUploadNonce', 'lastBorrowedUploadCount', 'lastBorrowedUploadAt',
+          // 원본 다시 올려 달라는 요청
+          'reuploadRequestedAt', 'reuploadRequestedBy',
+          // 가져가기 표시 (CloudShare.markClaimed)
+          'claimedBy', 'claimedAt',
+          // 공유 휴지통에서 되살리기 (CloudShare.restoreSchedule) — 값까지 아래에서 본다
+          'trashed', 'trashedAt', 'cleanupTrashed', 'restoredBy', 'restoredAt',
+          // 누가 언제 고쳤는지
+          'editedBy', 'updatedAt', 'savedAt'
+        ];
+      }
+      function partnerSafe() {
+        let diff = request.resource.data.diff(resource.data).affectedKeys();
+        return diff.hasOnly(partnerKeys())
+            /* 남의 일정을 휴지통으로 보낼 수는 없다 — 되살리는 방향만 허용한다.
+               지우는 건 만든 사람 몫이다(CloudShare.deleteSchedule 은 자기 문서만 건드린다). */
+            && ( !diff.hasAny(['trashed']) || request.resource.data.trashed == false )
+            /* 저장시각을 미래로 찍어 원작업자의 업로드를 영구히 막는 것을 차단.
+               5분은 기기 시계의 정상적인 오차 범위다. */
+            && ( !diff.hasAny(['savedAt'])
+                 || ( request.resource.data.savedAt is number
+                      && request.resource.data.savedAt <= request.time.toMillis() + 300000 ) );
+      }
+      allow read:           if request.auth != null && (request.auth.uid == uid || shared(uid) || sameTeam(uid));
+      allow create, delete: if request.auth != null && request.auth.uid == uid;
+      allow update:         if request.auth != null && (
+                              request.auth.uid == uid
+                              || ( (shared(uid) || sameTeam(uid)) && partnerSafe() )
+                            );
+      match /photos/{photoId} {
+        allow read:   if request.auth != null && (request.auth.uid == uid || shared(uid) || sameTeam(uid));
+        allow create: if request.auth != null && (request.auth.uid == uid || shared(uid) || sameTeam(uid));
+        // ✅ 2026-07-20 수정: 공유/팀 상대도 update 허용(썸네일 thumbPath 갱신).
+        allow update: if request.auth != null && (request.auth.uid == uid || shared(uid) || sameTeam(uid));
+        // ✅ 2026-07-24 수정: 삭제 = 소유자 OR 자기가 올린 사진(addedBy==나) → 공유상대가 본인이 보탠 사진 삭제 가능
+        allow delete: if request.auth != null && (
+                        request.auth.uid == uid
+                        || ( ('addedBy' in resource.data) && resource.data.addedBy == request.auth.uid )
+                      );
+      }
+      /* ★ 2026-08-16 신설: 저장된 글(글작성 결과) — 사진과 같은 구조로 양방향 공유
+           왜: 예전엔 글이 full(전체본) 문서에만 얹혀 있었는데
+               full 은 '구독자만 업로드 · 소유자만 쓰기'라
+               ① 공유작업자가 쓴 글은 올라갈 곳이 없어 통째로 사라졌고
+               ② 원작업자 글도 구독자가 아니면 상대에게 안 보였다.
+           앱은 하드삭제 대신 deleted:true '묘비'를 남긴다(안 그러면 상대 로컬에 남아 있던
+           같은 글이 다음 동기화 때 되살아난다). 그래서 삭제 권한 판정이 update 쪽에도 있다. */
+      match /posts/{postId} {
+        allow read:   if request.auth != null && (request.auth.uid == uid || shared(uid) || sameTeam(uid));
+        allow create: if request.auth != null && (request.auth.uid == uid || shared(uid) || sameTeam(uid));
+        // 내용 수정은 공유/팀 상대도 가능. 단 '삭제 표시(deleted:true)'는 소유자 또는 글쓴이 본인만.
+        allow update: if request.auth != null
+                      && (request.auth.uid == uid || shared(uid) || sameTeam(uid))
+                      && ( request.resource.data.deleted != true
+                           || request.auth.uid == uid
+                           || ( ('authorUid' in resource.data) && resource.data.authorUid == request.auth.uid ) );
+        // 하드 삭제(정리용) = 소유자 OR 글쓴이 본인 — 사진 규칙과 같은 원칙
+        allow delete: if request.auth != null && (
+                        request.auth.uid == uid
+                        || ( ('authorUid' in resource.data) && resource.data.authorUid == request.auth.uid )
+                      );
+      }
+    }
+    // ★ 작업 전체(_session.json) — 재설치 복구용 백업 + 공유작업 상세 표시용
+    //   ✅ 2026-08-12 수정: 읽기를 공유/팀 상대에게 개방.
+    //      공유 작업을 열 때 호수별 고객정보·특이사항 설명까지 보이게 하기 위함
+    //      (앱: CloudPhotoSync.fetchFullSession → 글자만 사용, 사진 메타는 쓰지 않음).
+    //   ⚠️ 쓰기는 여전히 본인만. 양방향 편집(2단계)을 열 때 다시 손대야 함.
+    //   ⚠️ 2026-09-18 — 그래서 팀원이 고친 내용은 full 에 안 담긴다. 원작업자 폰이
+    //      그 수정을 로컬 _session.json 에 반영한 뒤 full 을 다시 올려 메운다
+    //      (cloud_share.retryApply → 달력 재스캔 → pushFull). 반영이 멈추면
+    //      full 이 옛 내용으로 남으므로, 그 멈춤을 푸는 경로가 곧 이 규칙의 짝이다.
+    match /schedules/{uid}/full/{workId} {
+      allow read:  if request.auth != null && (request.auth.uid == uid || shared(uid) || sameTeam(uid));
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /ai_corrections/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    // ★ 추가(백업/복구): 설정·지침·학습 백업 — 본인만
+    match /backups/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    /* ★ 2026-08-26 신설: PC 링크 모드 — 글+사진을 한 페이지(site/post.html)로 보여주고
+         통째로 복사해 네이버 블로그에 붙여넣게 한다.
+         · read 를 여는 이유 = ① 링크(임의 20자 문서ID)를 아는 사람만 도달할 수 있고
+                              ② 네이버가 사진을 자기 서버로 가져가려면 공개여야 하기 때문.
+                              페이지는 로그인 없이 열리므로 Firestore REST 로 읽는다.
+         · 만든 사람만 고치고 지울 수 있다(uid 대조).
+         · expiresAt(생성 +24시간)을 필수로 받는다 — 만료 표시는 페이지가,
+           실제 삭제는 functions/cleanupSnsPosts 가 매시간 한다.
+       ⚠️ 청소 함수가 안 돌면 공개 사진이 계속 쌓인다. 배포 상태를 확인할 것. */
+    match /sns_posts/{postId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.expiresAt is timestamp;
+      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+    // ★ 채팅방 — 팀 단체 채팅 지원(새 팀원이 members 에 아직 없어도 teamId 로 접근)
+    match /rooms/{roomId} {
+      function inRoomTeam() {
+        return request.auth != null && resource != null && ('teamId' in resource.data)
+            && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && ('teamIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+            && (resource.data.teamId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamIds);
+      }
+      allow read:   if request.auth != null &&
+                    (resource == null || request.auth.uid in resource.data.members || inRoomTeam());
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
+      allow update: if request.auth != null &&
+                    (request.auth.uid in resource.data.members || inRoomTeam());
+      match /messages/{msgId} {
+        function memberViaRoom() {
+          return request.auth != null && (
+            request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members ||
+            (('teamId' in get(/databases/$(database)/documents/rooms/$(roomId)).data)
+              && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+              && ('teamIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+              && (get(/databases/$(database)/documents/rooms/$(roomId)).data.teamId
+                    in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamIds))
+          );
+        }
+        allow read, create: if memberViaRoom();
+        allow update, delete: if false;
+      }
+    }
+  }
+}

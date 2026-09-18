@@ -3135,6 +3135,10 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .cm-loc{flex:0 0 auto;width:36px;height:36px;border-radius:10px;border:1px solid var(--bd);
   background:var(--sf2);color:var(--tx);font-size:16px;cursor:pointer;font-family:inherit;margin-right:6px;}
 .cm-loc:disabled{opacity:.5;}
+/* 카드 거리 줄 — 값이 없으면 자리도 차지하지 않는다(빈 줄이 보이면 카드가 어색해진다).
+   ⚠️ 주소칸보다 작고 흐리게. 거리는 참고값이지 이 카드의 제목이 아니다. */
+.cm-card-dist{display:none;font-size:11.5px;color:var(--mu);letter-spacing:-.2px;margin-top:1px;}
+.cm-card-dist.on{display:block;}
 /* 카드 줄 — 가로로 넘긴다. 한 장씩 멈추게(scroll-snap) 해야 가운데 판정이 흔들리지 않는다 */
 .cm-cards{flex:0 0 auto;display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;
   padding:10px 12px calc(12px + env(safe-area-inset-bottom,0));background:var(--sf);

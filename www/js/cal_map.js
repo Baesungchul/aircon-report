@@ -83,6 +83,10 @@
         '<div class="cm-card-ti">' + esc(s.title || '작업') + '</div>' +
         '<div class="cm-card-sub">' + esc(s.sub || '') + '</div>' +
         '<div class="cm-card-addr">' + (noAddr ? '주소 미입력' : esc(s.addr)) + '</div>' +
+        /* ★ 2026-09-18 거리 줄 — 앞 지점(내 위치 또는 이전 작업)에서 여기까지.
+           비워 두고 시작한다. 직선은 좌표만 나오면 바로 채워지고,
+           주행은 경로가 오면 뒤에 붙는다. 둘 다 없으면 줄 자체가 안 보인다(비어 있음). */
+        (noAddr ? '' : '<div class="cm-card-dist" data-i="' + i + '"></div>') +
         (noAddr
           ? '<button type="button" class="btn b-ghost cm-btn cm-edit" data-i="' + i + '">주소 넣기</button>'
           : '<button type="button" class="btn b-blue cm-btn cm-nav" data-i="' + i + '">길안내</button>') +
@@ -106,14 +110,18 @@
     }
   }
 
-  /* ── 내 위치에서 출발하는 선을 그린다 ──
-     ☠️ 두 가지 선이 있다. 섞으면 사용자가 거리를 잘못 읽는다.
-        · 점선(shortdash) = 직선이다. 순서만 보여 준다. '몇 km'로 읽으면 안 된다.
-        · 실선           = 카카오모빌리티가 돌려준 **실제 도로 경로**다.
-        모양을 다르게 두는 이유가 이것이다 — 같은 모양이면 구분이 안 된다.
-     ⚠️ 경로 요청은 지도를 붙잡지 않는다. 먼저 점선으로 그려 놓고, 답이 오면 바꿔 단다.
-        답이 안 오거나 아직 안 켜졌으면(Routing.available()===false) 점선 그대로다. */
-  function drawLines(map, pts, head) {
+  /* ── 선 두 가닥을 겹쳐 그린다 (2026-09-18 사용자 요청) ──
+     ☠️ 예전엔 경로가 오면 점선을 **지웠다.** 같이 두기로 바꾼 이유는,
+        두 값이 같이 있어야 "직선으로는 4km인데 돌아가느라 7km" 가 읽히기 때문이다.
+        하나만 보이면 그게 무엇인지 알 수 없다.
+        · 연한 점선 = 직선이다. 거리를 재는 선이 아니라 **순서**를 보여 주는 선이다.
+        · 진한 실선 = 카카오모빌리티가 돌려준 **실제 도로 경로**다.
+     ⚠️ 겹칠 땐 점선을 **더 흐리게** 낮춘다. 안 낮추면 두 선이 비슷한 굵기로 엉켜
+        어느 쪽이 진짜 길인지 알 수 없다. 반대로 경로가 안 올 때(아직 안 켜졌거나
+        실패)는 점선이 유일한 선이므로 원래 굵기를 지켜야 한다.
+        → 그래서 처음엔 진하게 그리고, 실선이 붙는 순간에만 낮춘다.
+     ⚠️ 경로 요청은 지도를 붙잡지 않는다. 점선을 먼저 그려 놓고 답이 오면 얹는다. */
+  function drawLines(map, pts, head, onRoute) {
     if (!pts || pts.length < 2) return;
     var ac = accent();
     var dashed = new kakao.maps.Polyline({
@@ -124,17 +132,34 @@
     if (!window.Routing || !Routing.available()) return;
     Routing.route(pts).then(function (r) {
       if (!r || !_ov) return;                      // 실패하거나 그새 닫혔으면 점선 그대로
-      try { dashed.setMap(null); } catch (e) {}
+      /* 실선이 주인공이 되도록 점선을 한 단계 낮춘다(지우지는 않는다) */
+      try { if (dashed.setOptions) dashed.setOptions({ strokeWeight: 2, strokeOpacity: 0.3 }); } catch (e) {}
       new kakao.maps.Polyline({
         map: map,
         path: r.path.map(function (c) { return new kakao.maps.LatLng(c[0], c[1]); }),
-        strokeWeight: 5, strokeColor: ac, strokeOpacity: 0.85, strokeStyle: 'solid'
+        strokeWeight: 5, strokeColor: ac, strokeOpacity: 0.9, strokeStyle: 'solid'
       });
       if (head && r.distance) {
-        head.textContent = MyLoc.fmtKm(r.distance) +
+        head.textContent = '주행 ' + MyLoc.fmtKm(r.distance) +
           (r.duration ? ' · ' + Routing.fmtMin(r.duration) : '');
       }
+      if (onRoute) onRoute(r);
     });
+  }
+
+  /* ── 카드 아래 거리 줄 ──
+     '이 카드까지 오는 한 구간'의 거리다. 첫 카드는 내 위치에서, 그 뒤는 이전 작업에서.
+     ⚠️ 직선은 '얼마나 떨어져 있나', 주행은 '실제로 몇 km 달리나' 다. 글자로 구분해 둔다 —
+        숫자만 두 개 있으면 무엇이 무엇인지 알 수 없다. */
+  function setDist(stopIdx, straightM, driveM) {
+    if (!_ov) return;
+    var el = _ov.querySelector('.cm-card-dist[data-i="' + stopIdx + '"]');
+    if (!el) return;
+    var parts = [];
+    if (straightM) parts.push('직선 ' + MyLoc.fmtKm(straightM));
+    if (driveM) parts.push('주행 ' + MyLoc.fmtKm(driveM));
+    el.textContent = parts.join(' · ');
+    el.classList.toggle('on', !!parts.length);
   }
 
   /* ── 지도 그리기 ──
@@ -173,7 +198,33 @@
     /* 동선 — 내 위치가 있으면 거기서 출발해 시간순으로 잇는다 */
     var linePts = located.map(function (L) { return { lat: L.g.lat, lng: L.g.lng }; });
     if (me) linePts.unshift({ lat: me.lat, lng: me.lng });
-    drawLines(map, linePts, _ov && _ov.querySelector('#calMapHeadSub'));
+
+    /* ★ 2026-09-18 카드 거리.
+       ☠️ 자리 계산을 조심한다. 주소를 못 찾은 작업은 located 에서 빠지므로
+          **카드 번호(stop 자리)와 선 위의 자리가 다르다.** 여기서 한 번만 맞춰 두고
+          나머지는 이 표를 쓴다. 각각 계산하면 언젠가 한 쪽이 어긋난다.
+            linePts 자리 = located 순번 + (내 위치가 있으면 1)
+            그 지점으로 '들어오는 구간' = linePts 자리 - 1 (0 이면 출발점이라 구간 없음) */
+    var legOf = {};   // stop 자리 -> 구간 번호
+    located.forEach(function (L, k) {
+      var at = k + (me ? 1 : 0);
+      if (at === 0) return;                       // 내 위치가 없을 때의 첫 작업 = 출발점
+      legOf[L.i] = at - 1;
+      setDist(L.i, MyLoc.distance(linePts[at - 1], linePts[at]), 0);   // 직선은 지금 바로
+    });
+
+    drawLines(map, linePts, _ov && _ov.querySelector('#calMapHeadSub'), function (r) {
+      /* 주행 거리는 경로가 와야 안다. 구간별(legs)이 오면 카드마다 붙인다.
+         ⚠️ legs 가 없거나 개수가 안 맞으면 **아무것도 안 붙인다.** 총거리를 나눠
+            추정하면 그럴듯한 거짓 숫자가 된다 — 없는 편이 낫다. */
+      if (!r || !Array.isArray(r.legs) || r.legs.length !== linePts.length - 1) return;
+      located.forEach(function (L, k) {
+        var j = legOf[L.i];
+        if (j == null) return;
+        var at = k + (me ? 1 : 0);
+        setDist(L.i, MyLoc.distance(linePts[at - 1], linePts[at]), (r.legs[j] || {}).distance || 0);
+      });
+    });
 
     _pins = [];
     located.forEach(function (L, n) {

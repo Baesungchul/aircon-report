@@ -246,16 +246,34 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
 
   console.log('\n[5] 지도에 제대로 물려 있는가');
 
-  chk('두 선이 서로 다르게 생겼다 (직선 점선 / 실제 경로 실선)', () => {
-    /* ☠️ 같은 모양이면 사용자가 직선 거리를 실제 주행 거리로 읽는다 */
+  chk('두 선을 같이 두되 모양이 다르다 (연한 점선 / 진한 실선)', () => {
+    /* ☠️ 2026-09-18 — 예전엔 경로가 오면 점선을 지웠다. 사용자 요청으로 **같이 둔다**:
+       두 값이 같이 있어야 "직선 4km인데 돌아가느라 7km"가 읽힌다.
+       ⚠️ 대신 겹칠 때 점선을 낮춰야 한다. 안 낮추면 어느 쪽이 진짜 길인지 모른다. */
     const s = read('cal_map.js');
     const at = s.indexOf('function drawLines');
     must(at > 0, 'drawLines 를 못 찾았습니다');
-    const b = s.slice(at, at + 1400);
+    const b = s.slice(at, at + 1800);
     must(/strokeStyle: 'shortdash'/.test(b), '직선을 점선으로 안 그립니다');
     must(/strokeStyle: 'solid'/.test(b), '실제 경로를 실선으로 안 그립니다');
-    must(b.indexOf('dashed.setMap(null)') > 0, '경로가 오면 점선을 안 지웁니다 — 두 줄이 겹칩니다');
-    return '점선 → 실선';
+    must(b.indexOf('dashed.setMap(null)') < 0,
+         '경로가 오면 점선을 지웁니다 — 직선과 주행을 나란히 볼 수 없습니다');
+    must(/dashed\.setOptions\(\{ strokeWeight: 2, strokeOpacity: 0\.3/.test(b),
+         '겹칠 때 점선을 안 낮춥니다 — 두 선이 엉켜 어느 쪽이 길인지 모릅니다');
+    return '점선 + 실선';
+  });
+
+  chk('경로가 없을 때는 점선이 원래 굵기를 지킨다', () => {
+    /* 아직 안 켜졌거나 실패한 상태에서는 점선이 **유일한 선**이다.
+       처음부터 흐리게 그리면 지도가 비어 보인다 → 실선이 붙는 순간에만 낮춘다. */
+    const s = strip(read('cal_map.js'));
+    const at = s.indexOf('function drawLines');
+    const b = s.slice(at, at + 1800);
+    const first = b.indexOf('strokeOpacity: 0.65');
+    const dim = b.indexOf('strokeOpacity: 0.3');
+    must(first > 0, '점선을 원래 굵기로 안 그립니다');
+    must(dim > first, '처음부터 흐리게 그립니다 — 경로가 없는 날 지도가 비어 보입니다');
+    return '붙을 때만 낮춤';
   });
 
   chk('경로를 기다리느라 지도를 늦추지 않는다', () => {
@@ -288,6 +306,59 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
     must(/window\.MyLoc && MyLoc\.available\(\)[\s\S]{0,120}calMapLoc/.test(s),
          '눌러도 아무 일 없는 버튼이 생깁니다');
     return '숨김';
+  });
+
+  console.log('\n[5-2] 카드에 적는 거리 (2026-09-18)');
+
+  chk('직선과 주행을 글자로 구분해 적는다', () => {
+    /* ☠️ 숫자만 두 개 있으면 무엇이 무엇인지 알 수 없다 */
+    const s = read('cal_map.js');
+    const at = s.indexOf('function setDist');
+    must(at > 0, 'setDist 를 못 찾았습니다');
+    const b = s.slice(at, at + 700);
+    must(b.indexOf("'직선 '") > 0, '직선 거리에 이름을 안 붙입니다');
+    must(b.indexOf("'주행 '") > 0, '주행 거리에 이름을 안 붙입니다');
+    return '직선 · 주행';
+  });
+
+  chk('직선 거리는 경로 없이도 바로 채운다', () => {
+    /* 좌표만 있으면 잴 수 있다. 경로 API 를 기다릴 이유가 없다 */
+    const s = strip(read('cal_map.js'));
+    const at = s.indexOf('var legOf');
+    must(at > 0, '거리 계산 자리를 못 찾았습니다');
+    const b = s.slice(at, at + 600);
+    must(/setDist\(L\.i, MyLoc\.distance\([\s\S]{0,60}, 0\)/.test(b),
+         '직선을 바로 안 채웁니다 — 경로가 꺼져 있으면 거리가 영영 안 보입니다');
+    /* 경로를 부르기 **전에** 채우는지 (호출 자리와 비교한다 — 함수 정의가 아니라) */
+    const call = s.indexOf('drawLines(map, linePts');
+    must(call > 0, 'drawLines 호출부를 못 찾았습니다');
+    must(at < call, '경로를 부른 뒤에 직선을 잽니다 — 응답이 늦으면 거리가 한참 비어 있습니다');
+    return '즉시';
+  });
+
+  chk('구간 수가 안 맞으면 주행 거리를 안 적는다', () => {
+    /* ☠️ 총거리를 나눠 추정하면 그럴듯한 거짓 숫자가 된다. 없는 편이 낫다 */
+    const s = read('cal_map.js');
+    must(/r\.legs\.length !== linePts\.length - 1\) return/.test(s),
+         '구간 수를 확인하지 않습니다 — 엉뚱한 카드에 엉뚱한 거리가 붙습니다');
+    return '안 적음';
+  });
+
+  chk('주소를 못 찾은 작업 때문에 자리가 밀리지 않는다', () => {
+    /* ☠️ 여기가 이 기능에서 제일 틀리기 쉬운 자리다.
+       주소를 못 찾은 작업은 located 에서 빠지므로 카드 번호와 선 위의 자리가 다르다.
+       표(legOf)를 한 번만 만들어 쓰는지 본다 — 각각 계산하면 언젠가 어긋난다. */
+    const s = strip(read('cal_map.js'));
+    must(/legOf\[L\.i\] = at - 1/.test(s), '카드 자리와 구간 자리를 맞추는 표가 없습니다');
+    must(/var at = k \+ \(me \? 1 : 0\)/.test(s), '내 위치만큼 자리를 밀어 주지 않습니다');
+    return 'legOf 표';
+  });
+
+  chk('값이 없으면 거리 줄이 자리를 차지하지 않는다', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'www', 'styles.css'), 'utf8');
+    must(/\.cm-card-dist\{[^}]*display:none/.test(css), '빈 줄이 카드에 남습니다');
+    must(/\.cm-card-dist\.on\{display:block/.test(css), '값이 있어도 안 보입니다');
+    return '비면 숨김';
   });
 
   console.log('\n[6] 안드로이드 권한 선언');

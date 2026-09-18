@@ -30,7 +30,8 @@ window.kakao = { maps: {
     this.getProjection=()=>({coordsFromContainerPoint:()=>new kakao.maps.LatLng(37,127)}); },
   Marker: function(o){ window.__markers=(window.__markers||0)+1; this.setMap=()=>{}; },
   Polyline: function(o){ window.__poly=o; (window.__polys=window.__polys||[]).push(o);
-    this.setMap=function(m){ if(m===null) o.__off=1; }; },
+    this.setMap=function(m){ if(m===null) o.__off=1; };
+    this.setOptions=function(x){ for(var k in x) o[k]=x[k]; o.__dimmed=1; }; },
   CustomOverlay: function(o){ window.__pins=(window.__pins||0)+1;
     var box = (o.map && o.map._box) || document.querySelector('#calMapBox');
     if(o.content && box) box.appendChild(o.content);
@@ -40,7 +41,12 @@ window.kakao = { maps: {
   services: {
     Status: { OK:'OK', ZERO_RESULT:'ZERO' },
     Geocoder: function(){ return {
-      addressSearch:(q,cb)=> setTimeout(()=>cb(/비전동/.test(q)?[{y:'37.0',x:'127.1'}]:[], /비전동/.test(q)?'OK':'ZERO'),0),
+      /* ⚠️ 주소마다 좌표를 다르게 준다 — 다 같은 자리면 직선거리가 0 이 되어
+         '거리를 못 적는 것'과 '0 이라 안 적는 것'이 구분되지 않는다(실제로 한 번 놓쳤다) */
+      /* ⚠️ 이 덩어리는 **템플릿 문자열 안**이다. 정규식에 역슬래시를 쓰면 먹혀 버린다
+         (\d 가 d 로 바뀐다 — 실제로 여기서 한 번 당했다). 역슬래시 없는 표현만 쓴다. */
+      addressSearch:(q,cb)=> { var m=(String(q).replace(/[^0-9]/g,'').slice(-1)||'0');
+        setTimeout(()=>cb(/비전동/.test(q)?[{y:String(37.0+(+m)*0.05),x:String(127.1+(+m)*0.05)}]:[], /비전동/.test(q)?'OK':'ZERO'),0); },
       coord2Address:(x,y,cb)=> setTimeout(()=>cb([{road_address:{address_name:'경기 평택시 테스트로 1'}}],'OK'),0) }; },
     Places: function(){ return {
       keywordSearch:(q,cb)=> setTimeout(()=>cb([{y:'37.1',x:'127.2',place_name:'테스트아파트',road_address_name:'경기 평택시 테스트로 2'}],'OK'),0) }; }
@@ -57,7 +63,9 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   return { getCurrentPosition: function (okcb, errcb) {
     window.__geoAsked = (window.__geoAsked || 0) + 1;
     if (window.__geoMode === 'ok') return setTimeout(function () {
-      okcb({ coords: { latitude: 37.05, longitude: 127.15, accuracy: 10 } }); }, 0);
+      /* ⚠️ 주소 좌표와 겹치지 않는 자리로 둔다. 겹치면 직선거리가 0 이 되어
+         '못 적는 것'과 '0 이라 안 적는 것'이 구분되지 않는다. */
+      okcb({ coords: { latitude: 37.30, longitude: 127.40, accuracy: 10 } }); }, 0);
     setTimeout(function () { errcb({ code: 1 }); }, 0);
   } };
 }});`;
@@ -154,6 +162,50 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   ok('그래도 지도는 그려진다', await page.locator('#calMapBox[data-map="1"]').count() === 1);
   await page.evaluate(() => CalMap.close());
   await page.evaluate(() => { window.__geoMode = 'deny'; });
+
+  console.log('\n[A3] 직선 + 실제 경로를 같이 (2026-09-18)');
+  /* 경로 서버를 가짜로 켠다. legs 는 구간별(내 위치→1번, 1번→2번) 주행거리다. */
+  await page.evaluate(() => {
+    window.KAKAO_ROUTE_URL = 'https://fake.example/route';
+    window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({
+      path: [[37.05,127.15],[37.0,127.1],[37.1,127.2]],
+      distance: 12000, duration: 1500,
+      legs: [{ distance: 5000, duration: 600 }, { distance: 7000, duration: 900 }]
+    }) });
+    window.__geoMode = 'ok'; window.__polys = []; if (window.MyLoc) MyLoc.forget();
+  });
+  await page.evaluate(() => CalMap.open('9월 18일 (금)', [
+    { title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' },
+    { title: 'B', sub: '', time: '13:00', addr: '평택시 비전동 2' }]));
+  await page.waitForTimeout(700);
+  ok('선이 두 가닥이다 (직선 + 실제 경로)', await page.evaluate(() => (window.__polys || []).length) === 2);
+  ok('점선을 지우지 않는다', await page.evaluate(() => !window.__polys[0].__off));
+  ok('겹칠 땐 점선을 낮춘다', await page.evaluate(() => window.__polys[0].strokeOpacity) === 0.3);
+  ok('실제 경로는 진한 실선이다', await page.evaluate(() =>
+    window.__polys[1].strokeStyle === 'solid' && window.__polys[1].strokeWeight === 5));
+  const d0 = (await page.locator('.cm-card-dist[data-i="0"]').innerText()).trim();
+  ok('첫 카드에 직선·주행이 같이 나온다 (' + d0 + ')', /직선/.test(d0) && /주행/.test(d0));
+  ok('첫 구간 주행이 5km 다', /주행 5\.0km/.test(d0));
+  const d1 = (await page.locator('.cm-card-dist[data-i="1"]').innerText()).trim();
+  ok('둘째 카드는 이전 작업에서의 거리다 (' + d1 + ')', /직선/.test(d1) && /주행 7\.0km/.test(d1));
+  ok('머리줄에 총 주행거리·시간이 뜬다',
+     /주행 12km/.test((await page.locator('#calMapHeadSub').innerText())));
+  await page.evaluate(() => CalMap.close());
+
+  /* 구간 수가 안 맞게 오면 주행은 안 적고 직선만 남아야 한다 */
+  await page.evaluate(() => {
+    window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({
+      path: [[37.0,127.1],[37.1,127.2]], distance: 9000, duration: 900, legs: [] }) });
+    window.__polys = []; if (window.MyLoc) MyLoc.forget();
+  });
+  await page.evaluate(() => CalMap.open('9월 18일 (금)', [
+    { title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' },
+    { title: 'B', sub: '', time: '13:00', addr: '평택시 비전동 2' }]));
+  await page.waitForTimeout(700);
+  const d2 = (await page.locator('.cm-card-dist[data-i="0"]').innerText()).trim();
+  ok('구간이 안 오면 주행은 비운다 (' + d2 + ')', /직선/.test(d2) && !/주행/.test(d2));
+  await page.evaluate(() => CalMap.close());
+  await page.evaluate(() => { window.KAKAO_ROUTE_URL = ''; window.__geoMode = 'deny'; });
 
   console.log('\n[B] 지도 키가 없을 때');
   await page.evaluate(() => { window.KAKAO_JS_KEY = 'TODO_KAKAO_JS_KEY'; });

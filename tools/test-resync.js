@@ -35,25 +35,25 @@ const strip = (s) => String(s).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\
 
 console.log('\n[1] 지우는 쪽을 껐는가 (제일 중요)');
 
-chk('resync 는 정리를 끄고, 전체 대조는 켜서 부른다', () => {
+chk('resync 는 전체 대조를 켜서 부른다', () => {
   const s = strip(read('cloud_sync.js'));
   const at = s.indexOf('CloudSync.resync');
   must(at > 0, 'resync 가 없습니다');
-  const blk = s.slice(at, at + 2600);
-  must(/noCleanup:\s*true/.test(blk),
-       'noCleanup 없이 부릅니다 — 안 보이는 일정을 고치러 와서 더 지울 수 있습니다');
-  must(/fullCompare:\s*true/.test(blk),
+  must(/fullCompare:\s*true/.test(s.slice(at, at + 2600)),
        'fullCompare 없이 부릅니다 — 빠진 것 복구(R1)가 전체 대조 갈래에만 있어 아무 복구도 안 됩니다');
-  return 'noCleanup · fullCompare';
+  return 'fullCompare';
 });
 
-chk('syncAll 이 noCleanup 으로 지우기만 막는다 (복구는 살린다)', () => {
+chk('어디에도 자동으로 지우는 길이 없다', () => {
+  /* ☠️ 2026-09-18 자동 삭제를 껐다. 이 버튼이든 자동 동기화든, 지우는 것은
+       사용자가 작업을 삭제할 때(trashWorkItem) 뿐이다. */
   const s = strip(read('cloud_sync.js'));
-  must(/if \(opts\.noCleanup && delIds\.length\)[\s\S]{0,200}delIds = \[\];/.test(s),
-       '지우기 직전에 막지 않습니다');
-  must(!/currentIds\.length > 0 && !opts\.noCleanup/.test(s),
-       '블록 전체를 건너뜁니다 — 그 안에 있는 빠진 것 복구(R1)까지 같이 죽습니다');
-  return '지우기만 차단';
+  const at = s.indexOf('function syncAll');
+  const end = s.indexOf('CloudSync.autoSync');
+  const blk = s.slice(at, end);
+  must(!/trashed:\s*true/.test(blk), 'syncAll 안에 휴지통 쓰기가 있습니다');
+  must(/delIds = \[\];/.test(blk), '후보를 비우지 않습니다');
+  return '자동 삭제 없음';
 });
 
 console.log('\n[2] 해시를 비우는가 — 이걸 안 하면 버튼이 아무 일도 안 한다');

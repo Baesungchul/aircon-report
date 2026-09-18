@@ -205,55 +205,35 @@ const WORK = (n) => '2026-09-0' + n;
     return '보존';
   });
 
-  await achk('한 번 어긋난 스캔으로는 아무것도 안 지운다 (G3)', async () => {
-    /* ☠️ 스캔이 한 번만 어긋나도(폴더가 늦게 붙음·일시적 읽기 실패) 멀쩡한 일정이 사라졌다.
-         그게 팀원 달력에서 한 달치가 통째로 빈 것처럼 보일 수 있다. 이제 두 번 확인한다. */
+  await achk('자동 동기화는 어떤 경우에도 일정을 지우지 않는다', async () => {
+    /* ☠️☠️ 2026-09-18 — 이 앱에서 일정이 사라지는 유일한 자동 경로였다. 실제로 팀원 폰에서
+         한 달치가 통째로 쓸려 휴지통에 들어간 것이 확인됐다(공유 휴지통).
+         유령 문서는 보기 싫을 뿐이고, 멀쩡한 일정이 사라지면 일이 막힌다. 손익이 안 맞는다.
+       ⚠️ 이 검사를 고쳐서 통과시키지 말 것. 자동 삭제를 다시 켜야 한다면 그건 설계 결정이다. */
     const env = load({
       folders: [WORK(1)],
       server: {
         [WORK(1)]: { workId: WORK(1), date: WORK(1), deviceId: 'MYDEV' },
-        [WORK(9)]: { workId: WORK(9), date: WORK(9), deviceId: 'MYDEV' }
+        [WORK(9)]: { workId: WORK(9), date: WORK(9), deviceId: 'MYDEV' }   // 내 기기가 올렸고 로컬엔 없다
       },
       ls: { 'ac_device_id_v1': 'MYDEV' }
     });
     await runSync(env);
-    must(!env.srv[WORK(9)].trashed, '첫 대조에서 바로 지웠습니다 — 한 번의 실수로 일정이 사라집니다');
-    return '보류';
+    await runSync(env);          // 두 번 돌려도
+    await runSync(env);          // 세 번 돌려도
+    must(!env.srv[WORK(9)].trashed, '자동으로 휴지통에 보냈습니다');
+    must(!env.srv[WORK(9)].cleanupTrashed, '자동정리 표시를 찍었습니다');
+    return '세 번 돌려도 그대로';
   });
 
-  await achk('두 번 연속 없으면 그때 정리한다', async () => {
-    const env = load({
-      folders: [WORK(1)],
-      server: {
-        [WORK(1)]: { workId: WORK(1), date: WORK(1), deviceId: 'MYDEV' },
-        [WORK(9)]: { workId: WORK(9), date: WORK(9), deviceId: 'MYDEV' }
-      },
-      ls: { 'ac_device_id_v1': 'MYDEV' }
-    });
-    await runSync(env);          // 1차 — 후보로만 적어 둔다
-    await runSync(env);          // 2차 — 여전히 없다 → 정리
-    must(env.srv[WORK(9)].trashed === true, '두 번 확인했는데도 유령 문서가 남았습니다');
-    return '2차에서 정리';
-  });
-
-  await achk('사이에 다시 나타나면 후보에서 빠진다', async () => {
-    /* 폴더가 늦게 붙는 상황 — 1차엔 안 보이고 2차엔 보인다. 지우면 안 된다. */
-    const folders = [WORK(1)];                            // ⚠️ 같은 배열을 계속 읽으므로 나중에 늘리면 반영된다
-    const env = load({
-      folders: folders,
-      server: {
-        [WORK(1)]: { workId: WORK(1), date: WORK(1), deviceId: 'MYDEV' },
-        [WORK(9)]: { workId: WORK(9), date: WORK(9), deviceId: 'MYDEV' }
-      },
-      ls: { 'ac_device_id_v1': 'MYDEV' }
-    });
-    await runSync(env);                                   // 1차 — 9번이 후보로 적힌다
-    must(!env.srv[WORK(9)].trashed, '1차에서 지웠습니다');
-    folders.push(WORK(9));                                // 폴더가 뒤늦게 붙었다
-    await runSync(env);                                   // 2차 — 다시 보이므로 후보에서 빠져야 한다
-    must(!env.srv[WORK(9)].trashed,
-         '다시 나타났는데도 지웠습니다 — 폴더가 늦게 붙는 것만으로 일정이 사라집니다');
-    return '지우지 않음';
+  await achk('그래도 유령이 몇 건인지는 센다', async () => {
+    /* 지우지 않는 것과 모르는 것은 다르다 — 로그·진단에 쓸 수 있게 세어는 둔다 */
+    const s2 = fs.readFileSync(path.join(JS, 'cloud_sync.js'), 'utf8');
+    must(/ghosts = delIds\.length/.test(s2), '유령 건수를 세지 않습니다');
+    must(/delIds = \[\];/.test(s2), '지우는 길이 남아 있습니다');
+    must(!/trashed: true,\n\s*trashedAt[\s\S]{0,120}cleanupTrashed: true/.test(s2),
+         '자동정리의 휴지통 쓰기가 아직 코드에 있습니다');
+    return '세기만 함';
   });
 
   await achk('올릴 때 기기 식별자를 찍는다', async () => {

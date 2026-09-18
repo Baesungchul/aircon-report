@@ -312,6 +312,7 @@
   // ── 핵심 동기화: 업로드(변경분) + 삭제 반영 ──
   var _syncing = false;
   var _lastRun = null;      // 마지막 동기화 결과 { scanned, changed, removed } — resync 가 읽는다
+  /* opts.fullCompare — 12시간을 기다리지 않고 지금 당장 서버와 전체 대조한다('다시 맞추기') */
   async function syncAll(silent, opts){
     opts = opts || {};
     if (!loggedIn()) { noteBlocked('login'); if (!silent && typeof showToast==='function') showToast('먼저 로그인해주세요','err'); return; }
@@ -353,19 +354,16 @@
         } catch(e){}
         if (pushOne(uid, it, p, id, false)) writes++;
       });
-      // ★ 권위적 정리(2026-07-24): localStorage 목록이 아니라 "클라우드 실제 문서 ↔ 로컬 폴더"를 대조해
-      //    로컬에 없는 '작업' 문서를 삭제 → 상대에게만 보이던 중복/유령/삭제잔존 일소.
-      //    보존: 수동일정(manual / m_*), 휴지통(trashed), 가져가기(claimedBy). 로컬 스캔이 비면 대량삭제 방지로 스킵.
+      // ★ "클라우드 실제 문서 ↔ 로컬 폴더" 대조 (2026-07-24)
+      //    ⚠️ 2026-09-18 부터 이 대조는 **지우지 않는다.** 두 가지에만 쓴다:
+      //       ① R1 자가복구 — 로컬엔 있는데 서버엔 없는 작업을 찾아 다시 올린다
+      //       ② 유령 문서 개수 세기(로그·진단용)
+      //    지우는 일은 사용자가 작업을 삭제할 때 trashWorkItem 이 한다 — 사람이 시킨 것만.
       var curSet = {}; currentIds.forEach(function(i){ curSet[i]=1; });
       var removed = 0;
-      /* ☠️ opts.noCleanup — '다시 맞추기'(resync)에서는 이 정리를 돌리지 않는다.
-           여기가 바로 서버 문서를 없애는 곳이고, 사용자가 다시 맞추기를 누르는 상황은
-           "일정이 안 보인다" 일 때다. 그 순간 로컬 스캔이 조금이라도 모자라면
-           더 지워 버리게 된다 — 고치러 온 버튼이 피해를 키우면 안 된다.
-           올리는 쪽(위 업로드)만 하고, 지우는 쪽은 평소 자동 동기화에 맡긴다. */
-      var repaired = 0;
-      /* ⚠️ noCleanup 이어도 이 블록 자체는 돌아야 한다 — 안에 R1(빠진 것 복구)이 들어 있다.
-           막는 건 '지우는 것'뿐이고, 실제 차단은 아래 delIds 비우기에서 한다. */
+      var repaired = 0, ghosts = 0;
+      /* ⚠️ 이 블록은 이제 '지우는 곳'이 아니라 **'빠진 것을 찾아 메우는 곳'(R1)** 이다.
+           자동 삭제는 2026-09-18 에 껐다 — 아래 긴 주석 참고. */
       if (currentIds.length > 0 && scanOk) {
         try {
           /* ★ 2026-08-13 읽기량 절감
@@ -473,49 +471,27 @@
             }
             if (cand.length) console.log('[CloudSync] 변경분 대조: 후보 ' + cand.length + '건만 읽음');
           }
-          /* ☠️ '다시 맞추기'(resync)에서는 여기서 멈춘다. 그 버튼을 누르는 상황은
-               "일정이 안 보인다" 일 때고, 그때 더 지우면 고치러 온 손이 피해를 키운다.
-               올리는 쪽(위 업로드·R1 복구)은 이미 다 했다. */
-          /* ★ G3 (2026-09-18) — 두 번 연속 확인해야 지운다.
-             ☠️ 지금까지는 '이번 스캔에 없으면' 바로 휴지통으로 보냈다. 스캔이 한 번만
-                어긋나도(폴더가 늦게 붙음·일시적 읽기 실패·권한 지연) 멀쩡한 일정이 사라졌고,
-                그게 팀원 달력에서 한 달치가 통째로 빈 것처럼 보일 수 있다.
-             → 후보를 적어 두고, **다음 전체 대조에서도 여전히 없을 때만** 지운다.
-                한 번 스쳐 지나간 실수로는 아무것도 사라지지 않는다.
-             ⚠️ 이번에 로컬에 다시 나타난 것은 후보에서 뺀다. */
-          try {
-            var PEND_KEY = 'cloudCleanupPending_' + uid;
-            var pend = {};
-            try { pend = JSON.parse(localStorage.getItem(PEND_KEY) || '{}') || {}; } catch (e) {}
-            var confirmed = [], nextPend = {};
-            delIds.forEach(function (id) {
-              if (pend[id]) confirmed.push(id);        // 지난번에도 없었다 → 이제 지운다
-              else nextPend[id] = Date.now();          // 처음 보는 후보 → 다음 기회에
-            });
-            var held = delIds.length - confirmed.length;
-            if (held) console.warn('[CloudSync] 정리 후보 ' + held + '건은 다음 대조까지 보류합니다');
-            delIds = confirmed;
-            try { localStorage.setItem(PEND_KEY, JSON.stringify(nextPend)); } catch (e) {}
-          } catch (e) { console.warn('[CloudSync] 정리 보류 목록 처리 실패 → 이번엔 지우지 않습니다', e); delIds = []; }
+          /* ☠️☠️ 2026-09-18 — 자동 삭제를 끈다. 이 앱에서 일정이 사라지는 유일한 자동 경로였다.
+             실제로 일어난 일: 팀원 폰에서 **한 달치 일정이 통째로** 이 정리에 쓸려 휴지통으로
+             갔고(공유 휴지통에서 확인됨), 팀 달력에서 그만큼이 비어 보였다.
 
-          if (opts.noCleanup && delIds.length) {
-            console.warn('[CloudSync] 다시 맞추기 — 정리 대상 ' + delIds.length + '건은 건드리지 않습니다');
-            delIds = [];
+             왜 껐나 — 손익이 맞지 않는다.
+               · 이 정리가 막는 것은 **유령 문서**다. 로컬에서 지운 작업의 서버 문서가 남아
+                 팀원 달력에 계속 보이는 것 — 보기 싫을 뿐 잃는 것은 없다.
+               · 이 정리가 잘못 돌면 **멀쩡한 일정이 사라진다.** 그건 되돌리기 전까지 일이 막힌다.
+               · 게다가 유령은 원래 사용자가 작업을 지울 때 trashWorkItem 이 처리한다.
+                 이 정리는 그게 실패한 드문 경우를 위한 그물이었는데, 그물이 물고기보다 컸다.
+
+             ⚠️ 판정은 그대로 돌린다 — 로그와 진단에 쓰고, R1 자가복구가 같은 대조를 쓴다.
+                쓰기만 하지 않는다.
+             ⚠️ 유령이 실제로 문제가 되면, 목록을 보여주고 사람이 누르는 방식으로 되살릴 것.
+                자동으로는 다시 켜지 말 것. */
+          if (delIds.length) {
+            ghosts = delIds.length;
+            console.warn('[CloudSync] 서버에만 있는 작업 ' + ghosts + '건 — 자동으로 지우지 않습니다');
           }
-          delIds.forEach(function (id) {
-            removed++;
-            // ★ 하드삭제 대신 공유 휴지통으로 소프트삭제 → ♻️ 복원 가능 (오삭제 대비, 2026-07-26)
-            //    재설치 복구용 full 백업은 지우지 않고 보존한다.
-            itemsCol().doc(id).update({
-              trashed: true,
-              trashedAt: firebase.firestore.FieldValue.serverTimestamp(),
-              trashedBy: uid,
-              cleanupTrashed: true
-            })
-              .then(function(){ try { localStorage.removeItem(hkey(uid, id)); } catch(e){} })
-              .catch(function(e){ console.warn('[CloudSync] 정리 휴지통이동 실패', id, e && e.code); });
-          });
-        } catch (e) { console.warn('[CloudSync] 권위적 정리 실패(스킵)', e && e.code); }
+          delIds = [];
+        } catch (e) { console.warn('[CloudSync] 서버 대조 실패(스킵)', e && e.code); }
       }
       /* ★ R2 — 부분 스캔일 때 기준선을 낮추면, 다음번 '절반 미만' 안전장치가 이미 깎인 숫자와
          비교하게 된다(안전장치가 스스로 헐거워지는 톱니). 온전할 때만 갱신한다. */
@@ -525,7 +501,7 @@
            경고가 안 뜨는 채로 절반만 올라가는 상태가 굳는다. */
       if (scanOk) noteOk(); else noteBlocked('partial');
       _lastRun = { scanned: items.length, changed: writes, removed: removed, repaired: repaired,
-                   scanFailed: scanFailed, badDates: badDates };
+                   scanFailed: scanFailed, badDates: badDates, ghosts: ghosts };
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
       try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: removed }); } catch (e) {}
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
@@ -563,7 +539,7 @@
         팀 가입/탈퇴는 구독만 건드릴 뿐, 없는 문서를 만들어 주지는 않는다.
      → 해시를 통째로 버리고 전 작업을 다시 대조·업로드한다. 이미 서버에 있고 내용이 같으면
         savedAt 비교에서 걸러지므로 헛쓰기는 크지 않다.
-     ⚠️ 지우는 쪽(권위적 정리)은 끈다 — 위 noCleanup 주석 참고. */
+     ⚠️ 지우는 일은 일어나지 않는다 — 자동 삭제 자체를 껐다(2026-09-18). */
   CloudSync.resync = async function () {
     if (!loggedIn()) return { ok: false, why: '로그인이 필요합니다' };
     if (typeof photoFolderHandle === 'undefined' || !photoFolderHandle) {
@@ -585,7 +561,7 @@
     } catch (e) { console.warn('[CloudSync] 해시 비우기 실패', e); }
 
     _lastRun = null;
-    await syncAll(true, { noCleanup: true, fullCompare: true });
+    await syncAll(true, { fullCompare: true });
     var done = await gateIdle(180000);
     var r = _lastRun || { scanned: 0, changed: 0 };
     return { ok: true, cleared: cleared, scanned: r.scanned, changed: r.changed,

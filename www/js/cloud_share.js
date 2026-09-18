@@ -1017,7 +1017,10 @@
     if (!ownerUid || !workId) { toast('대상을 찾을 수 없습니다','err'); return Promise.reject(); }
     var docId = safeIdShare(workId);
     return db().collection('schedules').doc(ownerUid).collection('items').doc(docId)
-      .update({ trashed: false, trashedAt: null, restoredBy: myUid(), restoredAt: firebase.firestore.FieldValue.serverTimestamp() })
+      /* ⚠️ cleanupTrashed 도 같이 푼다. 안 풀면 '자동정리가 치운 것'으로 계속 남아,
+           자가복구(cloud_sync R1)가 이걸 '없는 것'으로 보고 매번 다시 올린다. */
+      .update({ trashed: false, trashedAt: null, cleanupTrashed: false,
+                restoredBy: myUid(), restoredAt: firebase.firestore.FieldValue.serverTimestamp() })
       .then(function(){ toast('♻️ 복원되었습니다','ok'); refreshCal(); })
       .catch(function(e){ console.warn('[CloudShare] 복원 실패', e); toast('복원 실패: '+(e && e.code),'err'); throw e; });
   };

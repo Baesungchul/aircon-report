@@ -276,10 +276,26 @@
     gate(function () { return itemsCol().doc(id).get().then(function (snap) {
       var sd = (snap.exists && snap.data()) || null;
       var sv = (sd && sd.savedAt) || 0;
-      if (!force && sv && lsaved && sv > lsaved) {
-        console.warn('[CloudSync] 서버가 최신 → 업로드 건너뜀(충돌 방지)', id);
-        try { localStorage.setItem(hkey(uid, id), h); } catch (e) {}   // 매번 재확인하지 않도록
-        return;
+      if (sv && lsaved && sv > lsaved) {
+        /* 서버가 더 최신 = 그 사이 공유 상대가 고쳤다. 내 옛 값으로 덮지 않는다. */
+        if (!force) {
+          console.warn('[CloudSync] 서버가 최신 → 업로드 건너뜀(충돌 방지)', id);
+          try { localStorage.setItem(hkey(uid, id), h); } catch (e) {}   // 매번 재확인하지 않도록
+          return;
+        }
+        /* ☠️ 복구(force)인데 서버가 더 최신인 경우 — 되살리기만 하고 내용은 건드리지 않는다.
+             여기서 p 를 통째로 올리면 상대가 고친 값이 내 옛 값으로 되돌아간다.
+             복구가 해야 할 일은 '안 보이던 것을 다시 보이게' 지 '내 값으로 맞추기'가 아니다. */
+        if (sd && (sd.cleanupTrashed || sd.trashed)) {
+          return itemsCol().doc(id).update({
+            trashed: false, cleanupTrashed: false,
+            restoredAt: firebase.firestore.FieldValue.serverTimestamp()
+          })
+            .then(function () { try { localStorage.setItem(hkey(uid, id), h); } catch (e) {} })
+            .catch(function (e) { console.warn('[CloudSync] 되살리기 실패', id, e && e.code); });
+        }
+        try { localStorage.setItem(hkey(uid, id), h); } catch (e) {}
+        return;   // 서버가 멀쩡하고 더 최신이면 복구가 할 일이 없다
       }
       // ★ 자동정리로 휴지통에 갔던 작업이 로컬에 다시 있으면 = 오삭제 → 자동 복원
       if (sd && sd.cleanupTrashed) { p.trashed = false; p.cleanupTrashed = false; p.restoredAt = firebase.firestore.FieldValue.serverTimestamp(); }
@@ -311,7 +327,7 @@
 
   // ── 핵심 동기화: 업로드(변경분) + 삭제 반영 ──
   var _syncing = false;
-  var _lastRun = null;      // 마지막 동기화 결과 { scanned, changed, removed } — resync 가 읽는다
+  var _lastRun = null;      // 마지막 동기화 결과 { scanned, changed, repaired, ghosts, ... } — resync 가 읽는다
   /* opts.fullCompare — 12시간을 기다리지 않고 지금 당장 서버와 전체 대조한다('다시 맞추기') */
   async function syncAll(silent, opts){
     opts = opts || {};
@@ -360,7 +376,6 @@
       //       ② 유령 문서 개수 세기(로그·진단용)
       //    지우는 일은 사용자가 작업을 삭제할 때 trashWorkItem 이 한다 — 사람이 시킨 것만.
       var curSet = {}; currentIds.forEach(function(i){ curSet[i]=1; });
-      var removed = 0;
       var repaired = 0, ghosts = 0;
       /* ⚠️ 이 블록은 이제 '지우는 곳'이 아니라 **'빠진 것을 찾아 메우는 곳'(R1)** 이다.
            자동 삭제는 2026-09-18 에 껐다 — 아래 긴 주석 참고. */
@@ -500,10 +515,13 @@
       /* ⚠️ '스캔이 온전했을 때만' 성공으로 친다. 폴더를 반만 읽고 성공으로 기록하면
            경고가 안 뜨는 채로 절반만 올라가는 상태가 굳는다. */
       if (scanOk) noteOk(); else noteBlocked('partial');
-      _lastRun = { scanned: items.length, changed: writes, removed: removed, repaired: repaired,
+      _lastRun = { scanned: items.length, changed: writes, repaired: repaired,
                    scanFailed: scanFailed, badDates: badDates, ghosts: ghosts };
-      console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
-      try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: removed }); } catch (e) {}
+      /* ⚠️ '휴지통정리' 항목은 뺐다 — 자동 삭제를 끈 뒤로 언제나 0 이라 읽는 사람을 헷갈리게 한다.
+           대신 repaired(다시 올린 것)·ghosts(서버에만 있는 것)를 남긴다. */
+      console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes +
+                  ', 복구 ' + repaired + ', 서버에만 ' + ghosts);
+      try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: 0 }); } catch (e) {}
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
     } catch (e) {
       console.warn('[CloudSync] 동기화 오류', e);

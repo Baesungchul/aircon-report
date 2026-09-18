@@ -170,6 +170,22 @@ const WORK = (n) => '2026-09-0' + n;
     return '그대로 둠';
   });
 
+  await achk('복구가 상대의 수정을 덮어쓰지 않는다', async () => {
+    /* ☠️ 복구는 강제 업로드라 충돌 가드를 건너뛴다. 그 사이 상대가 고쳐 둔 값이 있으면
+         내 옛 값으로 되돌아간다. 복구가 할 일은 '안 보이던 걸 보이게' 지 '내 값으로 맞추기'가 아니다. */
+    const env = load({
+      folders: [WORK(1)],
+      server: { [WORK(1)]: { workId: WORK(1), date: WORK(1), apt: '상대가 고친 이름',
+                             trashed: true, cleanupTrashed: true,
+                             savedAt: Date.now() + 600000 } }   // 서버가 더 최신
+    });
+    await runFull(env);
+    must(env.srv[WORK(1)].trashed === false, '되살아나지 않았습니다');
+    must(env.srv[WORK(1)].apt === '상대가 고친 이름',
+         '상대가 고친 값을 내 옛 값으로 덮었습니다');
+    return '되살리되 내용은 그대로';
+  });
+
   console.log('\n[2] R2 — 조용한 부분 스캔을 차단하는가');
 
   await achk('폴더를 못 읽으면 정리도 기준선 갱신도 안 한다', async () => {

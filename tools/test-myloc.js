@@ -73,7 +73,7 @@ function loadRouting(opts) {
     setTimeout, clearTimeout, Date, String, Math, JSON, Object, Array, Promise, Error,
     AbortController: function () { this.signal = {}; this.abort = function () {}; },
     fetch: (u, o) => {
-      calls.push({ u, body: JSON.parse(o.body) });
+      calls.push({ u, body: JSON.parse(o.body), auth: (o.headers || {}).Authorization || '' });
       if (opts.hang) return new Promise(function () {});           // 영영 안 옴
       if (opts.bad) return Promise.resolve({ ok: false });
       if (opts.throws) return Promise.reject(new Error('net'));
@@ -85,6 +85,11 @@ function loadRouting(opts) {
   };
   ctx.window = ctx;
   if (opts.url !== undefined) ctx.KAKAO_ROUTE_URL = opts.url;
+  /* 로그인 상태 흉내 — user: 'tok' 이면 그 토큰을 준다, tokenFails 면 토큰 얻기가 실패한다 */
+  if (opts.user || opts.tokenFails) {
+    ctx.Cloud = { user: { getIdToken: () => (opts.tokenFails
+      ? Promise.reject(new Error('token')) : Promise.resolve(opts.user)) } };
+  }
   vm.createContext(ctx);
   vm.runInContext(read('routing.js'), ctx, { filename: 'routing.js' });
   must(ctx.Routing, 'Routing 이 안 올라왔습니다');
@@ -208,6 +213,32 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
     must(r.distance === 5400 && r.duration === 900, '거리·시간이 안 왔습니다');
     must(e.calls[0].body.points.length === 2, '좌표를 안 보냈습니다');
     return r.path.length + '점';
+  });
+
+  await achk('로그인 토큰을 같이 보낸다', async () => {
+    /* ☠️ 서버가 이걸로 막는다. 안 보내면 로그인한 사람도 401 을 받아
+       경로선이 영영 안 나온다 — 그런데 화면엔 점선이 그대로 떠서 눈치채기 어렵다. */
+    const e = loadRouting({ url: 'https://x.example/route', user: 'tok-123' });
+    await e.R.route(P);
+    must(e.calls[0].auth === 'Bearer tok-123', '토큰을 안 보냈습니다: ' + e.calls[0].auth);
+    return 'Bearer';
+  });
+
+  await achk('로그인 안 했으면 토큰 없이 보내고 조용히 넘어간다', async () => {
+    /* 서버가 401 을 준다. 그건 오류가 아니라 '경로선만 없는 상태'다 */
+    const e = loadRouting({ url: 'https://x.example/route', bad: true });
+    must((await e.R.route(P)) === null, 'null 이 아닙니다');
+    must(!e.calls[0].auth, '로그인도 안 했는데 토큰을 보냈습니다');
+    return '점선으로';
+  });
+
+  await achk('토큰을 못 얻어도 요청은 보낸다', async () => {
+    /* 여기서 미리 끊으면 '로그인했는데 토큰만 잠깐 늦은' 경우까지 막힌다 */
+    const e = loadRouting({ url: 'https://x.example/route', tokenFails: true });
+    const r = await e.R.route(P);
+    must(e.calls.length === 1, '요청을 아예 안 보냈습니다');
+    must(r && r.path.length === 2, '경로를 못 받았습니다');
+    return '보냄';
   });
 
   await achk('서버가 실패해도 null 만 돌려준다 (지도는 점선으로 남는다)', async () => {
@@ -359,6 +390,68 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
     must(/\.cm-card-dist\{[^}]*display:none/.test(css), '빈 줄이 카드에 남습니다');
     must(/\.cm-card-dist\.on\{display:block/.test(css), '값이 있어도 안 보입니다');
     return '비면 숨김';
+  });
+
+  console.log('\n[5-3] 서버가 카카오 응답을 바꾸는 자리 (functions/navi_shape.js)');
+
+  /* ☠️ 이 기능에서 제일 틀리기 쉬운 두 가지를 실제 응답 모양으로 돌려 본다.
+       ① 카카오는 x=경도, y=위도 다. 뒤집으면 선이 서해 바다로 간다.
+       ② sections 하나가 한 구간이다. 개수가 어긋나면 엉뚱한 카드에 엉뚱한 거리가 찍힌다. */
+  const SHAPE = require(path.join(ROOT, 'functions', 'navi_shape.js'));
+  const kakaoRes = {
+    routes: [{
+      result_code: 0,
+      summary: { distance: 12000, duration: 1500 },
+      sections: [
+        { distance: 5000, duration: 600, roads: [{ vertexes: [127.10, 37.00, 127.15, 37.05] }] },
+        { distance: 7000, duration: 900, roads: [{ vertexes: [127.15, 37.05, 127.20, 37.10] }] }
+      ]
+    }]
+  };
+
+  chk('위도·경도 순서를 뒤집어 준다 (카카오는 x=경도)', () => {
+    const r = SHAPE.shape(kakaoRes);
+    must(!r.error, '변환이 실패했습니다: ' + r.error);
+    must(r.path[0][0] === 37.00 && r.path[0][1] === 127.10,
+         '좌표가 뒤집혀 있습니다 — 선이 엉뚱한 곳으로 갑니다: ' + JSON.stringify(r.path[0]));
+    /* 위도는 33~39, 경도는 124~132 다. 바뀌면 이 범위로 바로 드러난다 */
+    r.path.forEach((c) => {
+      must(c[0] > 30 && c[0] < 40, '위도 자리에 위도가 아닌 값이 있습니다: ' + c);
+      must(c[1] > 120 && c[1] < 135, '경도 자리에 경도가 아닌 값이 있습니다: ' + c);
+    });
+    return r.path.length + '점';
+  });
+
+  chk('구간(sections)을 그대로 legs 로 옮긴다', () => {
+    const r = SHAPE.shape(kakaoRes);
+    must(r.legs.length === 2, '구간 수가 다릅니다: ' + r.legs.length);
+    must(r.legs[0].distance === 5000 && r.legs[1].distance === 7000,
+         '구간 거리가 섞였습니다: ' + JSON.stringify(r.legs));
+    must(r.distance === 12000 && r.duration === 1500, '총거리·시간이 안 실렸습니다');
+    return '2구간';
+  });
+
+  chk('길을 못 찾으면 error 로 돌려준다 (던지지 않는다)', () => {
+    /* ☠️ 여기서 던지면 함수가 500 으로 떨어지고, 앱에서는 지도가 통째로 늦어진다 */
+    for (const bad of [{}, { routes: [] }, { routes: [{ result_code: 104, result_msg: '경로 없음' }] },
+                       { routes: [{ result_code: 0, sections: [] }] }]) {
+      const r = SHAPE.shape(bad);
+      must(r.error, '이상한 응답을 통과시켰습니다: ' + JSON.stringify(bad));
+      must(!r.path, 'error 인데 path 가 있습니다');
+    }
+    return '4가지';
+  });
+
+  chk('서버는 로그인을 확인하고, 키를 로그에 남기지 않는다', () => {
+    const f = fs.readFileSync(path.join(ROOT, 'functions', 'index.js'), 'utf8');
+    const at = f.indexOf('exports.naviRoute');
+    must(at > 0, 'naviRoute 함수가 없습니다');
+    const b = f.slice(at, at + 2600);
+    must(/_naviAuth\(req\)/.test(b) && /401/.test(b),
+         '로그인 확인이 없습니다 — 주소만 알면 누구나 하루 쿼터를 씁니다');
+    must(!/console\.(log|warn)\([^)]*key/i.test(b), 'REST 키가 로그에 찍힐 수 있습니다');
+    must(/secrets: \[KAKAO_REST_KEY\]/.test(b), '키를 시크릿으로 안 받습니다');
+    return '토큰 확인';
   });
 
   console.log('\n[6] 안드로이드 권한 선언');

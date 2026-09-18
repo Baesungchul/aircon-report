@@ -43,6 +43,21 @@
   /* points: [{lat,lng}, ...] — 첫 번째가 출발, 마지막이 도착.
      돌려주는 값: 위 주석의 객체, 또는 null. **절대 reject 하지 않는다** —
      경로를 못 그렸다고 지도가 안 뜨면 안 된다. */
+  /* ⚠️ 서버가 로그인 확인을 한다(functions naviRoute). 그 주소는 앱 안에 그대로 적혀
+     있어 누구나 찾을 수 있고, 안 막으면 하루 쿼터를 남이 대신 써 버린다.
+     ☠️ 그래서 **로그인 안 한 사람은 경로선이 안 그려진다.** 그건 오류가 아니다 —
+        지도는 점선(직선)으로 그대로 뜨고, 거리도 직선은 나온다. 조용히 한 단계 낮아질 뿐.
+     ⚠️ 토큰을 못 얻어도 요청은 보낸다. 서버가 401 을 주고 우리는 null 로 받는다 —
+        여기서 미리 끊으면 '로그인했는데 토큰만 잠깐 늦은' 경우까지 막힌다. */
+  function idToken() {
+    try {
+      if (window.Cloud && Cloud.user && Cloud.user.getIdToken) {
+        return Promise.resolve(Cloud.user.getIdToken()).catch(function () { return ''; });
+      }
+    } catch (e) {}
+    return Promise.resolve('');
+  }
+
   function route(points) {
     var pts = (points || []).filter(function (p) {
       return p && typeof p.lat === 'number' && typeof p.lng === 'number';
@@ -62,25 +77,28 @@
         finish(null);
       }, TIMEOUT_MS);
 
-      var opt = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ points: pts })
-      };
-      if (ctl) opt.signal = ctl.signal;
+      idToken().then(function (tok) {
+        var opt = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ points: pts })
+        };
+        if (tok) opt.headers.Authorization = 'Bearer ' + tok;
+        if (ctl) opt.signal = ctl.signal;
 
-      fetch(url(), opt)
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (j) {
-          if (!j || !Array.isArray(j.path) || j.path.length < 2) { finish(null); return; }
-          finish({
-            path: j.path,
-            distance: j.distance || 0,
-            duration: j.duration || 0,
-            legs: Array.isArray(j.legs) ? j.legs : []
+        return fetch(url(), opt)
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) {
+            /* 서버가 '경로를 못 찾음'을 200 + error 로 준다 — path 가 없으면 다 실패로 본다 */
+            if (!j || !Array.isArray(j.path) || j.path.length < 2) { finish(null); return; }
+            finish({
+              path: j.path,
+              distance: j.distance || 0,
+              duration: j.duration || 0,
+              legs: Array.isArray(j.legs) ? j.legs : []
+            });
           });
-        })
-        .catch(function () { finish(null); });
+      }).catch(function () { finish(null); });
     });
   }
 

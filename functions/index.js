@@ -1202,3 +1202,107 @@ exports.adminStats = onRequest(
     }
   }
 );
+
+/* ═══════════════════════════════════════════════════════════════════
+   naviRoute — 그날 지도의 '실제 도로 경로' (2026-09-18)
+   ----------------------------------------------------------------
+   앱(www/js/routing.js)이 좌표 목록만 보내면, 여기서 카카오모빌리티
+   **다중 경유지 길찾기**에 물어보고 지도에 그릴 수 있는 모양으로 바꿔 돌려준다.
+
+   ☠️ 왜 앱이 직접 부르지 않는가
+      카카오 지도 JS 키는 **도메인**으로 막혀 있어 APK 에 그대로 넣어도 된다.
+      그런데 길찾기는 REST 키를 쓰고 REST 키에는 그 장치가 없다 — APK 에서 꺼내면
+      누구나 쓸 수 있고 쿼터(다중 경유지 하루 5,000건)는 이 계정에서 나간다.
+      → 키는 서버 시크릿에만 둔다. adminStats 가 앤트로픽 키를 다루는 방식과 같다.
+
+   ⚠️ 로그인한 사람만 쓸 수 있다.
+      이 주소는 앱 안에 그대로 적혀 있어 누구나 찾을 수 있다. 막지 않으면
+      하루 5,000건을 남이 대신 써 버릴 수 있다. 토큰을 확인하는 쪽이 싸다.
+      ☠️ 로그인 안 한 사용자에게 오류를 보이지는 않는다 — 앱은 경로를 못 받으면
+         **점선(직선)** 으로 그대로 그린다. 기능이 조용히 한 단계 낮아질 뿐이다.
+
+   주고받는 모양 (www/js/routing.js 주석과 한 쌍 — 한쪽만 고치지 말 것)
+     받는다 : { points: [{lat,lng}, ...] }   첫 번째가 출발, 마지막이 도착
+     준다   : { path: [[lat,lng], ...], distance, duration,
+                legs: [{distance, duration}] }   legs[i] = points[i] → points[i+1]
+
+   ⚠️ 카카오는 x=경도, y=위도 다(위도·경도 순서가 아니다). 뒤집는 자리를
+      **이 파일 한 곳으로** 못 박는다. 앱에서 뒤집으면 언젠가 한 번은 섞인다.
+   ⚠️ vertexes 는 [x,y,x,y,...] 로 납작하게 온다. 둘씩 끊어 [lat,lng] 로 바꾼다.
+
+   켜는 순서
+     1) developers.kakao.com → 앱 → 앱 키 → REST API 키 복사
+     2) firebase functions:secrets:set KAKAO_REST_KEY   (붙여넣기)
+     3) firebase deploy --only functions:naviRoute
+     4) 배포된 주소를 www/js/config_map.js 의 KAKAO_ROUTE_URL 에 넣기
+═══════════════════════════════════════════════════════════════════ */
+const KAKAO_REST_KEY = defineSecret('KAKAO_REST_KEY');
+const NAVI_URL = 'https://apis-navi.kakaomobility.com/v1/waypoints/directions';
+const NAVI_MAX_POINTS = 31;   // 출발 1 + 경유·도착 30 (카카오 상한)
+const { shape: naviShape } = require('./navi_shape.js');
+
+/* 로그인 확인. 통과하면 uid, 아니면 null */
+async function _naviAuth(req) {
+  try {
+    const h = String(req.get('Authorization') || '');
+    if (!/^Bearer /i.test(h)) return null;
+    const dec = await admin.auth().verifyIdToken(h.slice(7).trim());
+    return (dec && dec.uid) || null;
+  } catch (e) { return null; }
+}
+
+exports.naviRoute = onRequest(
+  { secrets: [KAKAO_REST_KEY], cors: true, region: 'asia-northeast3', memory: '256MiB', timeoutSeconds: 30 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ error: 'POST 요청만 허용됩니다' }); return; }
+    const uid = await _naviAuth(req);
+    if (!uid) { res.status(401).json({ error: '로그인이 필요합니다' }); return; }
+
+    let pts = ((req.body && req.body.points) || []).filter(
+      (p) => p && typeof p.lat === 'number' && typeof p.lng === 'number'
+    );
+    if (pts.length < 2) { res.status(400).json({ error: '지점이 두 곳 이상이어야 합니다' }); return; }
+    if (pts.length > NAVI_MAX_POINTS) pts = pts.slice(0, NAVI_MAX_POINTS);
+
+    let key = '';
+    try { key = KAKAO_REST_KEY.value() || ''; } catch (e) {}
+    if (!key) { res.status(503).json({ error: '길찾기 키가 설정되지 않았습니다' }); return; }
+
+    const xy = (p) => ({ x: p.lng, y: p.lat });
+    const body = {
+      origin: xy(pts[0]),
+      destination: xy(pts[pts.length - 1]),
+      waypoints: pts.slice(1, -1).map(xy),
+      priority: 'RECOMMEND',
+      car_fuel: 'GASOLINE',
+      car_hipass: false,
+      alternatives: false,
+      road_details: false
+    };
+
+    try {
+      const r = await fetch(NAVI_URL, {
+        method: 'POST',
+        headers: { Authorization: 'KakaoAK ' + key, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) {
+        console.warn('[naviRoute] 카카오 응답 실패', r.status);
+        res.status(502).json({ error: '경로를 받지 못했습니다' });
+        return;
+      }
+      /* 변환은 navi_shape.js 로 뺐다 — 좌표 순서·구간 대응이 제일 틀리기 쉬운 자리라
+         검사에서 실제 응답 모양을 넣어 돌려 보려면 firebase 의존성이 없어야 한다 */
+      const out = naviShape(await r.json());
+      if (out.error) {
+        console.warn('[naviRoute] 경로 없음:', out.error);
+        res.status(200).json({ error: out.error });
+        return;
+      }
+      res.json(out);
+    } catch (e) {
+      console.warn('[naviRoute] 오류', e && e.message);
+      res.status(500).json({ error: String((e && e.message) || e) });
+    }
+  }
+);

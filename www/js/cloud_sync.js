@@ -126,6 +126,28 @@
   function hashOf(p){ try { var j = JSON.stringify(p); return j.length + ':' + fnv1a(j); } catch(e){ return String(Math.random()); } }
   function hkey(uid, id){ return 'cloudSyncHash_' + uid + '_' + id; }
 
+  /* ★ R3 (2026-09-18) — 기기 식별자.
+     ☠️ 왜 필요한가: 같은 계정을 기기 둘에서 쓰면 각 기기의 '권위적 정리'가 **서로의 작업**을
+        휴지통으로 보낸다. 기기 B 가 작업 X 를 치울 때 지우는 건 B 의 해시라, A 는 자기 해시가
+        멀쩡해서 X 를 다시 안 올리고 B 는 X 가 로컬에 없어 올릴 일이 없다 → X 는 영영 휴지통.
+        폰을 바꿨는데 예전 폴더가 일부만 넘어온 경우도 같은 모양이다.
+     → 올릴 때 어느 기기가 올렸는지 찍어 두고, 정리는 **내 기기가 올린 문서만** 건드린다.
+     ⚠️ 계정이 아니라 기기 단위다. 앱을 지웠다 깔면 새 값이 된다(그게 맞다 — 폴더도 새로 잡으므로). */
+  var DEVICE_KEY = 'ac_device_id_v1';
+  var _devId = null;
+  function deviceId(){
+    if (_devId) return _devId;
+    try {
+      _devId = localStorage.getItem(DEVICE_KEY);
+      if (!_devId) {
+        _devId = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        localStorage.setItem(DEVICE_KEY, _devId);
+      }
+    } catch (e) { _devId = 'd_unknown'; }
+    return _devId;
+  }
+  CloudSync.deviceId = deviceId;
+
   /* ★ 마이그레이션 패스 — 이게 없으면 형식이 바뀌는 첫 실행에 전 작업이 한꺼번에 재업로드된다
        (2,000건이면 get 2,000 + set 2,000 이 동시에 발사). 옛 값은 payload JSON 통째라
        '{' 로 시작한다 → 지금 payload 와 문자열이 같으면 **업로드 없이 짧은 해시로 갈아끼우고**
@@ -197,10 +219,18 @@
   }
 
   // ── 로컬 폴더 직접 스캔 (모든 날짜 폴더) ──
+  /* ★ R2 (2026-09-18) — 스캔이 온전했는지 같이 돌려준다.
+     ☠️ 예전엔 폴더 하나를 못 읽어도 catch(e){} 로 **조용히 건너뛰었다.** 스캔은 '성공'한 걸로
+        보이고 건수만 줄어든다. 그 줄어든 목록이 그대로 cloudSyncedIds 에 저장돼(기준선 하락),
+        다음번 '절반 미만이면 정리 건너뜀' 안전장치는 이미 깎인 숫자와 비교하게 된다.
+        부분 스캔이 반복될수록 안전장치가 헐거워지는 톱니였다.
+     → 실패 건수를 세어 돌려주고, 하나라도 실패하면 호출자가 파괴적 정리를 건너뛰고
+        기준선도 낮추지 않는다. */
   async function scanLocalItems(){
     if (typeof photoFolderHandle === 'undefined' || !photoFolderHandle) throw new Error('NO_FOLDER');
     if (typeof requestFolderPermissionSafe === 'function') { try { await requestFolderPermissionSafe('readwrite'); } catch(e){} }
     var items = [];
+    var failed = 0;
     for await (var entry of photoFolderHandle.values()) {
       if (entry.kind !== 'directory') continue;
       if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
@@ -215,9 +245,41 @@
           totalPhotos: data.units.reduce(function(s,u){return s+(u.beforeCount||0)+(u.afterCount||0);},0),
           session: data
         }});
-      } catch(e) {}
+      } catch(e) { failed++; }
     }
+    items.scanFailed = failed;   // 배열에 얹는다 — 호출부를 바꾸지 않으면서 사실을 같이 넘긴다
     return items;
+  }
+
+  /* 한 작업을 올린다. 올리기를 큐에 넣었으면 true.
+     force=true 면 ① 해시가 같아도 올리고 ② '서버가 더 최신' 가드도 건너뛴다.
+       └ R1 복구 전용이다. 서버에 문서가 아예 없거나 정리로 휴지통에 간 경우라
+         savedAt 비교로 막으면 복구가 그대로 막힌다. */
+  function pushOne(uid, it, p, id, force){
+    var h = hashOf(p);
+    if (!force && hashUnchanged(uid, id, p, h)) return false;   // 변경 없음(옛 형식이면 조용히 갈아끼운다)
+    var lsaved = 0;
+    try { if (it.data.session && it.data.session.savedAt) { var t = Date.parse(it.data.session.savedAt); if (!isNaN(t)) lsaved = t; } } catch (e) {}
+    p.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    p.editedBy = uid;
+    p.savedAt = lsaved;
+    p.deviceId = deviceId();      // ★ R3 — 어느 기기가 올렸는지. 정리가 이걸 본다
+    gate(function () { return itemsCol().doc(id).get().then(function (snap) {
+      var sd = (snap.exists && snap.data()) || null;
+      var sv = (sd && sd.savedAt) || 0;
+      if (!force && sv && lsaved && sv > lsaved) {
+        console.warn('[CloudSync] 서버가 최신 → 업로드 건너뜀(충돌 방지)', id);
+        try { localStorage.setItem(hkey(uid, id), h); } catch (e) {}   // 매번 재확인하지 않도록
+        return;
+      }
+      // ★ 자동정리로 휴지통에 갔던 작업이 로컬에 다시 있으면 = 오삭제 → 자동 복원
+      if (sd && sd.cleanupTrashed) { p.trashed = false; p.cleanupTrashed = false; p.restoredAt = firebase.firestore.FieldValue.serverTimestamp(); }
+      return itemsCol().doc(id).set(p, { merge: true })
+        .then(function () { try { localStorage.setItem(hkey(uid, id), h); } catch (e) {} })
+        .catch(function (e) { console.warn('[CloudSync] 업로드 실패', id, e && e.code); });
+      // (전체본 업로드는 pushFull로 일원화 — 해시 경합으로 인한 누락 방지)
+    }).catch(function (e) { console.warn('[CloudSync] savedAt 확인 실패', id, e && e.code); }); });
+    return true;
   }
 
   // ── 핵심 동기화: 업로드(변경분) + 삭제 반영 ──
@@ -234,13 +296,19 @@
     var uid = Cloud.user.uid;
     try {
       var items = await scanLocalItems();   // 실패 시 throw → 아래 catch (삭제 반영 안 함)
+      /* ★ R2 — 폴더 하나라도 못 읽었으면 '부분 스캔'이다. 지우는 일도, 기준선 갱신도 하지 않는다 */
+      var scanFailed = items.scanFailed || 0;
+      var scanOk = (scanFailed === 0);
+      if (!scanOk) console.warn('[CloudSync] 폴더 ' + scanFailed + '개를 못 읽었습니다 → 정리·기준선 갱신 건너뜀');
       var currentIds = [];
+      var byId = {};            // id -> item (R1 복구에서 다시 올릴 때 쓴다)
       var writes = 0;
       items.forEach(function(it){
         var p = toPayload(it);
         if (!p.workId || !p.date) return;
         var id = safeId(p.workId);
         currentIds.push(id);
+        byId[id] = it;
         pushFull(uid, it, p, id);   // ★ 전체본은 items 해시와 무관하게 항상 검사
         // 가져오기(claim) 예약이 있고 이 작업이 그 일정과 일치하면 → 원본을 가져감 표시
         try {
@@ -250,32 +318,7 @@
             window._pendingTakeClaim = null;
           }
         } catch(e){}
-        var h = hashOf(p);
-        if (hashUnchanged(uid, id, p, h)) return;  // 변경 없음(옛 형식이면 여기서 조용히 갈아끼운다)
-        // ★ 로컬 저장시각(충돌 방지)
-        var _lsaved = 0; try { if (it.data.session && it.data.session.savedAt) { var _tt = Date.parse(it.data.session.savedAt); if (!isNaN(_tt)) _lsaved = _tt; } } catch (e) {}
-        p.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-        p.editedBy = uid;
-        p.savedAt = _lsaved;
-        writes++;
-        (function (it2, p2, id2, h2, lsaved2) {
-          // 서버가 더 최신이면(=다른 기기에서 나중에 수정) 구버전 로컬로 덮어쓰지 않음
-          gate(function () { return itemsCol().doc(id2).get().then(function (snap) {
-            var sd = (snap.exists && snap.data()) || null;
-            var sv = (sd && sd.savedAt) || 0;
-            if (sv && lsaved2 && sv > lsaved2) {
-              console.warn('[CloudSync] 서버가 최신 → 업로드 건너뜀(충돌 방지)', id2);
-              try { localStorage.setItem(hkey(uid, id2), h2); } catch (e) {}   // 매번 재확인하지 않도록
-              return;
-            }
-            // ★ 자동정리로 휴지통에 갔던 작업이 로컬에 다시 있으면 = 오삭제 → 자동 복원
-            if (sd && sd.cleanupTrashed) { p2.trashed = false; p2.cleanupTrashed = false; p2.restoredAt = firebase.firestore.FieldValue.serverTimestamp(); }
-            return itemsCol().doc(id2).set(p2, { merge: true })
-              .then(function () { try { localStorage.setItem(hkey(uid, id2), h2); } catch (e) {} })
-              .catch(function (e) { console.warn('[CloudSync] 업로드 실패', id2, e && e.code); });
-            // (전체본 업로드는 pushFull로 일원화 — 해시 경합으로 인한 누락 방지)
-          }).catch(function (e) { console.warn('[CloudSync] savedAt 확인 실패', id2, e && e.code); }); });
-        })(it, p, id, h, _lsaved);
+        if (pushOne(uid, it, p, id, false)) writes++;
       });
       // ★ 권위적 정리(2026-07-24): localStorage 목록이 아니라 "클라우드 실제 문서 ↔ 로컬 폴더"를 대조해
       //    로컬에 없는 '작업' 문서를 삭제 → 상대에게만 보이던 중복/유령/삭제잔존 일소.
@@ -287,7 +330,10 @@
            "일정이 안 보인다" 일 때다. 그 순간 로컬 스캔이 조금이라도 모자라면
            더 지워 버리게 된다 — 고치러 온 버튼이 피해를 키우면 안 된다.
            올리는 쪽(위 업로드)만 하고, 지우는 쪽은 평소 자동 동기화에 맡긴다. */
-      if (currentIds.length > 0 && !opts.noCleanup) {
+      var repaired = 0;
+      /* ⚠️ noCleanup 이어도 이 블록 자체는 돌아야 한다 — 안에 R1(빠진 것 복구)이 들어 있다.
+           막는 건 '지우는 것'뿐이고, 실제 차단은 아래 delIds 비우기에서 한다. */
+      if (currentIds.length > 0 && scanOk) {
         try {
           /* ★ 2026-08-13 읽기량 절감
              기존엔 동기화할 때마다 itemsCol().get() 으로 내 작업 문서를 '전부' 읽었다.
@@ -305,29 +351,70 @@
           var _lastFullKey = 'cloudSyncLastFull_' + uid;
           var _lastFull = 0;
           try { _lastFull = parseInt(localStorage.getItem(_lastFullKey) || '0', 10) || 0; } catch (e) {}
-          var doFull = (!silent) || ((Date.now() - _lastFull) > FULL_EVERY_MS);
+          /* opts.fullCompare — '다시 맞추기' 는 12시간을 기다릴 수 없다. R1 복구가 이 갈래에만
+             있으므로 지금 당장 전체 대조를 돌린다. */
+          var doFull = (!silent) || opts.fullCompare || ((Date.now() - _lastFull) > FULL_EVERY_MS);
 
           var delIds = [];
           if (doFull) {
             var cloudSnap = await itemsCol().get();
             var cloudWork = 0;   // 클라우드의 정상 '작업' 문서 수(수동/휴지통/claim 제외)
+            var cloudHas = {};   // ★ R1 — 서버에 '멀쩡히' 있는 문서 id
+            var legacy = [];     // 기기 식별자가 없는 옛 문서(조건부로만 정리한다)
             cloudSnap.forEach(function (doc) {
               var id = doc.id;
               var d = doc.data() || {};
               var isWork = !(d.manual || String(d.workId || id).indexOf('m_') === 0);
               if (isWork && !d.trashed && !d.claimedBy) cloudWork++;
+              /* ★ R1 — 정리로 휴지통에 간 것(cleanupTrashed)은 '있다'로 치지 않는다.
+                 사람이 손으로 버린 것(trashed 만 있고 cleanupTrashed 없음)은 그대로 존중한다. */
+              if (!d.cleanupTrashed) cloudHas[id] = 1;
               if (curSet[id]) return;                                              // 로컬에 있음 → 유지
               if (d.manual || String(d.workId || id).indexOf('m_') === 0) return;  // 수동 일정 보존
               if (d.trashed) return;                                               // 휴지통 보존
               if (d.claimedBy) return;                                             // 가져가기 처리중 보존
-              delIds.push(id);                                                     // 로컬에 없는 작업 문서 = 찌꺼기
+              /* ★ R3 — 다른 기기가 올린 문서는 건드리지 않는다.
+                 기기 A·B 가 서로의 작업을 치워 버리고, 치운 쪽만 해시를 지우는 바람에
+                 어느 쪽도 다시 안 올리는 상태(영구 누락)가 여기서 만들어졌다. */
+              if (d.deviceId && d.deviceId !== deviceId()) return;
+              if (!d.deviceId) { legacy.push(id); return; }                        // 옛 문서 → 아래에서 조건부
+              delIds.push(id);                                                     // 내 기기가 올린 찌꺼기
             });
+            /* ★ 옛 문서(기기 식별자 없음) — 스캔이 온전하고 로컬이 서버 작업수의 90% 이상일 때만 정리.
+               유령 문서를 없애는 능력은 남기되, 폴더가 덜 잡힌 상태에서 지우는 사고를 막는다.
+               한 번 다시 올라간 문서부터는 식별자가 박히므로 이 갈래는 저절로 줄어든다. */
+            if (legacy.length) {
+              if (cloudWork >= 4 && currentIds.length < cloudWork * 0.9) {
+                console.warn('[CloudSync] 옛 문서 ' + legacy.length + '건 — 로컬이 ' +
+                             currentIds.length + '/' + cloudWork + ' 라 정리 보류');
+              } else {
+                legacy.forEach(function (id) { delIds.push(id); });
+              }
+            }
             // ★★ 안전장치(2026-07-28): 로컬 스캔이 클라우드 작업수의 절반도 안 되면 = 폴더가 덜 읽힌 '부분 스캔' 의심
             //    → 파괴적 정리를 통째로 건너뜀. (앱 복귀/콜드스타트 순간 부분 스캔이 멀쩡한 작업을 휴지통으로 보내는 사고 방지)
             if (cloudWork >= 4 && currentIds.length < cloudWork * 0.5) {
               console.warn('[CloudSync] 부분 스캔 의심(로컬 ' + currentIds.length + ' < 클라우드작업 ' + cloudWork + ') → 정리 건너뜀');
               delIds = [];
             }
+
+            /* ★★ R1 (2026-09-18) — 근본 대책: 빠진 것을 찾아 스스로 메운다.
+               ☠️ 업로드 여부를 로컬 해시로만 판단하는 한, 서버 문서가 어떤 이유로든 없어지면
+                  그 일정은 영영 다시 안 올라간다. 여기가 그 고리를 끊는 자리다.
+               ⭐ 비용 0 — 바로 위에서 서버 문서를 이미 전부 읽었다. 그 목록을 '지울 것 찾기'에만
+                  쓰고 있었는데, 같은 목록으로 반대쪽(로컬엔 있는데 서버엔 없는 것)도 알 수 있다.
+               → 해시를 지우고 그 자리에서 다시 올린다. 12시간마다 도는 이 대조가 곧 자가복구다. */
+            var missing = currentIds.filter(function (id) { return !cloudHas[id]; });
+            missing.forEach(function (id) {
+              var it = byId[id]; if (!it) return;
+              try { localStorage.removeItem(hkey(uid, id)); } catch (e) {}
+              try { localStorage.removeItem(fkey(uid, id)); } catch (e) {}
+              var p2 = toPayload(it);
+              pushFull(uid, it, p2, id);
+              if (pushOne(uid, it, p2, id, true)) repaired++;
+            });
+            if (repaired) console.warn('[CloudSync] 서버에 없던 일정 ' + repaired + '건을 다시 올렸습니다');
+
             try { localStorage.setItem(_lastFullKey, String(Date.now())); } catch (e) {}
             console.log('[CloudSync] 전체 대조 수행(클라우드 ' + cloudSnap.size + '건 읽음)');
           } else {
@@ -348,9 +435,17 @@
               if (dd.manual || String(dd.workId || cid).indexOf('m_') === 0) continue;
               if (dd.trashed) continue;
               if (dd.claimedBy) continue;
+              if (dd.deviceId && dd.deviceId !== deviceId()) continue;   // ★ R3 — 다른 기기 것은 안 건드린다
               delIds.push(cid);
             }
             if (cand.length) console.log('[CloudSync] 변경분 대조: 후보 ' + cand.length + '건만 읽음');
+          }
+          /* ☠️ '다시 맞추기'(resync)에서는 여기서 멈춘다. 그 버튼을 누르는 상황은
+               "일정이 안 보인다" 일 때고, 그때 더 지우면 고치러 온 손이 피해를 키운다.
+               올리는 쪽(위 업로드·R1 복구)은 이미 다 했다. */
+          if (opts.noCleanup && delIds.length) {
+            console.warn('[CloudSync] 다시 맞추기 — 정리 대상 ' + delIds.length + '건은 건드리지 않습니다');
+            delIds = [];
           }
           delIds.forEach(function (id) {
             removed++;
@@ -367,8 +462,10 @@
           });
         } catch (e) { console.warn('[CloudSync] 권위적 정리 실패(스킵)', e && e.code); }
       }
-      setSyncedIds(uid, currentIds);
-      _lastRun = { scanned: items.length, changed: writes, removed: removed };
+      /* ★ R2 — 부분 스캔일 때 기준선을 낮추면, 다음번 '절반 미만' 안전장치가 이미 깎인 숫자와
+         비교하게 된다(안전장치가 스스로 헐거워지는 톱니). 온전할 때만 갱신한다. */
+      if (scanOk) setSyncedIds(uid, currentIds);
+      _lastRun = { scanned: items.length, changed: writes, removed: removed, repaired: repaired, scanFailed: scanFailed };
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
       try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: removed }); } catch (e) {}
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
@@ -427,10 +524,11 @@
     } catch (e) { console.warn('[CloudSync] 해시 비우기 실패', e); }
 
     _lastRun = null;
-    await syncAll(true, { noCleanup: true });
+    await syncAll(true, { noCleanup: true, fullCompare: true });
     var done = await gateIdle(180000);
     var r = _lastRun || { scanned: 0, changed: 0 };
-    return { ok: true, cleared: cleared, scanned: r.scanned, changed: r.changed, finished: done };
+    return { ok: true, cleared: cleared, scanned: r.scanned, changed: r.changed,
+             repaired: r.repaired || 0, scanFailed: r.scanFailed || 0, finished: done };
   };
 
   // ── 디바운스 자동 동기화 ──

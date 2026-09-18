@@ -35,20 +35,25 @@ const strip = (s) => String(s).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\
 
 console.log('\n[1] 지우는 쪽을 껐는가 (제일 중요)');
 
-chk('resync 는 권위적 정리를 끄고 부른다', () => {
+chk('resync 는 정리를 끄고, 전체 대조는 켜서 부른다', () => {
   const s = strip(read('cloud_sync.js'));
   const at = s.indexOf('CloudSync.resync');
   must(at > 0, 'resync 가 없습니다');
-  must(/syncAll\(true,\s*\{\s*noCleanup:\s*true\s*\}\)/.test(s.slice(at, at + 2600)),
-       'resync 가 noCleanup 없이 syncAll 을 부릅니다 — 안 보이는 일정을 고치러 와서 더 지울 수 있습니다');
-  return 'noCleanup: true';
+  const blk = s.slice(at, at + 2600);
+  must(/noCleanup:\s*true/.test(blk),
+       'noCleanup 없이 부릅니다 — 안 보이는 일정을 고치러 와서 더 지울 수 있습니다');
+  must(/fullCompare:\s*true/.test(blk),
+       'fullCompare 없이 부릅니다 — 빠진 것 복구(R1)가 전체 대조 갈래에만 있어 아무 복구도 안 됩니다');
+  return 'noCleanup · fullCompare';
 });
 
-chk('syncAll 이 그 값을 실제로 본다', () => {
+chk('syncAll 이 noCleanup 으로 지우기만 막는다 (복구는 살린다)', () => {
   const s = strip(read('cloud_sync.js'));
-  must(/if \(currentIds\.length > 0 && !opts\.noCleanup\)/.test(s),
-       '정리 블록이 noCleanup 을 보지 않습니다 — 넘겨도 아무 소용이 없습니다');
-  return '정리 블록에 걸려 있음';
+  must(/if \(opts\.noCleanup && delIds\.length\)[\s\S]{0,200}delIds = \[\];/.test(s),
+       '지우기 직전에 막지 않습니다');
+  must(!/currentIds\.length > 0 && !opts\.noCleanup/.test(s),
+       '블록 전체를 건너뜁니다 — 그 안에 있는 빠진 것 복구(R1)까지 같이 죽습니다');
+  return '지우기만 차단';
 });
 
 console.log('\n[2] 해시를 비우는가 — 이걸 안 하면 버튼이 아무 일도 안 한다');

@@ -106,8 +106,40 @@
     }
   }
 
-  /* ── 지도 그리기 ── */
-  function draw(box, stops, coords) {
+  /* ── 내 위치에서 출발하는 선을 그린다 ──
+     ☠️ 두 가지 선이 있다. 섞으면 사용자가 거리를 잘못 읽는다.
+        · 점선(shortdash) = 직선이다. 순서만 보여 준다. '몇 km'로 읽으면 안 된다.
+        · 실선           = 카카오모빌리티가 돌려준 **실제 도로 경로**다.
+        모양을 다르게 두는 이유가 이것이다 — 같은 모양이면 구분이 안 된다.
+     ⚠️ 경로 요청은 지도를 붙잡지 않는다. 먼저 점선으로 그려 놓고, 답이 오면 바꿔 단다.
+        답이 안 오거나 아직 안 켜졌으면(Routing.available()===false) 점선 그대로다. */
+  function drawLines(map, pts, head) {
+    if (!pts || pts.length < 2) return;
+    var ac = accent();
+    var dashed = new kakao.maps.Polyline({
+      map: map,
+      path: pts.map(function (p) { return new kakao.maps.LatLng(p.lat, p.lng); }),
+      strokeWeight: 3, strokeColor: ac, strokeOpacity: 0.65, strokeStyle: 'shortdash'
+    });
+    if (!window.Routing || !Routing.available()) return;
+    Routing.route(pts).then(function (r) {
+      if (!r || !_ov) return;                      // 실패하거나 그새 닫혔으면 점선 그대로
+      try { dashed.setMap(null); } catch (e) {}
+      new kakao.maps.Polyline({
+        map: map,
+        path: r.path.map(function (c) { return new kakao.maps.LatLng(c[0], c[1]); }),
+        strokeWeight: 5, strokeColor: ac, strokeOpacity: 0.85, strokeStyle: 'solid'
+      });
+      if (head && r.distance) {
+        head.textContent = MyLoc.fmtKm(r.distance) +
+          (r.duration ? ' · ' + Routing.fmtMin(r.duration) : '');
+      }
+    });
+  }
+
+  /* ── 지도 그리기 ──
+     me : { lat, lng } 또는 null — 위치를 못 받았으면 예전과 똑같이 동작한다 */
+  function draw(box, stops, coords, me) {
     var located = [];
     stops.forEach(function (s, i) {
       var g = coords[Geocode.norm(s.addr)];
@@ -126,15 +158,22 @@
     });
     var bounds = new kakao.maps.LatLngBounds();
 
-    /* 동선 — 시간순으로 이으면 그날 이동이 한눈에 읽힌다.
-       ⚠️ 실제 도로 경로가 아니라 직선이다. 순서를 보여주는 선일 뿐, 거리로 읽으면 안 된다. */
-    if (located.length > 1) {
-      new kakao.maps.Polyline({
-        map: map,
-        path: located.map(function (L) { return new kakao.maps.LatLng(L.g.lat, L.g.lng); }),
-        strokeWeight: 3, strokeColor: accent(), strokeOpacity: 0.65, strokeStyle: 'shortdash'
-      });
+    /* 내 위치 — 번호 표식과 **다르게** 생겼다. 숫자를 붙이면 '0번 작업'처럼 보인다.
+       ⚠️ bounds 에 넣는다. 안 넣으면 내 위치가 화면 밖에 있을 때 선만 밖으로 뻗어
+          "선이 왜 잘려 있지"가 된다. */
+    if (me) {
+      var mePos = new kakao.maps.LatLng(me.lat, me.lng);
+      bounds.extend(mePos);
+      var meEl = document.createElement('div');
+      meEl.className = 'cm-me';
+      meEl.title = '내 위치';
+      new kakao.maps.CustomOverlay({ map: map, position: mePos, content: meEl, yAnchor: 0.5, zIndex: 2 });
     }
+
+    /* 동선 — 내 위치가 있으면 거기서 출발해 시간순으로 잇는다 */
+    var linePts = located.map(function (L) { return { lat: L.g.lat, lng: L.g.lng }; });
+    if (me) linePts.unshift({ lat: me.lat, lng: me.lng });
+    drawLines(map, linePts, _ov && _ov.querySelector('#calMapHeadSub'));
 
     _pins = [];
     located.forEach(function (L, n) {
@@ -150,7 +189,7 @@
       new kakao.maps.CustomOverlay({ map: map, position: pos, content: el, yAnchor: 1, zIndex: 3 });
     });
 
-    if (located.length > 1) map.setBounds(bounds, 40, 40, 40, 40);
+    if (located.length > 1 || me) map.setBounds(bounds, 40, 40, 40, 40);
     else map.setLevel(4);
 
     /* 카드를 넘기면 지도가 따라간다. 손이 멈춘 뒤에만 움직인다 —
@@ -195,7 +234,11 @@
     ov.innerHTML =
       '<div class="cm-head">' +
         '<div class="cm-head-tx"><b>' + esc(label) + '</b>' +
-          '<span class="cm-head-sub">' + withAddr + '곳</span></div>' +
+          '<span class="cm-head-sub" id="calMapHeadSub">' + withAddr + '곳</span></div>' +
+        /* ⚠️ 위치를 아예 못 쓰는 기기(웹 미리보기 등)에서는 버튼 자체를 안 만든다 —
+           눌러도 아무 일 없는 버튼을 두는 것보다 없는 편이 덜 헷갈린다(지도 찍기와 같은 규칙) */
+        (window.MyLoc && MyLoc.available()
+          ? '<button type="button" class="cm-loc" id="calMapLoc" aria-label="내 위치" title="내 위치">◎</button>' : '') +
         '<button type="button" class="cm-close" id="calMapClose" aria-label="닫기">✕</button>' +
       '</div>' +
       '<div class="cm-map" id="calMapBox"><div class="cm-msg">지도를 불러오는 중…</div></div>' +
@@ -238,15 +281,41 @@
       return;
     }
 
-    Geocode.loadSdk().then(function () {
-      return Geocode.lookupMany(stops.map(function (s) { return s.addr; }));
-    }).then(function (coords) {
-      if (_ov !== ov) return;      // 그새 닫혔으면 아무것도 하지 않는다
-      draw(box, stops, coords);
-    }).catch(function (e) {
-      if (_ov !== ov) return;
-      box.innerHTML = '<div class="cm-msg">' + esc((e && e.message) || '지도를 열지 못했습니다') +
-        '<br><span class="cm-msg-sub">길안내는 아래에서 그대로 쓸 수 있어요.</span></div>';
+    /* ── 지도 + 내 위치를 같이 기다린다 ──
+       ☠️ 위치 때문에 지도가 늦어지면 안 된다. 그래서 MyLoc.get 은 어떤 경우에도
+          null 을 돌려주고(거부·실패·시간초과) 스스로 8초 안에 끝난다.
+          여기서 Promise.all 로 묶는 건 '둘 다 오면 한 번에 그린다'는 뜻이지
+          '위치를 기다린다'는 뜻이 아니다.
+       ⚠️ 위치를 아직 한 번도 안 물어본 사람에게는 여기서 시스템 권한 창이 뜬다.
+          거부하면 MyLoc 이 기억해서 다음부터는 안 묻는다(머리줄 ◎ 로 다시 물을 수 있다). */
+    var _draw = function (me) {
+      return Geocode.loadSdk().then(function () {
+        return Geocode.lookupMany(stops.map(function (s) { return s.addr; }));
+      }).then(function (coords) {
+        if (_ov !== ov) return;      // 그새 닫혔으면 아무것도 하지 않는다
+        draw(box, stops, coords, me);
+      }).catch(function (e) {
+        if (_ov !== ov) return;
+        box.innerHTML = '<div class="cm-msg">' + esc((e && e.message) || '지도를 열지 못했습니다') +
+          '<br><span class="cm-msg-sub">길안내는 아래에서 그대로 쓸 수 있어요.</span></div>';
+      });
+    };
+
+    (window.MyLoc ? MyLoc.get() : Promise.resolve(null)).then(_draw);
+
+    /* 머리줄 ◎ — 위치를 거부했거나 못 잡았을 때 다시 물어보는 길.
+       force:true 라 '거부 기억'을 넘어간다. 사람 마음은 바뀐다. */
+    var locBtn = document.getElementById('calMapLoc');
+    if (locBtn) locBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      locBtn.disabled = true;
+      MyLoc.get({ force: true }).then(function (me) {
+        locBtn.disabled = false;
+        if (_ov !== ov) return;
+        if (!me) { toastErr('위치를 확인할 수 없습니다 — 위치 권한과 GPS 를 확인해 주세요'); return; }
+        box.innerHTML = '<div class="cm-msg">지도를 불러오는 중…</div>';
+        _draw(me);
+      });
     });
   }
 

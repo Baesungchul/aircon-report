@@ -3127,6 +3127,14 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
   border:2px solid var(--sf);box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;
   transform:translateY(6px);transition:transform .15s;}
 .cm-pin.on{background:var(--ac2);transform:translateY(6px) scale(1.25);}
+/* 내 위치 — 번호 표식과 **일부러 다르게** 생겼다(파란 점 + 흰 테).
+   숫자를 붙이면 '0번 작업'처럼 보이고, 같은 모양이면 갈 곳으로 착각한다. */
+.cm-me{width:16px;height:16px;border-radius:50%;background:#2f7cf6;border:3px solid #fff;
+  box-shadow:0 0 0 2px rgba(47,124,246,.35),0 2px 6px rgba(0,0,0,.4);pointer-events:none;}
+/* 머리줄 '내 위치' 버튼 — 닫기와 같은 크기·모양으로 맞춘다(하나만 달라 보이면 어긋난다) */
+.cm-loc{flex:0 0 auto;width:36px;height:36px;border-radius:10px;border:1px solid var(--bd);
+  background:var(--sf2);color:var(--tx);font-size:16px;cursor:pointer;font-family:inherit;margin-right:6px;}
+.cm-loc:disabled{opacity:.5;}
 /* 카드 줄 — 가로로 넘긴다. 한 장씩 멈추게(scroll-snap) 해야 가운데 판정이 흔들리지 않는다 */
 .cm-cards{flex:0 0 auto;display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;
   padding:10px 12px calc(12px + env(safe-area-inset-bottom,0));background:var(--sf);

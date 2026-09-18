@@ -29,7 +29,8 @@ window.kakao = { maps: {
     this.getCenter=()=>({getLat:()=>37,getLng:()=>127});
     this.getProjection=()=>({coordsFromContainerPoint:()=>new kakao.maps.LatLng(37,127)}); },
   Marker: function(o){ window.__markers=(window.__markers||0)+1; this.setMap=()=>{}; },
-  Polyline: function(o){ window.__poly=o; },
+  Polyline: function(o){ window.__poly=o; (window.__polys=window.__polys||[]).push(o);
+    this.setMap=function(m){ if(m===null) o.__off=1; }; },
   CustomOverlay: function(o){ window.__pins=(window.__pins||0)+1;
     var box = (o.map && o.map._box) || document.querySelector('#calMapBox');
     if(o.content && box) box.appendChild(o.content);
@@ -46,6 +47,21 @@ window.kakao = { maps: {
   }
 }};`;
 
+/* ── 가짜 위치 제공자 ──
+   window.__geoMode 로 조종한다: 'ok' | 'deny' | 'none'
+   ☠️ navigator.geolocation 은 읽기 전용이라 defineProperty 로 갈아끼운다. */
+const FAKE_GEO = `
+window.__geoMode = 'deny';
+Object.defineProperty(navigator, 'geolocation', { configurable: true, get: function () {
+  if (window.__geoMode === 'none') return undefined;
+  return { getCurrentPosition: function (okcb, errcb) {
+    window.__geoAsked = (window.__geoAsked || 0) + 1;
+    if (window.__geoMode === 'ok') return setTimeout(function () {
+      okcb({ coords: { latitude: 37.05, longitude: 127.15, accuracy: 10 } }); }, 0);
+    setTimeout(function () { errcb({ code: 1 }); }, 0);
+  } };
+}});`;
+
 (async () => {
   /* 환경에 따라 크로미움 위치가 다르다 — PW_CHROME 로 집어줄 수 있게 해 둔다 */
   const b = await chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
@@ -58,8 +74,11 @@ window.kakao = { maps: {
     <style>${R('styles.css')}</style></head><body>
     <script>window.showToast=function(m,t){ (window.__toasts=window.__toasts||[]).push([m,t]); };<\/script>
     <script>${FAKE_KAKAO}<\/script>
-    <script>window.KAKAO_JS_KEY='FAKEKEY';<\/script>
+    <script>${FAKE_GEO}<\/script>
+    <script>window.KAKAO_JS_KEY='FAKEKEY';window.KAKAO_ROUTE_URL='';<\/script>
     <script>${R('js/geocode.js')}<\/script>
+    <script>${R('js/myloc.js')}<\/script>
+    <script>${R('js/routing.js')}<\/script>
     <script>${R('js/cal_map.js')}<\/script>
     <script>${R('js/map_pick.js')}<\/script>
     <script>${R('js/link_actions.js')}<\/script>
@@ -94,6 +113,47 @@ window.kakao = { maps: {
   await page.locator('.cm-edit').click();
   ok('[주소 넣기] 가 그 작업을 되돌려준다', await page.evaluate(() => window.__edited) === 2);
   ok('그때 시트가 닫힌다', await page.locator('#calMapOverlay').count() === 0);
+
+  console.log('\n[A2] 내 위치 (2026-09-18)');
+  /* ☠️ 규칙 하나 — 위치 때문에 지도가 망가지면 안 된다.
+     거부한 사람의 화면이 예전과 똑같은지가 이 절의 핵심이다. */
+  await page.evaluate(() => { window.__geoMode = 'deny'; window.__pins = 0; window.__polys = []; });
+  await page.evaluate(() => CalMap.open('9월 18일 (금)', [
+    { title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' },
+    { title: 'B', sub: '', time: '10:00', addr: '평택시 비전동 2' }]));
+  await page.waitForTimeout(500);
+  ok('위치를 거부해도 지도는 그려진다', await page.locator('#calMapBox[data-map="1"]').count() === 1);
+  ok('그때 내 위치 점은 없다', await page.locator('.cm-me').count() === 0);
+  ok('동선 선은 그대로 그어진다', await page.evaluate(() => (window.__polys || []).length) === 1);
+  await page.evaluate(() => CalMap.close());
+
+  /* 한 건짜리 날 — 예전엔 버튼 자체가 안 나왔다. 이제 내 위치에서 가는 길을 본다 */
+  await page.evaluate(() => { window.__geoMode = 'ok'; window.__pins = 0; window.__polys = []; });
+  await page.evaluate(() => { if (window.MyLoc) MyLoc.forget(); });
+  await page.evaluate(() => CalMap.open('9월 18일 (금)', [
+    { title: '한 곳뿐', sub: '', time: '09:00', addr: '평택시 비전동 1' }]));
+  await page.waitForTimeout(500);
+  ok('위치를 주면 내 위치 점이 찍힌다', await page.locator('.cm-me').count() === 1);
+  ok('한 곳뿐이어도 내 위치에서 선을 긋는다', await page.evaluate(() => (window.__polys || []).length) === 1);
+  ok('그 선은 두 점이다 (내 위치 → 그곳)', await page.evaluate(() => (window.__polys[0].path || []).length) === 2);
+  ok('경로 API 가 꺼져 있으면 점선 그대로', await page.evaluate(() => window.__polys[0].strokeStyle) === 'shortdash');
+  ok('머리줄에 내 위치 버튼이 있다', await page.locator('#calMapLoc').count() === 1);
+  ok('내 위치 점이 화면 안에 있다', await page.evaluate(() => {
+    const el = document.querySelector('.cm-me'); if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
+  }));
+  await page.evaluate(() => CalMap.close());
+
+  /* 위치 기능이 아예 없는 기기(웹 미리보기 등) */
+  await page.evaluate(() => { window.__geoMode = 'none'; });
+  await page.evaluate(() => CalMap.open('9월 18일 (금)', [
+    { title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' }]));
+  await page.waitForTimeout(400);
+  ok('위치를 못 쓰면 버튼을 안 만든다', await page.locator('#calMapLoc').count() === 0);
+  ok('그래도 지도는 그려진다', await page.locator('#calMapBox[data-map="1"]').count() === 1);
+  await page.evaluate(() => CalMap.close());
+  await page.evaluate(() => { window.__geoMode = 'deny'; });
 
   console.log('\n[B] 지도 키가 없을 때');
   await page.evaluate(() => { window.KAKAO_JS_KEY = 'TODO_KAKAO_JS_KEY'; });

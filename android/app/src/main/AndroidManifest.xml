@@ -50,6 +50,16 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 2026-09-18 · 그날 지도의 '내 위치'
+         ☠️ 캐패시터가 navigator.geolocation 호출을 받아 런타임 권한을 대신 물어본다
+            (BridgeWebChromeClient.onGeolocationPermissionsShowPrompt). 그래서 플러그인은
+            필요 없지만, **이 선언이 없으면 조용히 거부로 떨어진다.** 둘은 한 쌍이다.
+         ⚠️ 위치는 지도를 열 때만, 한 번씩만 쓴다. 추적하지 않고 저장하지 않는다
+            (www/js/myloc.js). 백그라운드 위치는 쓰지 않으므로 선언하지 않는다.
+         ⚠️ 이 권한을 넣으면 Play 콘솔 '데이터 보안' 양식을 같이 갱신해야 한다. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
     <!-- Android 13+ 알림 권한 (채팅 푸시알림) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 

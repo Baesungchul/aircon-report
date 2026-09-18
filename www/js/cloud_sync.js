@@ -45,6 +45,15 @@
   }
   function safeId(name){ return String(name||'').replace(/[\/\.\#\$\[\]]/g, '_').slice(0, 200); }
 
+  /* ★ F4 (2026-09-18) — 날짜 형식 검증.
+     ☠️ 팀원은 schedules/{uid}/items 를 `where('date','>=', 24개월전)` 로 구독한다.
+        Firestore 는 그 필드가 **없거나 문자열이 아니면 문서를 쿼리에서 통째로 제외**한다.
+        그런 문서는 소유자 본인에게만 보이고(로컬 폴더로 그리므로) 팀원에게는 존재하지 않는다 —
+        올라갔는데도 안 보이는, 가장 알아채기 어려운 누락이다.
+     → 형식이 어긋나면 아예 올리지 않고 로그에 남긴다. 올려 봐야 안 보이기 때문이다. */
+  var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  function badDate(d){ return !DATE_RE.test(String(d || '')); }
+
   function toPayload(item){
     var d = item.data || {};
     /* ★ 업종은 '지금 값'으로 올린다. _session.json 의 사본은 저장 시점에 찍힌 것이라
@@ -302,10 +311,15 @@
       if (!scanOk) console.warn('[CloudSync] 폴더 ' + scanFailed + '개를 못 읽었습니다 → 정리·기준선 갱신 건너뜀');
       var currentIds = [];
       var byId = {};            // id -> item (R1 복구에서 다시 올릴 때 쓴다)
-      var writes = 0;
+      var writes = 0, badDates = 0;
       items.forEach(function(it){
         var p = toPayload(it);
         if (!p.workId || !p.date) return;
+        if (badDate(p.date)) {
+          badDates++;
+          console.warn('[CloudSync] 날짜 형식이 달라 올리지 않습니다 — 팀원에게 안 보입니다', p.workId, p.date);
+          return;
+        }
         var id = safeId(p.workId);
         currentIds.push(id);
         byId[id] = it;
@@ -465,7 +479,9 @@
       /* ★ R2 — 부분 스캔일 때 기준선을 낮추면, 다음번 '절반 미만' 안전장치가 이미 깎인 숫자와
          비교하게 된다(안전장치가 스스로 헐거워지는 톱니). 온전할 때만 갱신한다. */
       if (scanOk) setSyncedIds(uid, currentIds);
-      _lastRun = { scanned: items.length, changed: writes, removed: removed, repaired: repaired, scanFailed: scanFailed };
+      if (badDates) console.warn('[CloudSync] 날짜 형식이 어긋난 작업 ' + badDates + '건 — 팀원에게 안 보입니다');
+      _lastRun = { scanned: items.length, changed: writes, removed: removed, repaired: repaired,
+                   scanFailed: scanFailed, badDates: badDates };
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
       try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: removed }); } catch (e) {}
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
@@ -547,7 +563,7 @@
     calItems.filter(function(it){ return it && it.type === 'work' && it.data; }).forEach(function(it){
       try {
         var p = toPayload(it);
-        if (!p.workId || !p.date) return;
+        if (!p.workId || !p.date || badDate(p.date)) return;   // ★ F4 — 형식이 어긋나면 올려도 안 보인다
         var id = safeId(p.workId);
         // 가져오기(claim) 예약이 있고 이 작업이 그 일정과 일치하면 → 원본을 가져감 표시
         try {

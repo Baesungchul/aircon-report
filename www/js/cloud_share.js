@@ -15,6 +15,64 @@
   var _shares = [];
   var _teamPartners = {};       // ★ 팀 공유(CloudTeams)로 주입된 팀원 uid->name
 
+  /* ★ 2026-09-18 — 죽은 구독을 되살린다 (F1/F2)
+     ☠️ 여기가 "팀원이 나갔다 들어왔더니 일정이 일부만 보인다"의 뿌리였다.
+        ① 구독 에러 콜백이 console.warn 한 줄이 전부였다 — 재시도가 없었다.
+        ② subscribePartner 의 `if (_partnerUnsubs[pUid]) return;` 가드 때문에, 리스너가
+           권한 거부로 죽어도 항목이 남아 **앱이 살아 있는 동안 다시 걸리지 않았다.**
+        ③ _partnerItems[pUid] 는 마지막 스냅샷을 그대로 들고 있었다.
+        → 팀에서 나가는 순간 구독이 죽고, 그때까지 받아둔 일정은 화면에 남고, 다시 들어와도
+          재구독이 안 되니 **그 뒤에 생기거나 바뀐 일정만 안 보인다.** 탈퇴 시점을 경계로
+          앞은 보이고 뒤는 안 보이는 것 — 사용자가 본 '일부만'이 이것이다.
+     ⚠️ 무한 재시도는 하지 않는다. 진짜로 팀을 떠난 상대까지 계속 두드리면 통신 낭비다 —
+        아직 내 팀·공유 목록에 있는 사람만 다시 건다. */
+  var _subRetry = {};   // pUid -> { n, timer }
+  var _subDead  = {};   // pUid -> 1 (지금 구독이 끊겨 있다 → 화면 위 한 줄)
+
+  function _stillPartner(pUid) {
+    if (_teamPartners[pUid]) return true;
+    return _shares.some(function (s) { return s.status === 'accepted' && otherUid(s) === pUid; });
+  }
+  /* 구독을 놓아 준다. 가드에 막히지 않게 항목을 반드시 지운다. */
+  function _dropPartnerSub(pUid, keepItems) {
+    try { if (_partnerUnsubs[pUid]) _partnerUnsubs[pUid](); } catch (e) {}
+    delete _partnerUnsubs[pUid];
+    if (!keepItems) delete _partnerItems[pUid];
+    var st = _subRetry[pUid]; if (st && st.timer) clearTimeout(st.timer);
+    delete _subRetry[pUid];
+  }
+  function _partnerSubFailed(pUid, err) {
+    console.warn('[CloudShare] 상대 일정 구독 오류', pUid, err && err.code);
+    /* 이미 받아둔 목록은 지우지 않는다 — 화면이 갑자기 비면 그게 더 놀랍다.
+       대신 '믿을 수 없는 상태'라고 위에 한 줄 띄운다. */
+    _dropPartnerSub(pUid, true);
+    if (!_stillPartner(pUid)) { _setSubDead(pUid, false); return; }   // 진짜 떠난 상대
+    _setSubDead(pUid, true);
+    var st = _subRetry[pUid] = _subRetry[pUid] || { n: 0 };
+    st.n = Math.min(st.n + 1, 6);
+    var wait = Math.min(60000, 1000 * Math.pow(2, st.n));   // 2·4·8·16·32·60초
+    st.timer = setTimeout(function () {
+      if (_stillPartner(pUid)) subscribePartner(pUid); else _setSubDead(pUid, false);
+    }, wait);
+  }
+  function _setSubDead(pUid, on) {
+    if (on) _subDead[pUid] = 1; else delete _subDead[pUid];
+    _renderSubBanner();
+  }
+  /* ⚠️ 팝업이 아니라 화면 위 한 줄이다 — 누를 것도 없고, 연결되면 저절로 사라진다.
+       (2026-09-07 팝업 기준: 실패는 알린다. 다만 모달로 막지 않는다) */
+  function _renderSubBanner() {
+    var need = Object.keys(_subDead).length > 0;
+    var el = document.getElementById('csSubBanner');
+    if (!need) { if (el && el.parentNode) el.parentNode.removeChild(el); return; }
+    if (el) return;
+    el = document.createElement('div');
+    el.id = 'csSubBanner';
+    el.className = 'cs-sub-banner';
+    el.textContent = '팀원 일정을 불러오지 못했습니다 · 다시 시도 중';
+    document.body.appendChild(el);
+  }
+
   function loggedIn() { return window.Cloud && Cloud.ready && Cloud.user; }
   function db() { return Cloud.db; }
   function myUid() { return Cloud.user.uid; }
@@ -135,6 +193,10 @@
     if (_ownUnsub) { try { _ownUnsub(); } catch(e){} _ownUnsub = null; }
     Object.keys(_partnerUnsubs).forEach(function(ou){ try { _partnerUnsubs[ou](); } catch(e){} });
     _partnerUnsubs = {};
+    /* 재시도 타이머도 끈다 — 화면에 안 보이는 동안 두드릴 이유가 없다.
+       복귀하면 subscribeShares 가 전부 다시 건다. */
+    Object.keys(_subRetry).forEach(function(u){ if (_subRetry[u].timer) clearTimeout(_subRetry[u].timer); });
+    _subRetry = {}; _subDead = {}; _renderSubBanner();
     Object.keys(_profileUnsubs).forEach(function(uid){ try { _profileUnsubs[uid](); } catch(e){} });
     _profileUnsubs = {};
   }
@@ -172,8 +234,10 @@
     Object.keys(accepted).forEach(function (ou) { subscribePartner(ou); _subProfile(ou); });
     try { setupWorkerCombo(); } catch(e){}
     Object.keys(_partnerUnsubs).forEach(function (ou) {
-      if (!accepted[ou]) { try { _partnerUnsubs[ou](); } catch(e){} delete _partnerUnsubs[ou]; delete _partnerItems[ou]; }
+      if (!accepted[ou]) { _dropPartnerSub(ou, false); _setSubDead(ou, false); }
     });
+    /* 더는 파트너가 아닌 사람에 대한 재시도·경고도 거둔다 */
+    Object.keys(_subDead).forEach(function (ou) { if (!accepted[ou]) _setSubDead(ou, false); });
     try { if (window.Cloud && Cloud.updateUI) Cloud.updateUI(); } catch(e){}  // ★ 로그인 라벨 공유 인원수 갱신
   }
 
@@ -248,18 +312,31 @@
     if (_partnerUnsubs[pUid]) return;  // ★ 이미 구독 중 → 재읽기 안 함 (성능)
     _partnerUnsubs[pUid] = db().collection('schedules').doc(pUid).collection('items')
       .where('date', '>=', _windowStartDate())
-      .onSnapshot(function (snap) { _partnerItems[pUid] = mapItems(snap, pUid); refreshCal(); },
-                  function (err) { console.warn('[CloudShare] 상대 일정 구독 오류', pUid, err && err.code); });
+      .onSnapshot(function (snap) {
+                    _partnerItems[pUid] = mapItems(snap, pUid);
+                    var st = _subRetry[pUid]; if (st && st.timer) clearTimeout(st.timer);
+                    delete _subRetry[pUid];
+                    _setSubDead(pUid, false);      // 살아났다 → 위 한 줄 내린다
+                    refreshCal();
+                  },
+                  function (err) { _partnerSubFailed(pUid, err); });
   }
   // 구독 창보다 오래된 달을 열었을 때만 그 달을 1회 읽어온다(달마다 최초 1회)
+  /* ⚠️ 캐시에 수명을 둔다(5분). 예전엔 한 번 읽으면 영영 다시 안 읽어서, 그 달에 일정이
+       추가돼도 앱을 껐다 켤 때까지 안 보였다. */
+  var OLD_MONTH_TTL = 5 * 60 * 1000;
+  function _oldMonthFresh(key) {
+    var e = _oldMonthCache[key];
+    return !!(e && (Date.now() - e.at) < OLD_MONTH_TTL);
+  }
   function _loadOldMonth(pUid, monthStr) {
     var key = pUid + '|' + monthStr;
-    if (_oldMonthCache[key] || _oldMonthBusy[key]) return;
+    if (_oldMonthFresh(key) || _oldMonthBusy[key]) return;
     _oldMonthBusy[key] = 1;
     db().collection('schedules').doc(pUid).collection('items')
       .where('date', '>=', monthStr + '-01').where('date', '<=', monthStr + '-31')
       .get()
-      .then(function (snap) { _oldMonthCache[key] = mapItems(snap, pUid); refreshCal(); })
+      .then(function (snap) { _oldMonthCache[key] = { at: Date.now(), items: mapItems(snap, pUid) }; refreshCal(); })
       .catch(function (e) { console.warn('[CloudShare] 과거 달 읽기 실패', pUid, monthStr, e && e.code); })
       .then(function () { delete _oldMonthBusy[key]; });
   }
@@ -280,9 +357,10 @@
     // ★ 구독 창(최근 24개월)보다 오래된 달을 보는 중이면, 그 달만 따로 불러와 함께 보여준다
     if (monthStr && monthStr < _windowStartDate().slice(0, 7)) {
       Object.keys(_partnerUnsubs).forEach(function (ou) {
-        var cached = _oldMonthCache[ou + '|' + monthStr];
-        if (cached) cached.forEach(add);
-        else _loadOldMonth(ou, monthStr);
+        var ck = ou + '|' + monthStr;
+        var cached = _oldMonthCache[ck];
+        if (cached) cached.items.forEach(add);          // 낡았어도 일단 보여주고
+        if (!_oldMonthFresh(ck)) _loadOldMonth(ou, monthStr);   // 뒤에서 새로 읽는다
       });
     }
     return out;
@@ -315,8 +393,15 @@
   };
   // ★ 팀 공유: CloudTeams 가 팀원 uid->name 맵을 주입. 파트너 구독/사진스코프/작업자콤보에 반영
   CloudShare.setTeamPartners = function(map){
+    var prev = _teamPartners || {};
     _teamPartners = map || {};
-    Object.keys(_teamPartners).forEach(function(u){ _partnerNames[u] = _teamPartners[u]; });
+    Object.keys(_teamPartners).forEach(function(u){
+      _partnerNames[u] = _teamPartners[u];
+      /* ★ F3 — 새로 들어온(또는 다시 들어온) 팀원은 구독을 **강제로 새로 건다.**
+         죽은 구독 항목이 남아 있으면 subscribePartner 의 가드에 막혀 영영 안 걸린다.
+         옛 목록도 같이 버린다 — 나가 있는 동안 상대가 바꾼 것이 반영돼야 한다. */
+      if (!prev[u] && u !== myUid()) _dropPartnerSub(u, false);
+    });
     try { syncPartnerSubscriptions(); } catch(e){}
     try { renderArea(); } catch(e){}
     try { setupWorkerCombo(); } catch(e){}
@@ -1259,6 +1344,8 @@
     Object.keys(_partnerUnsubs).forEach(function(ou){ try{_partnerUnsubs[ou]();}catch(e){} });
     Object.keys(_profileUnsubs).forEach(function(ou){ try{_profileUnsubs[ou]();}catch(e){} });
     _profileUnsubs={}; _profiles={}; _myAddedPhotos={};
+    Object.keys(_subRetry).forEach(function(u){ if (_subRetry[u].timer) clearTimeout(_subRetry[u].timer); });
+    _subRetry={}; _subDead={}; _renderSubBanner();
     _partnerUnsubs={}; _partnerItems={}; _myOverrides={}; _shares=[]; _teamPartners={};
   }
   document.addEventListener('cloud-auth-changed', function(e){

@@ -56,8 +56,8 @@ function fakeDb(items) {
 }
 
 /* ── 가짜 저장 폴더 ── names 의 폴더를 내주고, bad 에 든 이름은 읽다가 터진다 */
-function fakeFolder(names, bad) {
-  bad = bad || [];
+function fakeFolder(names, bad, odd) {
+  bad = bad || []; odd = odd || {};
   return {
     values: function () {
       let i = 0;
@@ -74,7 +74,7 @@ function fakeFolder(names, bad) {
                 ? Promise.reject(new Error('읽기 실패'))
                 : Promise.resolve({ getFile: () => Promise.resolve({
                     text: () => Promise.resolve(JSON.stringify({
-                      apt: name + ' 현장', date: name.slice(0, 10),
+                      apt: name + ' 현장', date: odd[name] || name.slice(0, 10),
                       units: [{ name: '101', beforeCount: 1, afterCount: 1, customer: {} }],
                       savedAt: '2026-09-01T00:00:00.000Z'
                     }))
@@ -106,7 +106,7 @@ function load(opts) {
     localStorage: ls,
     document: { addEventListener() {} },
     showToast() {},
-    photoFolderHandle: fakeFolder(opts.folders || [], opts.badFolders),
+    photoFolderHandle: fakeFolder(opts.folders || [], opts.badFolders, opts.oddDates),
     requestFolderPermissionSafe: () => Promise.resolve(true),
     firebase: { firestore: { FieldValue: { serverTimestamp: () => 'TS' } } },
     Cloud: { ready: true, user: { uid: 'me' }, db: f.db }
@@ -236,6 +236,23 @@ const WORK = (n) => '2026-09-0' + n;
     const gone = [2, 3, 4, 5].filter(i => env.srv[WORK(i)].trashed).length;
     must(gone === 0, '옛 문서 ' + gone + '건을 지웠습니다 — 폴더가 덜 잡힌 상태일 수 있습니다');
     return '보류';
+  });
+
+  console.log('\n[4] F4 — 날짜 형식이 어긋난 작업');
+
+  await achk('형식이 다른 날짜는 올리지 않는다', async () => {
+    /* ☠️ 팀원 구독은 where('date','>=',...) 다. Firestore 는 필드가 없거나 문자열이 아니면
+         문서를 쿼리에서 통째로 제외한다 → 올라가도 팀원에겐 존재하지 않는다.
+         소유자는 로컬 폴더로 그리니 영영 모른다. 올려 봐야 안 보이므로 아예 안 올린다. */
+    const env = load({
+      folders: [WORK(1), WORK(2)],
+      oddDates: { [WORK(2)]: '2026/09/02' },     // 슬래시 — 형식이 다르다
+      server: {}
+    });
+    await runFull(env);
+    must(env.srv[WORK(1)], '멀쩡한 작업이 안 올라갔습니다');
+    must(!env.srv[WORK(2)], '형식이 어긋난 날짜를 올렸습니다 — 팀원에겐 안 보이는 유령이 됩니다');
+    return '멀쩡한 것만 올림';
   });
 
   console.log('\n' + (fails ? '❌ 실패 ' + fails + '건 / ' : '✅ ') + '통과 ' + oks + '건');

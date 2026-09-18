@@ -3186,3 +3186,13 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
   transform:scale(.35);transition:transform var(--lp-ms,550ms) linear,opacity .2s;}
 .mp-ripple.grow{transform:scale(3.4);}
 .mp-ripple.gone{opacity:0;}
+
+/* 팀원 일정 구독이 끊겼을 때 화면 위 한 줄 (2026-09-18)
+   ⚠️ 팝업이 아니다 — 누를 것이 없고 연결되면 저절로 사라진다. 화면을 막지 않는다.
+   ⚠️ 높이가 낮아 state.js 의 closeTopPopup(화면 70%×50% 이상만 팝업으로 침)에 안 걸린다.
+      뒤로가기가 이걸 '팝업'으로 오해해 닫아 버리면 안 되므로 그대로 두는 게 맞다. */
+.cs-sub-banner{position:fixed;left:0;right:0;top:0;z-index:3000;
+  background:var(--wn,#e0b54a);color:#1a1200;padding:9px 14px;
+  font-size:12.5px;font-weight:700;text-align:center;line-height:1.4;
+  box-shadow:0 2px 10px rgba(0,0,0,.35);
+  padding-top:calc(9px + env(safe-area-inset-top,0));}

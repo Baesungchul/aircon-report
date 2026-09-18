@@ -297,6 +297,8 @@
   }
 
   CloudTeams.getTeams = function () { return _teams.slice(); };
+  /* '다시 맞추기' 에서 팀 목록을 서버에서 한 번 다시 읽는다 — 구독이 놓친 변화를 메운다 */
+  CloudTeams.refresh = function () { pull(); };
   CloudTeams.ensure = function () { if (loggedIn()) subscribe(); };
 
   /* ★ 2026-08-11 배터리 개선 - 앱이 백그라운드일 땐 팀 목록 리스너를 끊는다.

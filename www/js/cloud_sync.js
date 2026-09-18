@@ -222,7 +222,9 @@
 
   // ── 핵심 동기화: 업로드(변경분) + 삭제 반영 ──
   var _syncing = false;
-  async function syncAll(silent){
+  var _lastRun = null;      // 마지막 동기화 결과 { scanned, changed, removed } — resync 가 읽는다
+  async function syncAll(silent, opts){
+    opts = opts || {};
     if (!loggedIn()) { if (!silent && typeof showToast==='function') showToast('먼저 로그인해주세요','err'); return; }
     if (_syncing) return;
     if (typeof photoFolderHandle === 'undefined' || !photoFolderHandle) {
@@ -280,7 +282,12 @@
       //    보존: 수동일정(manual / m_*), 휴지통(trashed), 가져가기(claimedBy). 로컬 스캔이 비면 대량삭제 방지로 스킵.
       var curSet = {}; currentIds.forEach(function(i){ curSet[i]=1; });
       var removed = 0;
-      if (currentIds.length > 0) {
+      /* ☠️ opts.noCleanup — '다시 맞추기'(resync)에서는 이 정리를 돌리지 않는다.
+           여기가 바로 서버 문서를 없애는 곳이고, 사용자가 다시 맞추기를 누르는 상황은
+           "일정이 안 보인다" 일 때다. 그 순간 로컬 스캔이 조금이라도 모자라면
+           더 지워 버리게 된다 — 고치러 온 버튼이 피해를 키우면 안 된다.
+           올리는 쪽(위 업로드)만 하고, 지우는 쪽은 평소 자동 동기화에 맡긴다. */
+      if (currentIds.length > 0 && !opts.noCleanup) {
         try {
           /* ★ 2026-08-13 읽기량 절감
              기존엔 동기화할 때마다 itemsCol().get() 으로 내 작업 문서를 '전부' 읽었다.
@@ -361,6 +368,7 @@
         } catch (e) { console.warn('[CloudSync] 권위적 정리 실패(스킵)', e && e.code); }
       }
       setSyncedIds(uid, currentIds);
+      _lastRun = { scanned: items.length, changed: writes, removed: removed };
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes + ', 휴지통정리 ' + removed);
       try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: removed }); } catch (e) {}
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
@@ -371,6 +379,59 @@
       _syncing = false;
     }
   }
+
+  /* 올리기 큐(gate)가 다 빠질 때까지 기다린다.
+     ⚠️ syncAll 은 업로드를 큐에 넣기만 하고 끝난다 — 거기서 바로 '끝났다'고 알리면 거짓말이 된다.
+        다시 맞추기는 사용자가 결과를 기다리는 일이라 실제로 끝날 때까지 본다.
+     ⚠️ 상한을 둔다. 통신이 막히면 영영 안 끝나는데, 화면을 영영 붙잡아 둘 수는 없다. */
+  function gateIdle(maxMs){
+    var t0 = Date.now();
+    return new Promise(function (res) {
+      (function tick(){
+        if (_gateRun === 0 && _gateQ.length === 0) { res(true); return; }
+        if (Date.now() - t0 > (maxMs || 120000)) { res(false); return; }
+        setTimeout(tick, 200);
+      })();
+    });
+  }
+
+  /* ★ 2026-09-18 — 서버와 다시 맞추기 (스케줄 탭 머리줄 버튼)
+     ☠️ 왜 'fullSync' 로는 안 되는가
+        업로드 여부를 로컬 해시(cloudSyncHash_)로만 판단하고 **서버에 그 문서가 실제로
+        있는지는 보지 않는다**(위 hashUnchanged). 그래서 어떤 이유로든 서버 문서가
+        사라지면(권위적 정리, 기기 교체, 폴더 연결이 덜 잡힌 채로 돈 동기화 …)
+        그 일정은 해시 때문에 **영영 다시 안 올라간다**.
+        팀원이 나갔다 들어왔는데 일정이 일부만 보이는 증상의 뿌리가 이것이다 —
+        팀 가입/탈퇴는 구독만 건드릴 뿐, 없는 문서를 만들어 주지는 않는다.
+     → 해시를 통째로 버리고 전 작업을 다시 대조·업로드한다. 이미 서버에 있고 내용이 같으면
+        savedAt 비교에서 걸러지므로 헛쓰기는 크지 않다.
+     ⚠️ 지우는 쪽(권위적 정리)은 끈다 — 위 noCleanup 주석 참고. */
+  CloudSync.resync = async function () {
+    if (!loggedIn()) return { ok: false, why: '로그인이 필요합니다' };
+    if (typeof photoFolderHandle === 'undefined' || !photoFolderHandle) {
+      return { ok: false, why: '저장 폴더를 먼저 연결해주세요' };
+    }
+    var uid = Cloud.user.uid;
+    var cleared = 0;
+    try {
+      var pre = ['cloudSyncHash_' + uid + '_', 'cloudFullHash_' + uid + '_'];
+      var kill = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k) continue;
+        for (var j = 0; j < pre.length; j++) if (k.indexOf(pre[j]) === 0) { kill.push(k); break; }
+      }
+      kill.forEach(function (k) { try { localStorage.removeItem(k); cleared++; } catch (e) {} });
+      /* 지난번 목록도 비운다 — 안 비우면 다음 자동 동기화가 '로컬이 줄었다'고 오해할 수 있다 */
+      try { localStorage.removeItem(idsKey(uid)); } catch (e) {}
+    } catch (e) { console.warn('[CloudSync] 해시 비우기 실패', e); }
+
+    _lastRun = null;
+    await syncAll(true, { noCleanup: true });
+    var done = await gateIdle(180000);
+    var r = _lastRun || { scanned: 0, changed: 0 };
+    return { ok: true, cleared: cleared, scanned: r.scanned, changed: r.changed, finished: done };
+  };
 
   // ── 디바운스 자동 동기화 ──
   var _debTimer = null;

@@ -587,6 +587,9 @@
   <div class="rd-box">
     <div class="rd-head">
       <div class="rd-title" id="customerTitle">📅 스케줄</div>
+      <!-- ★ 2026-09-18 일정 다시 맞추기 — 팀원이 나갔다 들어온 뒤 일정이 일부만 보일 때 쓴다.
+           자세한 사정은 cloud_sync.js 의 CloudSync.resync 주석 참고 -->
+      <button class="rd-close-btn" id="calResync" title="일정 다시 맞추기" style="background:var(--sf);font-size:17px;margin-right:6px;">⟳</button>
       <button class="rd-close-btn" id="customerRefresh" title="사진 개수 검사" style="background:var(--sf);font-size:15px;margin-right:6px;">📷🔍</button>
       <button class="rd-close-btn" id="customerClose">✕</button>
     </div>

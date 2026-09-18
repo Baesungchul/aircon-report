@@ -2867,6 +2867,61 @@
     }, 60);
   }
 
+  /* ══════════ 일정 다시 맞추기 (스케줄 머리줄 ⟳) ══════════
+     ☠️ 2026-09-18 사용자 신고: "팀원이 나갔다 들어왔더니 일정이 일부는 보이고 일부는 안 보인다".
+        원인은 팀 쪽이 아니라 **업로드 쪽**이다 — cloud_sync 는 '이미 올렸다'를 로컬 해시로만
+        판단하고 서버에 그 문서가 실제로 있는지 안 본다. 그래서 어떤 이유로든 서버 문서가
+        사라지면 그 일정은 영영 다시 안 올라간다. 팀 재참여는 구독만 다시 걸 뿐이다.
+        (설정의 '전체 동기화'도 같은 해시를 거치므로 이 상황을 못 고친다)
+     ⚠️ 확인창을 먼저 띄운다. 건수가 많으면 1~2분 걸리고 통신도 쓴다 — 모르고 누르면 안 된다.
+     ⚠️ 숨긴 일정은 따로 묻는다. 일부러 숨긴 사람 것을 말없이 되살리면 그게 더 놀랍다. */
+  var _resyncBusy = false;
+  async function resyncSchedules() {
+    if (_resyncBusy) return;
+    if (!confirm('일정을 서버와 다시 맞출까요?\n\n' +
+                 '내 작업을 모두 다시 올려 빠진 것을 채웁니다.\n' +
+                 '건수가 많으면 1~2분 걸릴 수 있습니다.')) return;
+    _resyncBusy = true;
+    try {
+      if (typeof showOverlay === 'function') showOverlay('일정을 다시 맞추는 중...');
+      var r = { ok: false, why: '동기화를 쓸 수 없습니다' };
+      if (window.CloudSync && CloudSync.resync) r = await CloudSync.resync();
+      if (!r.ok) {
+        if (typeof hideOverlay === 'function') hideOverlay();
+        if (typeof showToast === 'function') showToast(r.why || '다시 맞추지 못했습니다', 'err');
+        return;
+      }
+      /* 팀 목록과 팀원 구독도 새로 — 내 쪽이 아니라 상대 쪽이 빠진 경우를 메운다 */
+      try { if (window.CloudTeams && CloudTeams.refresh) CloudTeams.refresh(); } catch (e) {}
+      try { if (window.CloudShare && CloudShare.resubscribePartners) CloudShare.resubscribePartners(); } catch (e) {}
+      if (typeof hideOverlay === 'function') hideOverlay();
+
+      /* 숨긴 일정이 실제로 있을 때만 물어본다 */
+      var hid = Object.keys(_shHiddenSet() || {}).length;
+      if (hid && confirm('숨겨 둔 공유 일정이 ' + hid + '건 있습니다.\n다시 보이게 할까요?')) {
+        try { localStorage.removeItem('calHiddenShared'); } catch (e) {}
+      }
+
+      _monthCache = {};
+      if (window.__calendarRefresh) await window.__calendarRefresh();
+      /* 오래 걸리는 일이라 끝났다는 신호는 남긴다(2026-09-07 팝업 기준 ①).
+         건수는 적지 않는다 — 그걸로 사용자가 할 일이 없다. */
+      if (typeof showToast === 'function') {
+        showToast(r.finished ? '다시 맞췄습니다' : '다시 맞추는 중입니다 — 잠시 뒤 채워집니다', 'ok');
+      }
+    } catch (e) {
+      if (typeof hideOverlay === 'function') hideOverlay();
+      if (typeof showToast === 'function') showToast('다시 맞추지 못했습니다: ' + ((e && e.message) || e), 'err');
+    } finally {
+      _resyncBusy = false;
+    }
+  }
+  /* 머리줄 버튼은 앱에 하나뿐이라 한 번만 건다 */
+  document.addEventListener('DOMContentLoaded', function () {
+    var b = document.getElementById('calResync');
+    if (b) b.addEventListener('click', function (e) { e.stopPropagation(); resyncSchedules(); });
+  });
+
   function hideDayDetail() {
     var p = document.getElementById('calDetail');
     if (p) p.style.display = 'none';

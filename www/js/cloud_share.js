@@ -301,6 +301,18 @@
     Object.keys(_teamPartners).forEach(function(u){ if (u && u !== myUid()) out.push(u); });  // ★ 팀원 포함
     return out.filter(function(v,i,a){ return v && a.indexOf(v) === i; });
   };
+  /* ★ 2026-09-18 — 팀원 구독을 끊고 다시 건다 ('다시 맞추기' 버튼에서 쓴다).
+     구독이 살아 있어도, 어쩌다 끊긴 걸 앱이 모르고 있을 수 있다. 과거 달 캐시도 같이 버린다 —
+     그 달을 이미 한 번 읽었으면 다시 안 읽기 때문에, 그 사이 채워진 일정이 안 보인다. */
+  CloudShare.resubscribePartners = function () {
+    Object.keys(_partnerUnsubs).forEach(function (ou) {
+      try { _partnerUnsubs[ou](); } catch (e) {}
+      delete _partnerUnsubs[ou]; delete _partnerItems[ou];
+    });
+    _oldMonthCache = {};
+    try { syncPartnerSubscriptions(); } catch (e) {}
+    refreshCal();
+  };
   // ★ 팀 공유: CloudTeams 가 팀원 uid->name 맵을 주입. 파트너 구독/사진스코프/작업자콤보에 반영
   CloudShare.setTeamPartners = function(map){
     _teamPartners = map || {};

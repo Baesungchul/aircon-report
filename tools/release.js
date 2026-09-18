@@ -135,9 +135,31 @@ function main() {
   if (!run(gradlew, ['bundleRelease'], path.join(ROOT, 'android'))) die('gradle 빌드가 실패했습니다');
 
   const aab = path.join(ROOT, 'android', 'app', 'build', 'outputs', 'bundle', 'release', 'app-release.aab');
-  console.log('\n끝났습니다.');
-  console.log('  ' + (fs.existsSync(aab) ? aab : '빌드는 끝났는데 .aab 를 못 찾았습니다 — android/app/build/outputs/bundle/release 를 확인해 주세요'));
-  console.log('  버전 ' + r.gradle.name + ' (versionCode ' + r.gradle.code + ')\n');
+  if (!fs.existsSync(aab)) {
+    die('빌드는 끝났는데 .aab 를 못 찾았습니다 — android/app/build/outputs/bundle/release 를 확인해 주세요');
+  }
+
+  /* ★ 2026-09-18 — 버전이 박힌 이름으로 한 곳에 모아 둔다.
+     ☠️ gradle 이 내놓는 이름은 언제나 app-release.aab 다. 버전이 안 들어간다.
+        3.2.30 을 올리려다 3.2.29 알맹이를 올린 일이 있었는데, 파일 이름만 봐서는
+        그게 뭔지 알 수가 없다. 올리기 전에 이름으로 한 번 더 확인할 수 있게 한다.
+     ⚠️ 원본은 그대로 둔다(복사). 안드로이드 스튜디오로 빌드하던 습관이 남아 있어도
+        예전 경로에서 찾는 게 계속 된다.
+     ⚠️ 이름은 ASCII 로 — 한글 파일명이 도구·업로드에서 깨지는 일이 있었다. */
+  const outDir = path.join(ROOT, 'release');
+  const outName = 'hyeonjang-' + r.gradle.name + '-' + r.gradle.code + '.aab';
+  let copied = null;
+  try {
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.copyFileSync(aab, path.join(outDir, outName));
+    copied = path.join(outDir, outName);
+  } catch (e) {
+    console.warn('\n  [!] 복사본을 만들지 못했습니다 (' + (e && e.message) + ') — 원본을 쓰시면 됩니다');
+  }
+
+  console.log('\n끝났습니다 — 버전 ' + r.gradle.name + ' (versionCode ' + r.gradle.code + ')');
+  if (copied) console.log('\n  올릴 파일 : ' + copied);
+  console.log('  gradle 원본: ' + aab + '\n');
 }
 
 module.exports = { checkVersions: checkVersions, appVersionOf: appVersionOf,

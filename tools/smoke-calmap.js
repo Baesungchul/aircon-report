@@ -240,14 +240,19 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   await page.waitForTimeout(400);
   ok('아직 등록 전이면 [집 등록] 으로 보인다',
      (await page.locator('.cm-chip[data-k="home"]').innerText()).trim() === '집 등록');
-  ok('등록 전에는 복귀 칩이 없다', await page.locator('#calMapRet').count() === 0);
+  ok('등록 전에는 복귀 칩이 없다', await page.locator('.cm-chip[data-ret]').count() === 0);
+  ok('길게 누르기 안내가 보인다',
+     /길게 누르면/.test(await page.locator('.cm-hint').innerText()));
 
   /* 등록 — 지도 찍기 대신 곧바로 값을 넣어 본다(등록 경로 자체는 map_pick 검사에서 본다) */
   await page.evaluate(() => { MyPlaces.set('home', '평택시 비전동 9'); CalMap._redraw(); });
   await page.waitForTimeout(400);
   ok('등록하면 칩이 [집] 으로 바뀐다',
      (await page.locator('.cm-chip[data-k="home"]').innerText()).trim() === '집');
-  ok('그때 복귀 칩이 생긴다', await page.locator('#calMapRet').count() === 1);
+  ok('등록한 곳만 복귀 칩이 생긴다 (집만 등록 → 1개)',
+     await page.locator('.cm-chip[data-ret]').count() === 1);
+  ok('그 칩은 [복귀 집] 이라고 적힌다',
+     (await page.locator('.cm-chip[data-ret="home"]').innerText()).trim() === '복귀 집');
 
   await page.locator('.cm-chip[data-k="home"]').click();
   ok('칩을 누르면 바로 길안내로 간다 (' + await page.evaluate(() => window.__navUrl) + ')',
@@ -256,10 +261,10 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   ok('복귀는 처음엔 꺼져 있다', await page.evaluate(() => MyPlaces.returnTo()) === '');
   ok('그래서 카드는 작업 2장뿐', await page.locator('.cm-card').count() === 2);
 
-  await page.locator('#calMapRet').click();
+  await page.locator('.cm-chip[data-ret="home"]').click();
   await page.waitForTimeout(500);
-  ok('복귀를 켜면 칩에 대상이 적힌다',
-     (await page.locator('#calMapRet').innerText()).trim() === '복귀 집');
+  ok('누르면 그 칩이 켜진 표시가 된다',
+     await page.locator('.cm-chip[data-ret="home"].on').count() === 1);
   ok('카드 끝에 복귀 카드가 붙는다', await page.locator('.cm-card').count() === 3);
   ok('복귀 카드에는 번호 대신 이름이 들어간다',
      (await page.locator('.cm-card[data-i="2"] .cm-num-place').innerText()).trim() === '집');
@@ -267,18 +272,32 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   ok('동선 선이 복귀까지 이어진다 (내 위치+2곳+복귀=4점)',
      await page.evaluate(() => (window.__polys.slice(-1)[0].path || []).length) === 4);
 
-  await page.locator('#calMapRet').click();
+  await page.locator('.cm-chip[data-ret="home"]').click();
   await page.waitForTimeout(400);
-  ok('다시 누르면 꺼진다 (회사는 등록 전이라 건너뛴다)',
-     (await page.locator('#calMapRet').innerText()).trim() === '복귀');
+  ok('켜진 것을 다시 누르면 꺼진다',
+     await page.locator('.cm-chip[data-ret="home"].on').count() === 0);
   ok('그러면 복귀 카드도 사라진다', await page.locator('.cm-card').count() === 2);
+
+  /* ☠️ 돌아갈 곳은 하나다. 둘 다 켜지면 동선이 어디로 가는지 알 수 없다 */
+  await page.evaluate(() => { MyPlaces.set('work', '평택시 비전동 7'); CalMap._redraw(); });
+  await page.waitForTimeout(400);
+  ok('둘 다 등록하면 복귀 칩도 둘', await page.locator('.cm-chip[data-ret]').count() === 2);
+  await page.locator('.cm-chip[data-ret="home"]').click(); await page.waitForTimeout(400);
+  await page.locator('.cm-chip[data-ret="work"]').click(); await page.waitForTimeout(400);
+  ok('회사를 누르면 집이 꺼지고 회사만 켜진다',
+     await page.locator('.cm-chip[data-ret="work"].on').count() === 1 &&
+     await page.locator('.cm-chip[data-ret="home"].on').count() === 0);
+  ok('복귀 카드도 회사로 바뀐다',
+     (await page.locator('.cm-card[data-i="2"] .cm-num-place').innerText()).trim() === '회사');
+  await page.locator('.cm-chip[data-ret="work"]').click(); await page.waitForTimeout(400);
+  await page.evaluate(() => MyPlaces.set('work', ''));
 
   /* ☠️ 켰다 껐다를 반복해도 카드가 쌓이면 안 된다 —
      복귀 지점을 달력이 준 원본 배열에 밀어 넣으면 그렇게 된다(그리고 [주소 넣기]가
      엉뚱한 작업을 연다). 세 번 돌려 자리가 그대로인지 본다. */
   for (let i = 0; i < 3; i++) {
-    await page.locator('#calMapRet').click(); await page.waitForTimeout(300);
-    await page.locator('#calMapRet').click(); await page.waitForTimeout(300);
+    await page.locator('.cm-chip[data-ret="home"]').click(); await page.waitForTimeout(300);
+    await page.locator('.cm-chip[data-ret="home"]').click(); await page.waitForTimeout(300);
   }
   ok('복귀를 여러 번 켰다 꺼도 카드가 쌓이지 않는다', await page.locator('.cm-card').count() === 2);
 

@@ -3151,6 +3151,10 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 /* 아직 등록 안 한 칩 — 숨기지 않고 흐리게 둔다. 숨기면 그런 기능이 있는 줄을 모른다 */
 .cm-chip-empty{opacity:.6;border-style:dashed;font-weight:500;}
 .cm-chip-ret.on{background:var(--ac);border-color:var(--ac);color:#fff;}
+/* 칩 줄 아래 안내 — 길게 누르기는 눈에 안 보이는 동작이라 적어 둔다.
+   ⚠️ 지도 높이를 뺏지 않게 아주 얇게. 지도가 이 화면의 주인공이다. */
+.cm-hint{flex:0 0 auto;padding:4px 12px 6px;background:var(--sf);border-bottom:1px solid var(--bd);
+  font-size:10.5px;color:var(--mu);line-height:1.4;}
 /* 복귀 카드·표식 — 작업 번호와 섞이지 않게 색을 달리한다 */
 .cm-num-place{width:auto;min-width:20px;padding:0 6px;background:var(--mu);}
 .cm-pin-place{background:var(--mu);}

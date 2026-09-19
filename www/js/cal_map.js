@@ -298,11 +298,18 @@
       return '<button type="button" class="cm-chip' + (p ? '' : ' cm-chip-empty') +
              '" data-k="' + K.k + '">' + esc(p ? K.label : K.label + ' 등록') + '</button>';
     });
-    if (MyPlaces.any()) {
-      var r = MyPlaces.returnTo();
-      out.push('<button type="button" class="cm-chip cm-chip-ret' + (r ? ' on' : '') +
-               '" id="calMapRet">' + (r ? '복귀 ' + esc(MyPlaces.label(r)) : '복귀') + '</button>');
-    }
+    /* ★ 2026-09-19 — 복귀를 **집·회사 두 버튼으로 나눴다**(사용자 요청).
+       ☠️ 앞 판은 버튼 하나를 눌러 끔 → 집 → 회사 로 돌렸다. 지금 무엇이 켜져 있는지
+          글자를 읽어야 알 수 있었고, 회사로 바꾸려면 집을 한 번 거쳐야 했다.
+          두 개로 나누면 **보는 즉시 알고, 한 번에 고른다.**
+       ⚠️ 둘 중 하나만 켜진다(돌아갈 곳은 하나다). 켜진 것을 다시 누르면 꺼진다.
+       ⚠️ 등록된 곳만 만든다 — 없는 곳으로 돌아갈 수는 없다. */
+    var r = MyPlaces.returnTo();
+    MyPlaces.KINDS.forEach(function (K) {
+      if (!MyPlaces.get(K.k)) return;
+      out.push('<button type="button" class="cm-chip cm-chip-ret' + (r === K.k ? ' on' : '') +
+               '" data-ret="' + K.k + '">복귀 ' + esc(K.label) + '</button>');
+    });
     return out.join('');
   }
 
@@ -394,6 +401,9 @@
         '<button type="button" class="cm-close" id="calMapClose" aria-label="닫기">✕</button>' +
       '</div>' +
       '<div class="cm-places" id="calMapPlaces">' + chipsHtml() + '</div>' +
+      /* ⚠️ 길게 누르기는 눈에 보이지 않는 동작이다. 적어 두지 않으면 아무도 모른다.
+         (지도에서 주소 찍기도 같은 이유로 화면에 한 줄 적어 뒀다) */
+      '<div class="cm-hint">집·회사 버튼을 <b>길게 누르면</b> 주소를 등록·수정할 수 있습니다</div>' +
       '<div class="cm-map" id="calMapBox"><div class="cm-msg">지도를 불러오는 중…</div></div>' +
       '<div class="cm-cards" id="calMapCards">' + cardsHtml(stops) + '</div>';
     document.body.appendChild(ov);
@@ -408,11 +418,14 @@
         function () { var p = MyPlaces.get(k); if (p) navTo(p.addr); else editPlace(k); },
         function () { editPlace(k); });
     });
-    var retBtn = document.getElementById('calMapRet');
-    if (retBtn) retBtn.addEventListener('click', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      MyPlaces.cycleReturn();
-      redraw();
+    ov.querySelectorAll('.cm-chip[data-ret]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var k = b.getAttribute('data-ret');
+        /* 켜진 것을 다시 누르면 끈다. 다른 것을 누르면 그쪽으로 옮긴다 */
+        MyPlaces.setReturnTo(MyPlaces.returnTo() === k ? '' : k);
+        redraw();
+      });
     });
 
     ov.querySelectorAll('.cm-nav').forEach(function (b) {

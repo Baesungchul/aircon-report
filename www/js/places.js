@@ -12,8 +12,10 @@
    ⚠️ 이 값은 기기에만 있다(localStorage). 클라우드로 올리지 않는다.
       집 주소는 남과 나눌 값이 아니고, 팀원에게 보일 이유도 없다.
 
-   ⚠️ 복귀 대상은 따로 기억한다(끔 / 집 / 회사). 기본은 **꺼짐** —
+   ⚠️ 복귀 대상은 따로 기억한다(빈 값 / home / work). 기본은 **꺼짐** —
       평소 화면을 단순하게 두고, 경로 API 호출도 필요할 때만 늘린다.
+      지도에서는 [복귀 집]·[복귀 회사] 두 버튼으로 고른다. 돌아갈 곳은 하나라
+      둘 중 하나만 켜지고, 켜진 것을 다시 누르면 꺼진다.
 ═══════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -61,21 +63,9 @@
       if (v) localStorage.setItem(RET_KEY, v); else localStorage.removeItem(RET_KEY);
     } catch (e) {}
   }
-  /* 끔 → 집 → 회사 → 끔. **등록된 곳만** 거친다 —
-     없는 곳을 거치면 '눌렀는데 아무 일도 안 나는' 한 칸이 생긴다. */
-  function cycleReturn() {
-    var order = [''].concat(KINDS.map(function (x) { return x.k; }))
-      .filter(function (k) { return !k || !!get(k); });
-    var cur = returnTo();
-    var i = order.indexOf(cur);
-    var next = order[(i < 0 ? 0 : i + 1) % order.length];
-    setReturnTo(next);
-    return next;
-  }
-
   window.MyPlaces = {
     KINDS: KINDS, get: get, set: set, any: any, label: labelOf,
-    returnTo: returnTo, setReturnTo: setReturnTo, cycleReturn: cycleReturn,
+    returnTo: returnTo, setReturnTo: setReturnTo,
     _key: KEY, _retKey: RET_KEY
   };
 })();

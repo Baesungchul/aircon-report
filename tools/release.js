@@ -222,9 +222,8 @@ function main() {
         '     키 별칭을 모르면: keytool -list -v -keystore <키파일>');
   }
 
-  if (checkOnly) { console.log('\n검사만 했습니다 (--check). 빌드하려면 npm run release\n'); return; }
-
-  /* ⑤ 빌드. 비밀번호는 keystore.properties 에서 gradle 이 읽어간다 */
+  /* ⑤ 자바. --check 에서도 찾아서 경로를 알려 준다 —
+     keytool(키 별칭 확인)이 그 폴더의 bin 에 같이 있어서, 이 한 줄이 설정을 채우는 길이 된다. */
   const jh = javaHome();
   if (!jh.dir) {
     die('자바(JDK)를 찾지 못했습니다.\n' +
@@ -234,6 +233,11 @@ function main() {
         '     찾아본 곳:\n       ' + (jh.tried || []).slice(0, 8).join('\n       '));
   }
   console.log('\n자바: ' + jh.dir + '  (' + jh.from + ')');
+  console.log('  키 별칭을 확인하려면:');
+  console.log('    "' + path.join(jh.dir, 'bin', 'keytool') + '" -list -v -keystore <키파일>');
+
+  if (checkOnly) { console.log('\n검사만 했습니다 (--check). 빌드하려면 npm run release\n'); return; }
+
   const gradlew = (process.platform === 'win32') ? 'gradlew.bat' : './gradlew';
   if (!run(gradlew, ['bundleRelease'], path.join(ROOT, 'android'), { JAVA_HOME: jh.dir })) {
     die('gradle 빌드가 실패했습니다');

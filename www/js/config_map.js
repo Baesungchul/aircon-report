@@ -52,4 +52,4 @@ window.KAKAO_JS_KEY = '7c6b3a6ba30f09cf55bbe5e82c4859f1';
       그래서 서버를 한 번 거친다 — functions 의 adminStats 가 앤트로픽 키를 다루는 방식과 같다.
    ⚠️ 주고받는 모양은 www/js/routing.js 주석에 적혀 있다. 서버를 만들 때 그대로 맞출 것.
 ═══════════════════════════════════════════════════════════ */
-window.KAKAO_ROUTE_URL = '';
+window.KAKAO_ROUTE_URL = 'https://asia-northeast3-work-report-826ec.cloudfunctions.net/naviRoute';

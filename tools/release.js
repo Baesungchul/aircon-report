@@ -87,10 +87,53 @@ function checkVersions(wwwSrc, builtSrc, gradleSrc) {
 }
 
 /* ── 실행 ── */
-function run(cmd, args, cwd) {
+function run(cmd, args, cwd, env) {
   console.log('\n> ' + cmd + ' ' + args.join(' '));
-  const r = spawnSync(cmd, args, { cwd: cwd || ROOT, stdio: 'inherit', shell: true });
+  const r = spawnSync(cmd, args, {
+    cwd: cwd || ROOT, stdio: 'inherit', shell: true,
+    env: env ? Object.assign({}, process.env, env) : process.env
+  });
   return r.status === 0;
+}
+
+/* ── 자바 찾기 ──
+   ☠️ 2026-09-19 실제로 겪은 것: 명령줄에서 gradle 을 돌리니
+      "JAVA_HOME is not set and no 'java' command could be found in your PATH" 로 멈췄다.
+      안드로이드 스튜디오로 빌드할 때는 스튜디오가 **자기 안에 든 자바**를 쓰기 때문에
+      JAVA_HOME 이 없어도 됐다. 명령줄에는 그 배려가 없다.
+   → 스튜디오가 깔아 둔 자바를 찾아 이 빌드에만 JAVA_HOME 을 달아 준다.
+      시스템 환경변수를 건드리지 않는다 — 여기서만 쓰고 끝낸다.
+   ⚠️ 못 찾으면 어디를 뒤졌는지 적어 준다. '자바가 없습니다' 한 줄은 아무 도움이 안 된다. */
+function javaHome() {
+  const win = process.platform === 'win32';
+  const bin = win ? 'java.exe' : 'java';
+  const okDir = (d) => { try { return !!d && fs.existsSync(path.join(d, 'bin', bin)); } catch (e) { return false; } };
+  if (okDir(process.env.JAVA_HOME)) return { dir: process.env.JAVA_HOME, from: 'JAVA_HOME' };
+
+  const tried = [];
+  const cands = [];
+  if (win) {
+    const PF = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const PF86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    const LA = process.env['LOCALAPPDATA'] || '';
+    ['Android Studio', 'Android Studio1', 'Android Studio Preview'].forEach((n) => {
+      cands.push(path.join(PF, 'Android', n, 'jbr'));
+      cands.push(path.join(PF, 'Android', n, 'jre'));
+      if (LA) cands.push(path.join(LA, 'Programs', n, 'jbr'));
+      if (LA) cands.push(path.join(LA, 'Programs', n, 'jre'));
+    });
+    /* 따로 설치한 JDK 들 — 최신 것부터 */
+    [path.join(PF, 'Java'), path.join(PF, 'Eclipse Adoptium'), path.join(PF86, 'Java')].forEach((root) => {
+      try {
+        fs.readdirSync(root).sort().reverse().forEach((n) => cands.push(path.join(root, n)));
+      } catch (e) {}
+    });
+  } else {
+    cands.push('/Applications/Android Studio.app/Contents/jbr/Contents/Home');
+    cands.push('/usr/lib/jvm/default-java');
+  }
+  for (const d of cands) { tried.push(d); if (okDir(d)) return { dir: d, from: '자동 탐색' }; }
+  return { dir: '', tried: tried };
 }
 function die(msg) {
   console.error('\n중단했습니다 — ' + msg + '\n');
@@ -131,8 +174,19 @@ function main() {
   if (checkOnly) { console.log('\n검사만 했습니다 (--check). 빌드하려면 npm run release\n'); return; }
 
   /* ⑤ 빌드. 비밀번호는 keystore.properties 에서 gradle 이 읽어간다 */
+  const jh = javaHome();
+  if (!jh.dir) {
+    die('자바(JDK)를 찾지 못했습니다.\n' +
+        '     안드로이드 스튜디오가 깔려 있으면 보통 여기에 있습니다:\n' +
+        '       C:\\Program Files\\Android\\Android Studio\\jbr\n' +
+        '     그 경로를 시스템 환경변수 JAVA_HOME 에 넣고 다시 실행해 주세요.\n' +
+        '     찾아본 곳:\n       ' + (jh.tried || []).slice(0, 8).join('\n       '));
+  }
+  console.log('\n자바: ' + jh.dir + '  (' + jh.from + ')');
   const gradlew = (process.platform === 'win32') ? 'gradlew.bat' : './gradlew';
-  if (!run(gradlew, ['bundleRelease'], path.join(ROOT, 'android'))) die('gradle 빌드가 실패했습니다');
+  if (!run(gradlew, ['bundleRelease'], path.join(ROOT, 'android'), { JAVA_HOME: jh.dir })) {
+    die('gradle 빌드가 실패했습니다');
+  }
 
   const aab = path.join(ROOT, 'android', 'app', 'build', 'outputs', 'bundle', 'release', 'app-release.aab');
   if (!fs.existsSync(aab)) {

@@ -111,6 +111,32 @@ const gradle = (name, code) => 'android {\n  defaultConfig {\n    versionCode ' 
     return 'sync → build';
   });
 
+  console.log('\n[5] 자바 찾기 (2026-09-19)');
+
+  chk('JAVA_HOME 이 없어도 스튜디오 자바를 찾아 쓴다', () => {
+    /* ☠️ 실제로 겪은 것 — 스튜디오로 빌드할 땐 스튜디오가 자기 안의 자바를 쓰는데,
+       명령줄에는 그 배려가 없어 "JAVA_HOME is not set" 으로 멈췄다. */
+    const src = fs.readFileSync(path.join(__dirname, 'release.js'), 'utf8');
+    must(src.indexOf('function javaHome') > 0, '자바 찾는 코드가 없습니다');
+    must(/Android Studio[\s\S]{0,40}jbr/.test(src), '스튜디오 자바 경로를 안 봅니다');
+    must(/JAVA_HOME: jh\.dir/.test(src), '찾은 자바를 gradle 에 안 넘깁니다');
+    return '스튜디오 jbr';
+  });
+
+  chk('시스템 환경변수를 건드리지 않는다', () => {
+    /* 이 빌드에만 달아 준다 — 사용자 PC 설정을 말없이 바꾸면 안 된다 */
+    const src = fs.readFileSync(path.join(__dirname, 'release.js'), 'utf8');
+    must(!/process\.env\.JAVA_HOME\s*=/.test(src), '전역 JAVA_HOME 을 덮어씁니다');
+    must(/Object\.assign\(\{\}, process\.env, env\)/.test(src), '자식 프로세스에만 넘기는 방식이 아닙니다');
+    return '자식에만';
+  });
+
+  chk('못 찾으면 어디를 뒤졌는지 알려준다', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'release.js'), 'utf8');
+    must(src.indexOf('찾아본 곳') > 0, "'자바가 없습니다' 한 줄로 끝냅니다 — 아무 도움이 안 됩니다");
+    return '경로 목록';
+  });
+
   console.log(fails ? ('\n❌ 실패 ' + fails + '건 / 통과 ' + oks + '건')
                     : ('\n✅ 통과 ' + oks + '건'));
   process.exit(fails ? 1 : 0);

@@ -508,6 +508,8 @@ function openSettings() {
   /* ★ 2026-08-17 내 업종 블록 — 설정은 index.html 정적 마크업이라
        여기서 안 부르면 처음 들어왔을 때 빈 칸으로 남는다. */
   try { if (window.ProfilesUI && ProfilesUI.renderSettingsIndustries) ProfilesUI.renderSettingsIndustries(); } catch (e) {}
+  /* ★ 2026-09-19 내 장소(집·회사) — 업종 칸과 같은 자리에서 그린다 */
+  try { if (window.PlacesUI && PlacesUI.renderSettings) PlacesUI.renderSettings(); } catch (e) {}
 
   if (typeof initSettingsAccordion === 'function') initSettingsAccordion();
   if (typeof updateSettingsGroupBadges === 'function') updateSettingsGroupBadges();

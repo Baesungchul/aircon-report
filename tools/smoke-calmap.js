@@ -56,6 +56,23 @@ window.kakao = { maps: {
 /* ── 가짜 위치 제공자 ──
    window.__geoMode 로 조종한다: 'ok' | 'deny' | 'none'
    ☠️ navigator.geolocation 은 읽기 전용이라 defineProperty 로 갈아끼운다. */
+/* ── 가짜 localStorage ──
+   ☠️ setContent 로 띄운 페이지는 출처(origin)가 없어 진짜 localStorage 를 읽으면
+      SecurityError 가 난다. 앱 코드는 전부 try/catch 로 감싸 놨으므로 '조용히 저장 안 됨'
+      으로 흘러가는데, 그러면 저장을 보는 검사가 **아무것도 안 보면서 통과**한다.
+   → 메모리로 도는 것을 끼워 넣어 실제와 같은 길을 타게 한다. */
+const FAKE_LS = `
+(function(){ var m = {};
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: {
+    getItem: function(k){ return Object.prototype.hasOwnProperty.call(m,k) ? m[k] : null; },
+    setItem: function(k,v){ m[k] = String(v); },
+    removeItem: function(k){ delete m[k]; },
+    clear: function(){ m = {}; },
+    key: function(i){ return Object.keys(m)[i]; },
+    get length(){ return Object.keys(m).length; }
+  }});
+})();`;
+
 const FAKE_GEO = `
 window.__geoMode = 'deny';
 Object.defineProperty(navigator, 'geolocation', { configurable: true, get: function () {
@@ -82,9 +99,11 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
     <style>${R('styles.css')}</style></head><body>
     <script>window.showToast=function(m,t){ (window.__toasts=window.__toasts||[]).push([m,t]); };<\/script>
     <script>${FAKE_KAKAO}<\/script>
+    <script>${FAKE_LS}<\/script>
     <script>${FAKE_GEO}<\/script>
     <script>window.KAKAO_JS_KEY='FAKEKEY';window.KAKAO_ROUTE_URL='';<\/script>
     <script>${R('js/geocode.js')}<\/script>
+    <script>${R('js/places.js')}<\/script>
     <script>${R('js/myloc.js')}<\/script>
     <script>${R('js/routing.js')}<\/script>
     <script>${R('js/cal_map.js')}<\/script>
@@ -185,7 +204,7 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
     window.__polys[1].strokeStyle === 'solid' && window.__polys[1].strokeWeight === 5));
   const d0 = (await page.locator('.cm-card-dist[data-i="0"]').innerText()).trim();
   ok('첫 카드에 직선·주행이 같이 나온다 (' + d0 + ')', /직선/.test(d0) && /주행/.test(d0));
-  ok('첫 구간 주행이 5km 다', /주행 5\.0km/.test(d0));
+  ok('첫 구간 주행이 5km · 10분 이다', /주행 5\.0km 10분/.test(d0));
   const d1 = (await page.locator('.cm-card-dist[data-i="1"]').innerText()).trim();
   ok('둘째 카드는 이전 작업에서의 거리다 (' + d1 + ')', /직선/.test(d1) && /주행 7\.0km/.test(d1));
   ok('머리줄에 총 주행거리·시간이 뜬다',
@@ -206,6 +225,73 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   ok('구간이 안 오면 주행은 비운다 (' + d2 + ')', /직선/.test(d2) && !/주행/.test(d2));
   await page.evaluate(() => CalMap.close());
   await page.evaluate(() => { window.KAKAO_ROUTE_URL = ''; window.__geoMode = 'deny'; });
+
+  console.log('\n[A4] 내 장소 · 복귀 (2026-09-19)');
+  await page.evaluate(() => {
+    localStorage.clear && localStorage.clear();
+    window.__geoMode = 'ok'; if (window.MyLoc) MyLoc.forget();
+    window.__navUrl = null;
+    /* 길안내는 실제로 앱 밖으로 나가므로 가로채서 어디로 보내려 했는지만 본다 */
+    window.LinkActions = { nav: (a) => { window.__navUrl = a; } };
+  });
+  const DAY = [{ title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' },
+               { title: 'B', sub: '', time: '13:00', addr: '평택시 비전동 2' }];
+  await page.evaluate((d) => CalMap.open('9월 19일 (금)', d), DAY);
+  await page.waitForTimeout(400);
+  ok('아직 등록 전이면 [집 등록] 으로 보인다',
+     (await page.locator('.cm-chip[data-k="home"]').innerText()).trim() === '집 등록');
+  ok('등록 전에는 복귀 칩이 없다', await page.locator('#calMapRet').count() === 0);
+
+  /* 등록 — 지도 찍기 대신 곧바로 값을 넣어 본다(등록 경로 자체는 map_pick 검사에서 본다) */
+  await page.evaluate(() => { MyPlaces.set('home', '평택시 비전동 9'); CalMap._redraw(); });
+  await page.waitForTimeout(400);
+  ok('등록하면 칩이 [집] 으로 바뀐다',
+     (await page.locator('.cm-chip[data-k="home"]').innerText()).trim() === '집');
+  ok('그때 복귀 칩이 생긴다', await page.locator('#calMapRet').count() === 1);
+
+  await page.locator('.cm-chip[data-k="home"]').click();
+  ok('칩을 누르면 바로 길안내로 간다 (' + await page.evaluate(() => window.__navUrl) + ')',
+     await page.evaluate(() => window.__navUrl) === '평택시 비전동 9');
+
+  ok('복귀는 처음엔 꺼져 있다', await page.evaluate(() => MyPlaces.returnTo()) === '');
+  ok('그래서 카드는 작업 2장뿐', await page.locator('.cm-card').count() === 2);
+
+  await page.locator('#calMapRet').click();
+  await page.waitForTimeout(500);
+  ok('복귀를 켜면 칩에 대상이 적힌다',
+     (await page.locator('#calMapRet').innerText()).trim() === '복귀 집');
+  ok('카드 끝에 복귀 카드가 붙는다', await page.locator('.cm-card').count() === 3);
+  ok('복귀 카드에는 번호 대신 이름이 들어간다',
+     (await page.locator('.cm-card[data-i="2"] .cm-num-place').innerText()).trim() === '집');
+  ok('복귀 카드도 길안내를 준다', await page.locator('.cm-card[data-i="2"] .cm-nav').count() === 1);
+  ok('동선 선이 복귀까지 이어진다 (내 위치+2곳+복귀=4점)',
+     await page.evaluate(() => (window.__polys.slice(-1)[0].path || []).length) === 4);
+
+  await page.locator('#calMapRet').click();
+  await page.waitForTimeout(400);
+  ok('다시 누르면 꺼진다 (회사는 등록 전이라 건너뛴다)',
+     (await page.locator('#calMapRet').innerText()).trim() === '복귀');
+  ok('그러면 복귀 카드도 사라진다', await page.locator('.cm-card').count() === 2);
+
+  /* ☠️ 켰다 껐다를 반복해도 카드가 쌓이면 안 된다 —
+     복귀 지점을 달력이 준 원본 배열에 밀어 넣으면 그렇게 된다(그리고 [주소 넣기]가
+     엉뚱한 작업을 연다). 세 번 돌려 자리가 그대로인지 본다. */
+  for (let i = 0; i < 3; i++) {
+    await page.locator('#calMapRet').click(); await page.waitForTimeout(300);
+    await page.locator('#calMapRet').click(); await page.waitForTimeout(300);
+  }
+  ok('복귀를 여러 번 켰다 꺼도 카드가 쌓이지 않는다', await page.locator('.cm-card').count() === 2);
+
+  ok('칩 줄이 화면 안에 보인다', await page.evaluate(() => {
+    const el = document.querySelector('.cm-places'); if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.height > 20 && r.top >= 0 && r.bottom <= window.innerHeight;
+  }));
+
+  /* 등록을 지우면 복귀도 같이 꺼져야 한다 — 안 그러면 '켜져 있는데 안 가는' 상태가 된다 */
+  await page.evaluate(() => { MyPlaces.setReturnTo('home'); MyPlaces.set('home', ''); });
+  ok('장소를 지우면 복귀도 꺼진다', await page.evaluate(() => MyPlaces.returnTo()) === '');
+  await page.evaluate(() => CalMap.close());
 
   console.log('\n[B] 지도 키가 없을 때');
   await page.evaluate(() => { window.KAKAO_JS_KEY = 'TODO_KAKAO_JS_KEY'; });

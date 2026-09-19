@@ -25,6 +25,10 @@
   var _ov = null;          // 열려 있는 오버레이
   var _pins = [];          // 번호 표식 DOM (선택 표시를 바꾸려고 들고 있는다)
   var _sel = -1;
+  /* ★ 2026-09-19 — 장소·복귀를 바꾸면 시트를 다시 그린다. 그때 필요한 것들을 들고 있는다.
+     ⚠️ _base 는 달력이 준 **원본**이다. 복귀 지점을 여기 밀어 넣으면 안 된다 —
+        달력이 onEdit 에서 이 배열의 자리(i)로 작업을 찾는다. */
+  var _base = [], _shown = [], _label = '', _opts = {};
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -66,6 +70,7 @@
   function close() {
     if (_ov && _ov.parentNode) _ov.parentNode.removeChild(_ov);
     _ov = null; _pins = []; _sel = -1;
+    _base = []; _shown = []; _label = ''; _opts = {};
   }
 
   /* ── 카드 줄 ──
@@ -75,10 +80,15 @@
   function cardsHtml(stops) {
     return stops.map(function (s, i) {
       var noAddr = !String(s.addr || '').trim();
-      return '<div class="cm-card' + (noAddr ? ' cm-card-noaddr' : '') + '" data-i="' + i + '">' +
-        '<div class="cm-card-top">' +
-          (noAddr ? '<span class="cm-no">–</span>' : '<span class="cm-num">' + (i + 1) + '</span>') +
-          '<span class="cm-time">' + esc(s.time || '시간 미정') + '</span>' +
+      /* ★ 2026-09-19 복귀 카드 — 갈 곳이 아니라 '돌아갈 곳'이다.
+         번호를 붙이지 않는다. 번호는 그날 작업 순서를 뜻하는데 복귀는 작업이 아니다. */
+      var mark = s._place ? '<span class="cm-num cm-num-place">' + esc(MyPlaces.label(s._place)) + '</span>'
+               : noAddr   ? '<span class="cm-no">–</span>'
+               :            '<span class="cm-num">' + (i + 1) + '</span>';
+      return '<div class="cm-card' + (noAddr ? ' cm-card-noaddr' : '') +
+             (s._place ? ' cm-card-place' : '') + '" data-i="' + i + '">' +
+        '<div class="cm-card-top">' + mark +
+          '<span class="cm-time">' + esc(s.time || (s._place ? '복귀' : '시간 미정')) + '</span>' +
         '</div>' +
         '<div class="cm-card-ti">' + esc(s.title || '작업') + '</div>' +
         '<div class="cm-card-sub">' + esc(s.sub || '') + '</div>' +
@@ -151,13 +161,18 @@
      '이 카드까지 오는 한 구간'의 거리다. 첫 카드는 내 위치에서, 그 뒤는 이전 작업에서.
      ⚠️ 직선은 '얼마나 떨어져 있나', 주행은 '실제로 몇 km 달리나' 다. 글자로 구분해 둔다 —
         숫자만 두 개 있으면 무엇이 무엇인지 알 수 없다. */
-  function setDist(stopIdx, straightM, driveM) {
+  function setDist(stopIdx, straightM, driveM, driveSec) {
     if (!_ov) return;
     var el = _ov.querySelector('.cm-card-dist[data-i="' + stopIdx + '"]');
     if (!el) return;
     var parts = [];
     if (straightM) parts.push('직선 ' + MyLoc.fmtKm(straightM));
-    if (driveM) parts.push('주행 ' + MyLoc.fmtKm(driveM));
+    if (driveM) {
+      /* ★ 2026-09-19 주행 시간도 같이. 거리보다 시간이 일정 짜는 데 더 쓸모 있다 —
+         10km 가 15분일 수도 40분일 수도 있다. 거리 바로 뒤에 붙여 한 덩어리로 읽히게 한다. */
+      parts.push('주행 ' + MyLoc.fmtKm(driveM) +
+                 (driveSec ? ' ' + Routing.fmtMin(driveSec) : ''));
+    }
     el.textContent = parts.join(' · ');
     el.classList.toggle('on', !!parts.length);
   }
@@ -222,7 +237,8 @@
         var j = legOf[L.i];
         if (j == null) return;
         var at = k + (me ? 1 : 0);
-        setDist(L.i, MyLoc.distance(linePts[at - 1], linePts[at]), (r.legs[j] || {}).distance || 0);
+        var leg = r.legs[j] || {};
+        setDist(L.i, MyLoc.distance(linePts[at - 1], linePts[at]), leg.distance || 0, leg.duration || 0);
       });
     });
 
@@ -232,8 +248,9 @@
       bounds.extend(pos);
       /* 기본 마커 대신 번호 표식을 쓴다 — 마커 + 라벨 두 겹보다 작고, 순서가 바로 읽힌다 */
       var el = document.createElement('div');
-      el.className = 'cm-pin';
-      el.textContent = String(L.i + 1);
+      /* 복귀 지점은 번호가 아니라 이름('집'·'회사')으로 찍는다 — 작업 순서와 섞이면 안 된다 */
+      el.className = 'cm-pin' + (L.s && L.s._place ? ' cm-pin-place' : '');
+      el.textContent = (L.s && L.s._place) ? MyPlaces.label(L.s._place) : String(L.i + 1);
       el._i = L.i;
       el.addEventListener('click', function () { selectCard(L.i, { scroll: true }); });
       _pins.push(el);
@@ -268,15 +285,99 @@
     selectCard(located[0].i);
   }
 
+  /* ── 내 장소 칩 (집 · 회사 · 복귀) ── 2026-09-19
+     ☠️ 누르면 **바로 내비**가 열린다. 그게 이 칩의 존재 이유다 —
+        일 끝내고 차에 앉아 한 손으로 누르는 자리이지, 주소를 확인하는 자리가 아니다.
+     ⚠️ 아직 등록 안 했으면 같은 칩이 '집 등록'이 된다. 칩을 숨기지 않는다 —
+        숨기면 그런 기능이 있는 줄을 영영 모른다.
+     ⚠️ 고치는 길은 **길게 누르기**다. 짧게 누르면 내비가 뜨는 자리라,
+        고치기를 짧은 누름에 두면 출발하려다 편집창이 뜬다. */
+  function chipsHtml() {
+    var out = MyPlaces.KINDS.map(function (K) {
+      var p = MyPlaces.get(K.k);
+      return '<button type="button" class="cm-chip' + (p ? '' : ' cm-chip-empty') +
+             '" data-k="' + K.k + '">' + esc(p ? K.label : K.label + ' 등록') + '</button>';
+    });
+    if (MyPlaces.any()) {
+      var r = MyPlaces.returnTo();
+      out.push('<button type="button" class="cm-chip cm-chip-ret' + (r ? ' on' : '') +
+               '" id="calMapRet">' + (r ? '복귀 ' + esc(MyPlaces.label(r)) : '복귀') + '</button>');
+    }
+    return out.join('');
+  }
+
+  /* 길게 누르기 — 짧은 누름(내비)과 겹치지 않게 시간으로 가른다.
+     ⚠️ 손가락이 움직이면(스크롤) 취소한다. 안 그러면 칩 줄을 넘기다 편집창이 뜬다. */
+  function bindChip(el, onTap, onHold) {
+    var t = null, moved = false, held = false;
+    var cancel = function () { clearTimeout(t); t = null; };
+    el.addEventListener('touchstart', function () {
+      moved = false; held = false;
+      t = setTimeout(function () { held = true; onHold(); }, 500);
+    }, { passive: true });
+    el.addEventListener('touchmove', function () { moved = true; cancel(); }, { passive: true });
+    el.addEventListener('touchend', function (e) {
+      cancel();
+      if (held) { e.preventDefault(); return; }   // 이미 편집창이 떴다
+      if (!moved) { e.preventDefault(); onTap(); }
+    });
+    /* 마우스(PC 미리보기)에서는 그냥 누름 = 실행, 오래 누름은 안 쓴다 */
+    el.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (held) { held = false; return; }
+      if (!('ontouchstart' in window)) onTap();
+    });
+  }
+
+  /* 장소 등록·수정 — 지도에서 찍는 길이 있으면 그걸 쓴다(주소칸 🗺 과 같은 화면) */
+  function editPlace(kind) {
+    var cur = MyPlaces.get(kind);
+    var label = MyPlaces.label(kind);
+    if (window.MapPick && MapPick.available()) {
+      MapPick.open((cur && cur.addr) || '', function (addr) {
+        MyPlaces.set(kind, addr);
+        redraw();
+      }, { title: label, sub: '내 장소', time: '' });
+      return;
+    }
+    var v = null;
+    try { v = window.prompt(label + ' 주소', (cur && cur.addr) || ''); } catch (e) {}
+    if (v === null) return;                 // 취소
+    MyPlaces.set(kind, v);
+    redraw();
+  }
+
   /* ── 열기 ──
      stops : [{ title, sub, time, addr }]  — 목록에 보이는 순서(시간순) 그대로 받는다
      opts  : { onEdit: function(i) }        — '주소 넣기' 를 눌렀을 때 그 작업을 여는 길 */
   function open(label, stops, opts) {
-    opts = opts || {};
     close();
-    stops = stops || [];
+    _label = label;
+    _base = stops || [];
+    _opts = opts || {};
+    redraw();
+  }
+
+  /* 장소·복귀가 바뀌면 시트를 다시 그린다.
+     ⚠️ 통째로 다시 그린다. 선·핀·카드·거리가 서로 맞물려 있어 일부만 고치면 어긋난다.
+        위치는 MyLoc 이 2분 기억하므로 다시 묻지 않는다(권한 창이 또 뜨지 않는다). */
+  function redraw() {
+    var label = _label, opts = _opts;
+    /* 복귀가 켜져 있으면 맨 뒤에 한 곳을 더 붙인다.
+       ⚠️ 원본(_base)은 건드리지 않는다 — 달력이 onEdit 에서 그 배열의 자리를 쓴다.
+          여기서 밀어 넣으면 '주소 넣기'가 엉뚱한 작업을 연다. */
+    var stops = _base.slice();
+    var retK = MyPlaces.returnTo();
+    var retP = retK && MyPlaces.get(retK);
+    if (retP && _base.some(function (s) { return String(s.addr || '').trim(); })) {
+      stops.push({ _place: retK, title: MyPlaces.label(retK), sub: '', time: '', addr: retP.addr });
+    }
+    _shown = stops;
 
     var withAddr = stops.filter(function (s) { return String(s.addr || '').trim(); }).length;
+
+    if (_ov && _ov.parentNode) _ov.parentNode.removeChild(_ov);
+    _pins = []; _sel = -1;
 
     var ov = document.createElement('div');
     /* ⚠️ ov-lock — 뒤로가기와 뒷화면 스크롤 잠금이 이 표식을 본다. 빼지 말 것 */
@@ -292,12 +393,27 @@
           ? '<button type="button" class="cm-loc" id="calMapLoc" aria-label="내 위치" title="내 위치">◎</button>' : '') +
         '<button type="button" class="cm-close" id="calMapClose" aria-label="닫기">✕</button>' +
       '</div>' +
+      '<div class="cm-places" id="calMapPlaces">' + chipsHtml() + '</div>' +
       '<div class="cm-map" id="calMapBox"><div class="cm-msg">지도를 불러오는 중…</div></div>' +
       '<div class="cm-cards" id="calMapCards">' + cardsHtml(stops) + '</div>';
     document.body.appendChild(ov);
     _ov = ov;
 
     document.getElementById('calMapClose').addEventListener('click', close);
+
+    /* 내 장소 칩 — 짧게 누르면 내비, 길게 누르면 고치기 */
+    ov.querySelectorAll('.cm-chip[data-k]').forEach(function (b) {
+      var k = b.getAttribute('data-k');
+      bindChip(b,
+        function () { var p = MyPlaces.get(k); if (p) navTo(p.addr); else editPlace(k); },
+        function () { editPlace(k); });
+    });
+    var retBtn = document.getElementById('calMapRet');
+    if (retBtn) retBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      MyPlaces.cycleReturn();
+      redraw();
+    });
 
     ov.querySelectorAll('.cm-nav').forEach(function (b) {
       b.addEventListener('click', function (e) {
@@ -370,5 +486,5 @@
     });
   }
 
-  window.CalMap = { open: open, close: close };
+  window.CalMap = { open: open, close: close, _redraw: redraw };
 })();

@@ -150,6 +150,14 @@
 
       </div>
 
+      <!-- 🏠 내 장소 — ★ 2026-09-19. 그날 지도의 [집]·[회사] 칩과 같은 값을 쓴다.
+           그리는 것은 places_ui.js 의 PlacesUI.renderSettings() — openSettings 에서 부른다.
+           ⚠️ 이 값은 기기에만 있다(localStorage). 클라우드로 올리지 않는다. -->
+      <div class="set-sec">
+        <div class="set-sec-title">🏠 내 장소</div>
+        <div id="setPlacesBox"></div>
+      </div>
+
       <!-- 📋 내 업종 — ★ 2026-08-17 독립 소타이틀.
            업체정보 편집 모달 안에 있던 것을 꺼냈고(진입 4단계→2단계),
            이번에 '기본 정보' 그룹의 소타이틀 하나로 분리했다.
@@ -707,6 +715,7 @@
 <script src="./js/config_map.js"></script>
 <script src="./js/geocode.js"></script>
 <!-- 내 위치 · 실제 도로 경로 (2026-09-18) — cal_map.js 가 둘을 쓴다. 먼저 와야 한다 -->
+<script src="./js/places.js"></script>
 <script src="./js/myloc.js"></script>
 <script src="./js/routing.js"></script>
 <script src="./js/cal_map.js"></script>

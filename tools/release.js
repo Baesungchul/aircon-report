@@ -141,6 +141,48 @@ function die(msg) {
 }
 function readOrNull(p) { try { return fs.readFileSync(p, 'utf8'); } catch (e) { return null; } }
 
+/* 서명 설정이 '있는지'가 아니라 '쓸 수 있는지'를 본다.
+   ⚠️ 비밀번호 값은 읽어서 비교만 한다 — 돌려주는 것은 문제 목록뿐이고 값은 절대 안 담는다. */
+function readKeystoreProps() {
+  const raw = readOrNull(P.keystore);
+  if (raw === null) {
+    return { problems: ['android/keystore.properties 가 없습니다 — ' +
+                        'android/keystore.properties.example 을 복사해 만들어 주세요'] };
+  }
+  const get = (k) => {
+    const m = new RegExp('^\\s*' + k + '\\s*=(.*)$', 'm').exec(raw);
+    return m ? m[1].trim() : '';
+  };
+  /* 예시 파일을 그대로 복사해 둔 상태를 잡아낸다 */
+  const looksExample = (v) => !v || /your[-_]?|path\/to|\bexample\b|여기에|바꾸세요/i.test(v);
+  const problems = [];
+
+  const storeFile = get('storeFile');
+  if (looksExample(storeFile)) {
+    problems.push('storeFile 이 예시값 그대로입니다 — 실제 .jks 파일 경로를 넣어 주세요');
+  } else {
+    /* 절대경로 / app 기준 / android 기준 / 저장소 기준 — 어떻게 적었든 찾아 준다.
+       ⚠️ build.gradle 의 file() 은 app 모듈 기준이라, 상대경로를 쓰면 헷갈리기 쉽다.
+          여기서 미리 확인해 주면 그 혼동이 빌드까지 가지 않는다. */
+    const AND = path.join(ROOT, 'android');
+    const cands = [storeFile,
+                   path.resolve(AND, 'app', storeFile),
+                   path.resolve(AND, storeFile),
+                   path.resolve(ROOT, storeFile)];
+    const found = cands.some((c) => { try { return fs.existsSync(c); } catch (e) { return false; } });
+    if (!found) problems.push('서명키 파일을 찾을 수 없습니다: ' + storeFile);
+  }
+  /* ⚠️ 뒤에 붙는 말까지 통째로 적는다 — '비밀번호을(를)' 같은 조사 깨짐을 피한다 */
+  [['storePassword', '키스토어 비밀번호를 넣어 주세요'],
+   ['keyAlias', '키 별칭(alias)을 넣어 주세요'],
+   ['keyPassword', '키 비밀번호를 넣어 주세요']].forEach(function (pair) {
+    if (looksExample(get(pair[0]))) {
+      problems.push(pair[0] + ' 가 비었거나 예시값입니다 — ' + pair[1]);
+    }
+  });
+  return { problems: problems };
+}
+
 function main() {
   const checkOnly = process.argv.indexOf('--check') >= 0;
 
@@ -165,10 +207,19 @@ function main() {
     console.warn('      일부러 그런 것이면 그대로 두셔도 됩니다.');
   }
 
-  /* ④ 서명 — 이건 막는다. 서명 안 된 .aab 는 스토어가 안 받는다 */
-  if (!fs.existsSync(P.keystore)) {
-    die('android/keystore.properties 가 없습니다 — 서명이 안 된 .aab 가 만들어집니다.\n' +
-        '     android/keystore.properties.example 을 참고해 만들어 주세요');
+  /* ④ 서명 — 이건 막는다. 서명 안 된 .aab 는 스토어가 안 받는다.
+     ☠️ 2026-09-19 실제로 겪은 것: 파일은 **있는데 예시값 그대로**였다
+        (storeFile=C:/path/to/your-release-key.jks). 그런데 gradle 은 438개 작업을
+        2분 동안 다 돌린 **뒤에야** validateSigningRelease 에서 터졌다.
+        있는지만 보고 통과시킨 앞 판이 그 2분을 그대로 버리게 만들었다.
+        → 있는지가 아니라 **쓸 수 있는지**를 본다. 2초 안에 끝난다.
+     ⚠️ 비밀번호 값은 읽어서 비교만 하고 화면에도 로그에도 내보내지 않는다. */
+  const ks = readKeystoreProps();
+  if (ks.problems.length) {
+    die('서명 설정(android/keystore.properties)이 아직 준비되지 않았습니다.\n\n     ' +
+        ks.problems.join('\n     ') +
+        '\n\n     이 파일은 깃에 올라가지 않습니다(.gitignore). 값을 채우고 다시 실행해 주세요.\n' +
+        '     키 별칭을 모르면: keytool -list -v -keystore <키파일>');
   }
 
   if (checkOnly) { console.log('\n검사만 했습니다 (--check). 빌드하려면 npm run release\n'); return; }

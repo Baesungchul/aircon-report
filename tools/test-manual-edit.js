@@ -174,6 +174,39 @@ chk('같은 자리에 다시 넣으면 같은 이름이다 (찌꺼기가 안 쌓
   return E.imgName({ pi: 1, si: 2, ti: 3, ii: 0 }, 'jpg');
 });
 
+/* 부·칸을 중간에 끼워 넣으면 뒤 칸들이 한 자리씩 밀린다.
+   그때 새 자리가 밀려난 칸의 사진을 덮어쓰면 **남의 사진이 조용히 바뀐다.** */
+function two(srcA, srcB) {
+  return { ver: '2', lead: 'x', parts: [{ p: '1부', secs: [{
+    t: 'ㄱ', steps: [
+      { h: 'A', img: [{ src: srcA, shape: 'tall', cap: 'A' }] },
+      { h: 'B', img: [{ src: srcB, shape: 'tall', cap: 'B' }] }
+    ] }] }] };
+}
+
+chk('☠️ 다른 자리가 쓰는 파일 이름은 피한다', () => {
+  /* 2단계(B)가 이미 m1-1-1.jpg 를 쓰고 있는데 1단계(A)에 새 사진을 넣는 상황 —
+     자리에서 뽑은 이름이 딱 m1-1-1.jpg 라서 그냥 두면 B 의 사진이 바뀐다 */
+  const d = two('', 'm1-1-1.jpg');
+  const n = E.freeName(d, { pi: 0, si: 0, ti: 0, ii: 0 }, 'jpg');
+  must(n !== 'm1-1-1.jpg', '남의 사진을 덮어쓰는 이름을 골랐습니다: ' + n);
+  must(/^m1-1-1_\d+\.jpg$/.test(n), '이름 모양이 예상과 다릅니다: ' + n);
+  return n;
+});
+
+chk('내 자리가 쓰던 이름은 그대로 덮어쓴다 (바꿔 끼우기)', () => {
+  const d = two('m1-1-1.jpg', '');
+  same('m1-1-1.jpg', E.freeName(d, { pi: 0, si: 0, ti: 0, ii: 0 }, 'jpg'),
+       '바꿔 끼우는데 새 파일을 만들면 찌꺼기가 쌓입니다');
+  return 'm1-1-1.jpg';
+});
+
+chk('빈 설명서에서는 자리 이름을 그대로 쓴다', () => {
+  same('m1-1-1.jpg', E.freeName(two('', ''), { pi: 0, si: 0, ti: 0, ii: 0 }, 'jpg'),
+       '괜히 번호를 붙였습니다');
+  return 'm1-1-1.jpg';
+});
+
 console.log('\n── 편집 화면 ──');
 
 const EJS = fs.readFileSync(path.join(__dirname, 'manual_edit.js'), 'utf8');
@@ -188,6 +221,16 @@ chk('쓰기 전에 다시 읽어 확인하고, 다르면 되돌린다', () => {
   must((b.match(/fs\.writeFileSync\(DATA, before/g) || []).length >= 2,
        '틀렸을 때 되돌리는 자리가 모자랍니다 (읽기 실패·내용 불일치 둘 다 필요)');
   return '되돌림 2곳';
+});
+
+chk('이름을 짓기 전에 지금 글 파일을 읽는다', () => {
+  /* 자리 이름만 보고 지으면 위의 충돌을 영영 못 본다 — 실제 호출 자리를 확인한다 */
+  const at = EJS.indexOf("p === '/api/img'");
+  must(at > 0, '그림 올리는 자리를 못 찾았습니다');
+  const b = EJS.slice(at, at + 700);
+  must(/mutate\(\([\s\S]{0,20}\) => \{[\s\S]{0,200}freeName\(d, q, ext\)/.test(b),
+       '글 파일을 안 보고 이름을 정합니다 — 남의 사진을 덮어쓸 수 있습니다');
+  return 'freeName';
 });
 
 chk('지우기(rm)를 쓰지 않는다', () => {

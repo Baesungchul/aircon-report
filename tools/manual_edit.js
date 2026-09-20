@@ -244,6 +244,25 @@ function imgName(q, ext) {
          (q.ii ? '-' + (q.ii + 1) : '') + '.' + ext;
 }
 
+/* ☠️ 이름이 **자리**에서 나오기 때문에, 설명서 중간에 부나 칸을 새로 끼워 넣으면
+      뒤 칸들이 한 자리씩 밀린다. 그때 새 자리에 사진을 넣으면 밀려난 칸이
+      아직 쓰고 있는 파일을 **덮어써 버린다.** 남의 사진이 조용히 바뀐다.
+      그래서 다른 자리가 이미 쓰고 있는 이름이면 뒤에 번호를 붙여 피한다.
+      (내 자리가 쓰던 이름은 덮어써도 된다 — 바꿔 끼우는 것이니까) */
+function freeName(d, q, ext) {
+  const base = imgName(q, ext).replace(/\.[^.]+$/, '');
+  const used = Object.create(null);
+  (d.parts || []).forEach((p, pi) => (p.secs || []).forEach((s, si) =>
+    (s.steps || []).forEach((t, ti) => (t.img || []).forEach((im, ii) => {
+      if (!im.src) return;
+      if (pi === q.pi && si === q.si && ti === q.ti && ii === q.ii) return;
+      used[im.src] = true;
+    }))));
+  let n = base + '.' + ext;
+  for (let k = 2; used[n]; k++) n = base + '_' + k + '.' + ext;
+  return n;
+}
+
 /* ══════════════════════════════════════════════════════════════════
    3. 서버
    ══════════════════════════════════════════════════════════════════ */
@@ -317,9 +336,13 @@ const srv = http.createServer(async (req, res) => {
       const buf = Buffer.from(String(q.b64 || ''), 'base64');
       if (!buf.length) throw new Error('사진이 비어 있습니다');
       fs.mkdirSync(IMG_DIR, { recursive: true });
-      const name = imgName(q, ext);
-      fs.writeFileSync(path.join(IMG_DIR, name), buf);
-      await mutate((d) => { at(d, q).im.src = name; });
+      /* 이름은 **지금 글 파일을 보고** 정한다 — 남의 사진을 덮어쓰지 않으려고 */
+      const name = await mutate((d) => {
+        const n = freeName(d, q, ext);
+        fs.writeFileSync(path.join(IMG_DIR, n), buf);
+        at(d, q).im.src = n;
+        return n;
+      });
       return sendJSON(res, 200, { ok: true, name, kb: Math.round(buf.length / 1024) });
     }
 
@@ -693,4 +716,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { emit, parse, splitHead, norm, slit, esc, imgName };
+module.exports = { emit, parse, splitHead, norm, slit, esc, imgName, freeName };

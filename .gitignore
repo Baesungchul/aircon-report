@@ -51,3 +51,6 @@ build/
 npm-debug.log*
 *.log
 _secrets/
+
+# 설명서 미리보기 — npm run manual 이 만든다(고칠 때마다 새로 생김)
+manual-preview.html

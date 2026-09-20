@@ -51,5 +51,13 @@ window.KAKAO_JS_KEY = '7c6b3a6ba30f09cf55bbe5e82c4859f1';
       APK 에서 꺼내면 누구나 쓸 수 있고 쿼터는 이 계정에서 나간다.
       그래서 서버를 한 번 거친다 — functions 의 adminStats 가 앤트로픽 키를 다루는 방식과 같다.
    ⚠️ 주고받는 모양은 www/js/routing.js 주석에 적혀 있다. 서버를 만들 때 그대로 맞출 것.
+
+   ★ 2026-09-20 켰다. functions/index.js 의 naviRoute 를 asia-northeast3 에 배포하고
+     그 주소를 아래에 넣었다. 이제 실선(실제 도로 경로)과 주행거리·시간이 나온다.
+     ⚠️ 주소가 틀리거나 함수가 죽어도 **앱은 멀쩡하다** — 경로를 못 받으면 점선만
+        그대로 그린다(routing.js 는 절대 reject 하지 않는다). 그래서 여기를 비우는 것이
+        기능을 끄는 방법이기도 하다.
+     ⚠️ 로그인한 사람만 받는다(서버가 토큰을 본다). 로그인 안 한 사람에게는
+        조용히 점선만 보인다 — 오류가 아니다.
 ═══════════════════════════════════════════════════════════ */
 window.KAKAO_ROUTE_URL = 'https://asia-northeast3-work-report-826ec.cloudfunctions.net/naviRoute';

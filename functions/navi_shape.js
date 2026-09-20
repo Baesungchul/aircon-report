@@ -29,17 +29,26 @@ function shape(j) {
   }
   var sections = route.sections || [];
   var path = [];
+  var paths = [];
   var legs = [];
   sections.forEach(function (sec) {
     legs.push({ distance: sec.distance || 0, duration: sec.duration || 0 });
+    /* ⭐ 2026-09-20 구간(section)별로 따로 담는다.
+       앱이 구간마다 다른 색으로 그리고, 왔던 길을 되짚는 구간은 나란히 옆으로
+       밀어 두 줄로 보여 준다. 그러려면 어디부터 어디까지가 한 구간인지 알아야 한다.
+       ⚠️ path(전부 이어 붙인 것)도 그대로 둔다 — 옛 앱이 그걸 쓴다. 지우면 조용히 선이 사라진다. */
+    var one = [];
     (sec.roads || []).forEach(function (road) {
       var v = road.vertexes || [];
-      for (var i = 0; i + 1 < v.length; i += 2) path.push([v[i + 1], v[i]]);   // x,y → lat,lng
+      for (var i = 0; i + 1 < v.length; i += 2) one.push([v[i + 1], v[i]]);   // x,y → lat,lng
     });
+    paths.push(one);
+    path = path.concat(one);
   });
   if (path.length < 2) return { error: '경로 좌표가 없습니다' };
   return {
     path: path,
+    paths: paths,
     distance: (route.summary && route.summary.distance) || 0,
     duration: (route.summary && route.summary.duration) || 0,
     legs: legs

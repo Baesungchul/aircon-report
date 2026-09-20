@@ -281,15 +281,20 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
     /* ☠️ 2026-09-18 — 예전엔 경로가 오면 점선을 지웠다. 사용자 요청으로 **같이 둔다**:
        두 값이 같이 있어야 "직선 4km인데 돌아가느라 7km"가 읽힌다.
        ⚠️ 대신 겹칠 때 점선을 낮춰야 한다. 안 낮추면 어느 쪽이 진짜 길인지 모른다. */
+    /* ⚠️ 2026-09-20 구간마다 따로 그리게 바뀌어(dashed 가 배열) 글자 맞추기를 풀었다.
+       ☠️ 예전엔 drawLines 앞 1800자만 잘라 봤는데, 코드가 길어지자 멀쩡한데도
+          '실선을 안 그린다' 고 틀렸다. 자른 창 크기에 기대는 검사는 언젠가 이렇게 된다.
+          → 함수 전체를 본다. 실제로 그려지는지는 smoke-calmap 이 눌러서 확인한다. */
     const s = read('cal_map.js');
     const at = s.indexOf('function drawLines');
     must(at > 0, 'drawLines 를 못 찾았습니다');
-    const b = s.slice(at, at + 1800);
+    const end = s.indexOf('\n  /* ── 카드 아래 거리 줄', at);
+    const b = s.slice(at, end > at ? end : s.length);
     must(/strokeStyle: 'shortdash'/.test(b), '직선을 점선으로 안 그립니다');
     must(/strokeStyle: 'solid'/.test(b), '실제 경로를 실선으로 안 그립니다');
-    must(b.indexOf('dashed.setMap(null)') < 0,
+    must(b.indexOf('setMap(null)') < 0,
          '경로가 오면 점선을 지웁니다 — 직선과 주행을 나란히 볼 수 없습니다');
-    must(/dashed\.setOptions\(\{ strokeWeight: 2, strokeOpacity: 0\.3/.test(b),
+    must(/setOptions\(\{ strokeWeight: 2, strokeOpacity: 0\.28/.test(b),
          '겹칠 때 점선을 안 낮춥니다 — 두 선이 엉켜 어느 쪽이 길인지 모릅니다');
     return '점선 + 실선';
   });
@@ -299,9 +304,9 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
        처음부터 흐리게 그리면 지도가 비어 보인다 → 실선이 붙는 순간에만 낮춘다. */
     const s = strip(read('cal_map.js'));
     const at = s.indexOf('function drawLines');
-    const b = s.slice(at, at + 1800);
+    const b = s.slice(at);
     const first = b.indexOf('strokeOpacity: 0.65');
-    const dim = b.indexOf('strokeOpacity: 0.3');
+    const dim = b.indexOf('strokeOpacity: 0.28');
     must(first > 0, '점선을 원래 굵기로 안 그립니다');
     must(dim > first, '처음부터 흐리게 그립니다 — 경로가 없는 날 지도가 비어 보입니다');
     return '붙을 때만 낮춤';
@@ -311,10 +316,46 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
     /* 먼저 점선으로 그려 놓고, 답이 오면 바꿔 단다 */
     const s = strip(read('cal_map.js'));
     const at = s.indexOf('function drawLines');
-    const b = s.slice(at, at + 1200);
-    must(b.indexOf('new kakao.maps.Polyline') < b.indexOf('Routing.route'),
+    const b = s.slice(at);
+    /* 점선은 poly() 를 거쳐 그린다(2026-09-20) — 그 첫 호출이 Routing.route 보다 앞서야 한다 */
+    must(b.indexOf('poly(map,') < b.indexOf('Routing.route'),
          '경로를 받은 뒤에 선을 그립니다 — 응답이 늦으면 지도에 아무것도 없습니다');
     return '점선 먼저';
+  });
+
+  chk('카카오내비 추천경로로 길을 받는다', () => {
+    /* ☠️ 지도에 그리는 실선과, [길안내]로 넘어간 내비가 안내하는 길이 같아야 한다.
+       priority 를 TIME/DISTANCE 로 바꾸면 화면의 선·거리와 실제 안내가 달라진다 —
+       그런데 코드는 멀쩡히 돌아가서 한참 뒤에야 "거리가 다른데?" 로 드러난다.
+       (2026-09-20 사용자 요청) */
+    const fn = fs.readFileSync(path.join(ROOT, 'functions', 'index.js'), 'utf8');
+    const at = fn.indexOf('const NAVI_URL');
+    must(at > 0, 'naviRoute 자리를 못 찾았습니다');
+    const b = fn.slice(at);
+    must(/priority:\s*'RECOMMEND'/.test(b),
+         '추천경로(RECOMMEND)로 안 부릅니다 — 화면의 선과 내비 안내가 달라집니다');
+    must(!/priority:\s*'(TIME|DISTANCE)'/.test(b), '최단시간·최단거리로 부릅니다');
+    must(!/summary:\s*true/.test(b),
+         'summary 를 켜면 경로 좌표가 안 옵니다 — 실선을 못 그립니다');
+    return 'RECOMMEND';
+  });
+
+  chk('경로 기능이 켜져 있다 (주소가 채워져 있다)', () => {
+    /* ☠️ 비어 있으면 실선이 통째로 사라지고 점선만 남는다. 앱은 안 죽으니
+       **아무 오류도 안 나고 기능만 조용히 없어진다** — 그래서 검사로 묶어 둔다.
+       (2026-09-20 사용자가 실선을 요청해 켠 기능이다)
+       일부러 끄려면 이 검사도 같이 고칠 것. 끄는 건 결정이지 사고가 아니어야 한다.
+       ⚠️ 여기에 REST 키를 적으면 안 된다 — 그건 서버 시크릿이다. */
+    const c = read('config_map.js');
+    const m = c.match(/window\.KAKAO_ROUTE_URL\s*=\s*'([^']*)'/);
+    must(m, 'KAKAO_ROUTE_URL 줄을 못 찾았습니다');
+    const u = m[1];
+    must(u, '경로 주소가 비어 있습니다 — 실선(실제 도로)이 안 그려집니다');
+    must(/^https:\/\//.test(u), 'https 주소가 아닙니다: ' + u);
+    must(/naviRoute/.test(u), 'naviRoute 함수 주소가 아닙니다: ' + u);
+    must(!/KakaoAK|[0-9a-f]{32}/i.test(c.split('KAKAO_ROUTE_URL')[1] || ''),
+         'REST 키처럼 보이는 값이 앱에 들어 있습니다');
+    return '켜짐';
   });
 
   chk('내 위치를 지도 범위에 넣는다', () => {
@@ -354,16 +395,16 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
 
   chk('직선 거리는 경로 없이도 바로 채운다', () => {
     /* 좌표만 있으면 잴 수 있다. 경로 API 를 기다릴 이유가 없다 */
+    /* ☠️ 2026-09-20 — 예전엔 'var legOf' 를 기준으로 600자를 잘라 봤다.
+       legOf 가 모듈 변수로 올라가자(카드 색도 쓴다) **엉뚱한 자리**를 잡아
+       멀쩡한 코드를 틀렸다고 했다. 이름·자리에 기대지 말고 하는 일로 찾는다. */
     const s = strip(read('cal_map.js'));
-    const at = s.indexOf('var legOf');
-    must(at > 0, '거리 계산 자리를 못 찾았습니다');
-    const b = s.slice(at, at + 600);
-    must(/setDist\(L\.i, MyLoc\.distance\([\s\S]{0,60}, 0\)/.test(b),
-         '직선을 바로 안 채웁니다 — 경로가 꺼져 있으면 거리가 영영 안 보입니다');
+    const fill = s.search(/setDist\(L\.i, MyLoc\.distance\([\s\S]{0,60}, 0\)/);
+    must(fill > 0, '직선을 바로 안 채웁니다 — 경로가 꺼져 있으면 거리가 영영 안 보입니다');
     /* 경로를 부르기 **전에** 채우는지 (호출 자리와 비교한다 — 함수 정의가 아니라) */
-    const call = s.indexOf('drawLines(map, linePts');
+    const call = s.search(/drawLines\(map,[^)]*linePts/);
     must(call > 0, 'drawLines 호출부를 못 찾았습니다');
-    must(at < call, '경로를 부른 뒤에 직선을 잽니다 — 응답이 늦으면 거리가 한참 비어 있습니다');
+    must(fill < call, '경로를 부른 뒤에 직선을 잽니다 — 응답이 늦으면 거리가 한참 비어 있습니다');
     return '즉시';
   });
 

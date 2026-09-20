@@ -271,6 +271,13 @@
     persist();
   };
   Subs.planInfo = function () { load(); return PLANS[effPlan()] || PLANS.free; };
+  /* ★ 2026-09-20 — 남의 플랜 정보를 이름·한도만 꺼내 볼 길(관리자 화면이 쓴다).
+     ⚠️ PLANS 를 통째로 내주지 않는다. 밖에서 고치면 한도가 조용히 달라진다.
+        그래서 **복사본**을 준다 — 받아서 고쳐도 원본은 그대로다. */
+  Subs.planOf = function (k) {
+    var p = PLANS[k];
+    return p ? JSON.parse(JSON.stringify(p)) : null;
+  };
 
   /* ── 팀 인원 상한 (2026-09-07) ────────────────────────────────────────────
      ☠️ 이 숫자는 **팀장 본인을 포함**한다. teams.js 가 팀을 만들 때 owner 를

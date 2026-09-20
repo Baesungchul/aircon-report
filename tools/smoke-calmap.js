@@ -25,12 +25,34 @@ window.kakao = { maps: {
   LatLngBounds: function(){ this.extend=()=>{}; },
   Point: function(x,y){ this.x=x; this.y=y; },
   Map: function(box, o){ box.setAttribute('data-map','1'); this._box=box;
-    this.setBounds=()=>{}; this.setLevel=()=>{}; this.panTo=()=>{ window.__panned=(window.__panned||0)+1; };
+    this.setLevel=()=>{}; this.panTo=()=>{ window.__panned=(window.__panned||0)+1; };
     this.getCenter=()=>({getLat:()=>37,getLng:()=>127});
+    /* ⚠️ 겹친 구간을 옆으로 미는 간격은 화면 기준(px)이라 m/px 를 알아야 한다.
+       그걸 지도 범위에서 구하므로 가짜에도 범위가 있어야 한다 — 없으면 간격이 0 이
+       되어 '안 밀림'이 되고, 겹침 검사가 **조용히 통과**한다(실제로 한 번 당할 뻔했다).
+       ☠️ 그리고 setBounds 로 **범위가 실제로 바뀌어야 한다.** 가짜가 setBounds 를
+          빈 함수로 두면 처음 잰 m/px 가 끝까지 맞아, '자리를 잡은 뒤 다시 재는' 대목을
+          지워도 검사가 통과한다(변형 시험에서 실제로 빠져나갔다).
+          → 처음엔 좁게(0.05°), setBounds 뒤엔 넓게(0.5°). 열 배 차이라 안 다시 재면 티가 난다. */
+    this.__span=0.05;
+    /* ⚠️ setBounds 는 범위만 바꾸고 zoom_changed 를 **안** 쏜다.
+       카카오도 배율이 실제로 바뀔 때만 쏘고, 무엇보다 여기서 쏴 버리면
+       '자리 잡은 뒤 다시 재기'와 '사용자가 확대했을 때 다시 재기' 두 길이
+       서로를 가려 준다 — 하나를 지워도 다른 하나가 메워서 검사가 통과한다.
+       두 길을 따로 볼 수 있게 갈라 둔다. 확대는 __zoom() 으로 따로 흉내 낸다. */
+    this.setBounds=()=>{ this.__span=0.5; };
+    this.__zoom=(sp)=>{ this.__span=sp; if(this.__h&&this.__h.zoom_changed) this.__h.zoom_changed(); };
+    window.__map=this;
+    this.getBounds=()=>({ getSouthWest:()=>new kakao.maps.LatLng(37.0,127.0),
+                          getNorthEast:()=>new kakao.maps.LatLng(37.0+this.__span,127.0+this.__span) });
     this.getProjection=()=>({coordsFromContainerPoint:()=>new kakao.maps.LatLng(37,127)}); },
   Marker: function(o){ window.__markers=(window.__markers||0)+1; this.setMap=()=>{}; },
   Polyline: function(o){ window.__poly=o; (window.__polys=window.__polys||[]).push(o);
     this.setMap=function(m){ if(m===null) o.__off=1; };
+    /* ☠️ setPath 가 없으면 '지도가 자리를 잡은 뒤 간격을 다시 재는' 대목이
+       try/catch 에 먹혀 **아무 일도 안 하고 통과한다**. 진짜 카카오 Polyline 에는 있다.
+       가짜가 진짜보다 기능이 적으면, 그 차이만큼 검사가 눈을 감는다. */
+    this.setPath=function(p){ o.path=p; o.__repathed=(o.__repathed||0)+1; };
     this.setOptions=function(x){ for(var k in x) o[k]=x[k]; o.__dimmed=1; }; },
   CustomOverlay: function(o){ window.__pins=(window.__pins||0)+1;
     var box = (o.map && o.map._box) || document.querySelector('#calMapBox');
@@ -188,6 +210,7 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
     window.KAKAO_ROUTE_URL = 'https://fake.example/route';
     window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({
       path: [[37.05,127.15],[37.0,127.1],[37.1,127.2]],
+      paths: [[[37.05,127.15],[37.0,127.1]], [[37.0,127.1],[37.1,127.2]]],
       distance: 12000, duration: 1500,
       legs: [{ distance: 5000, duration: 600 }, { distance: 7000, duration: 900 }]
     }) });
@@ -197,11 +220,27 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
     { title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' },
     { title: 'B', sub: '', time: '13:00', addr: '평택시 비전동 2' }]));
   await page.waitForTimeout(700);
-  ok('선이 두 가닥이다 (직선 + 실제 경로)', await page.evaluate(() => (window.__polys || []).length) === 2);
+  /* ★ 2026-09-20 구간마다 따로 그린다 — 점선 2 + (흰테두리+색선) × 2 = 6 */
+  ok('구간마다 점선을 하나씩 긋는다 (2구간)', await page.evaluate(() =>
+    (window.__polys || []).filter(p => p.strokeStyle === 'shortdash').length) === 2);
   ok('점선을 지우지 않는다', await page.evaluate(() => !window.__polys[0].__off));
-  ok('겹칠 땐 점선을 낮춘다', await page.evaluate(() => window.__polys[0].strokeOpacity) === 0.3);
-  ok('실제 경로는 진한 실선이다', await page.evaluate(() =>
-    window.__polys[1].strokeStyle === 'solid' && window.__polys[1].strokeWeight === 5));
+  ok('겹칠 땐 점선을 낮춘다', await page.evaluate(() => window.__polys[0].strokeOpacity) === 0.28);
+  ok('구간마다 색이 다르다', await page.evaluate(() => {
+    var d = window.__polys.filter(p => p.strokeStyle === 'shortdash').map(p => p.strokeColor);
+    return d.length === 2 && d[0] !== d[1];
+  }));
+  ok('실제 경로는 흰 테두리 위에 진한 실선이다', await page.evaluate(() => {
+    var sol = window.__polys.filter(p => p.strokeStyle === 'solid');
+    var cas = sol.filter(p => p.strokeColor === '#ffffff' && p.strokeWeight === 8);
+    var col = sol.filter(p => p.strokeColor !== '#ffffff' && p.strokeWeight === 5);
+    return cas.length === 2 && col.length === 2 && col[0].strokeColor !== col[1].strokeColor;
+  }));
+  ok('선 색과 카드 색이 같다', await page.evaluate(() => {
+    var col = window.__polys.filter(p => p.strokeStyle === 'solid' && p.strokeWeight === 5)
+                            .map(p => p.strokeColor.toLowerCase());
+    var c1 = document.querySelector('.cm-card[data-i="1"]');
+    return !!c1 && col.indexOf((c1.style.getPropertyValue('--seg') || '').trim().toLowerCase()) >= 0;
+  }));
   const d0 = (await page.locator('.cm-card-dist[data-i="0"]').innerText()).trim();
   ok('첫 카드에 직선·주행이 같이 나온다 (' + d0 + ')', /직선/.test(d0) && /주행/.test(d0));
   ok('첫 구간 주행이 5km · 10분 이다', /주행 5\.0km 10분/.test(d0));
@@ -210,6 +249,150 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   ok('머리줄에 총 주행거리·시간이 뜬다',
      /주행 12km/.test((await page.locator('#calMapHeadSub').innerText())));
   await page.evaluate(() => CalMap.close());
+
+  /* ══ [A4] 왔던 길을 되짚으면 두 줄로 갈라 그린다 ══ 2026-09-20 사용자 요청
+     ☠️ 같은 길을 왕복하면 두 구간이 **정확히 같은 자리**에 그려져 한 줄로 보인다.
+        나중에 그린 색만 남아 "갔다가 돌아왔다"가 지도에서 사라진다.
+     tools/test-segsplit.js 가 기하를 따로 재지만, 여기서는 **끝까지 이어 붙였을 때**
+     실제로 갈라지는지를 본다 — 지도 배율에서 m/px 를 구하는 대목이 중간에 있어서,
+     그게 0 이면 계산은 맞는데 화면에서는 안 밀린다. */
+  console.log('\n[A3-2] 되짚는 길을 두 줄로 (2026-09-20)');
+  await page.evaluate(() => {
+    /* 2번 구간이 1번 구간을 그대로 되짚는다 */
+    window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({
+      path: [[37.00,127.00],[37.02,127.00],[37.00,127.00]],
+      paths: [[[37.00,127.00],[37.02,127.00]], [[37.02,127.00],[37.00,127.00]]],
+      distance: 4000, duration: 600,
+      legs: [{ distance: 2000, duration: 300 }, { distance: 2000, duration: 300 }]
+    }) });
+    window.__geoMode = 'none'; window.__polys = []; if (window.MyLoc) MyLoc.forget();
+  });
+  /* ☠️ 마지막 일정이 **첫 일정과 같은 자리**다 — 그래야 갔다가 돌아오는 날이 된다.
+     서로 다른 세 곳을 쓰면 직선(점선)은 애초에 안 겹쳐서, 점선 쪽 검사가
+     '겹치는 게 없어서' 통과해 버린다(실제로 한 번 그렇게 써서 헛통과했다). */
+  await page.evaluate(() => CalMap.open('9월 20일 (일)', [
+    { title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' },
+    { title: 'B', sub: '', time: '11:00', addr: '평택시 비전동 2' },
+    { title: 'A 다시', sub: '', time: '13:00', addr: '평택시 비전동 1' }]));
+  await page.waitForTimeout(800);
+
+  const split = await page.evaluate(() => {
+    var col = (window.__polys || []).filter(p => p.strokeStyle === 'solid' && p.strokeWeight === 5);
+    if (col.length !== 2) return { n: col.length };
+    var a = col[0].path, b = col[1].path;
+    /* 두 선이 같은 자리에 있는지 — 가장 가까운 점끼리의 거리 중 최솟값을 본다 */
+    var min = Infinity;
+    a.forEach(function (p) {
+      b.forEach(function (q) {
+        var dy = (q.getLat() - p.getLat()) * 111320;
+        var dx = (q.getLng() - p.getLng()) * 111320 * Math.cos(p.getLat() * Math.PI / 180);
+        min = Math.min(min, Math.sqrt(dx * dx + dy * dy));
+      });
+    });
+    return { n: col.length, min: min, c: col.map(function (p) { return p.strokeColor; }) };
+  });
+  ok('되짚는 구간이 두 줄로 그려진다', split.n === 2);
+  ok('두 줄이 서로 떨어져 있다 (' + (split.min || 0).toFixed(1) + 'm)',
+     split.min > 1);
+  /* ☠️ 간격은 **지도가 자리를 잡은 뒤의** 배율 기준이어야 한다.
+     처음 그릴 때의 m/px 로 두면 화면에서 두 줄이 붙어 보인다(열 배 차이).
+     가짜 지도가 setBounds 에서 범위를 열 배로 넓히므로, 안 다시 재면 여기서 걸린다. */
+  const want = await page.evaluate(() => {
+    var box = document.querySelector('#calMapBox');
+    var mPerDeg = 111320 * Math.cos(37 * Math.PI / 180);
+    return (0.5 * mPerDeg) / (box.clientWidth || 1) * 6;     // 넓힌 범위 × GAP_PX
+  });
+  ok('간격이 자리 잡은 배율 기준이다 (' + split.min.toFixed(0) + ' / ' + want.toFixed(0) + 'm)',
+     Math.abs(split.min - want) < want * 0.35);
+  ok('두 줄 색이 다르다', !!split.c && split.c[0] !== split.c[1]);
+  /* ☠️ 점선은 **지도가 자리를 잡기 전에** 그려진다(경로는 답이 온 뒤라 늦게 그려진다).
+     그래서 '자리 잡은 뒤 다시 재기'가 빠지면 **점선만** 간격이 틀린다 —
+     실선만 재면 그 빠진 걸 못 잡는다(변형 시험에서 실제로 빠져나갔다). 점선을 직접 잰다. */
+  const dashGap = await page.evaluate(() => {
+    var d = (window.__polys || []).filter(p => p.strokeStyle === 'shortdash');
+    if (d.length !== 2) return -1;
+    var min = Infinity;
+    d[0].path.forEach(function (p) {
+      d[1].path.forEach(function (q) {
+        var dy = (q.getLat() - p.getLat()) * 111320;
+        var dx = (q.getLng() - p.getLng()) * 111320 * Math.cos(p.getLat() * Math.PI / 180);
+        min = Math.min(min, Math.sqrt(dx * dx + dy * dy));
+      });
+    });
+    return min;
+  });
+  ok('점선도 구간마다 갈라진다', dashGap > 1);
+  ok('점선 간격도 자리 잡은 배율 기준이다 (' + dashGap.toFixed(0) + ' / ' + want.toFixed(0) + 'm)',
+     Math.abs(dashGap - want) < want * 0.35);
+
+  /* 사용자가 손가락으로 확대했을 때도 같은 px 간격을 지켜야 한다.
+     안 지키면 확대할수록 두 줄이 벌어져 '딴 길'처럼 보인다. */
+  const zoomed = await page.evaluate(() => {
+    window.__map.__zoom(0.05);                    // 열 배 확대
+    var d = (window.__polys || []).filter(p => p.strokeStyle === 'shortdash');
+    var min = Infinity;
+    d[0].path.forEach(function (p) {
+      d[1].path.forEach(function (q) {
+        var dy = (q.getLat() - p.getLat()) * 111320;
+        var dx = (q.getLng() - p.getLng()) * 111320 * Math.cos(p.getLat() * Math.PI / 180);
+        min = Math.min(min, Math.sqrt(dx * dx + dy * dy));
+      });
+    });
+    return min;
+  });
+  ok('확대하면 간격도 같이 좁아진다 (' + zoomed.toFixed(0) + ' / ' + (want / 10).toFixed(0) + 'm)',
+     Math.abs(zoomed - want / 10) < (want / 10) * 0.35);
+  await page.evaluate(() => CalMap.close());
+
+  /* ── 실선(실제 도로)이 **길 일부만** 겹칠 때 ──
+     ☠️ 진짜 경로는 구간 전체가 똑같이 겹치는 일이 드물다. 큰길은 같이 타고
+        끝에서 갈라진다. 위 검사는 '통째로 되짚는' 쉬운 경우라 여기서 한 번 더 본다:
+        **겹치는 가운데만 벌어지고, 갈라지는 끝은 제자리**여야 한다.
+        끝까지 밀면 멀쩡한 길이 도로에서 비껴 나간다 — 그게 더 나쁘다. */
+  await page.evaluate(() => {
+    window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({
+      path: [[37.00,127.00],[37.01,127.00],[37.02,127.00],[37.03,127.01]],
+      paths: [
+        [[37.00,127.00],[37.01,127.00],[37.02,127.00]],          /* 아래→위 (큰길) */
+        [[37.02,127.00],[37.01,127.00],[37.00,127.00],[37.00,127.02]]  /* 되짚다가 끝에서 갈라짐 */
+      ],
+      distance: 6000, duration: 900,
+      legs: [{ distance: 3000, duration: 450 }, { distance: 3000, duration: 450 }]
+    }) });
+    window.__geoMode = 'none'; window.__polys = []; if (window.MyLoc) MyLoc.forget();
+  });
+  await page.evaluate(() => CalMap.open('9월 20일 (일)', [
+    { title: 'A', sub: '', time: '09:00', addr: '평택시 비전동 1' },
+    { title: 'B', sub: '', time: '11:00', addr: '평택시 비전동 2' },
+    { title: 'C', sub: '', time: '13:00', addr: '평택시 비전동 3' }]));
+  await page.waitForTimeout(800);
+
+  const part = await page.evaluate(() => {
+    var col = (window.__polys || []).filter(p => p.strokeStyle === 'solid' && p.strokeWeight === 5);
+    if (col.length !== 2) return { n: col.length };
+    var b = col[1].path;                       // 되짚는 쪽
+    var m = (p, q) => {
+      var dy = (q.lat - p.getLat()) * 111320;
+      var dx = (q.lng - p.getLng()) * 111320 * Math.cos(q.lat * Math.PI / 180);
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+    return {
+      n: col.length,
+      /* 겹치는 가운데 점(37.01) 은 밀려야 하고 */
+      mid: m(b[1], { lat: 37.01, lng: 127.00 }),
+      /* 갈라져 나가는 끝점(37.00,127.02) 은 제자리여야 한다 */
+      end: m(b[3], { lat: 37.00, lng: 127.02 })
+    };
+  });
+  ok('실선도 구간별로 둘이다', part.n === 2);
+  ok('겹치는 가운데는 옆으로 밀린다 (' + (part.mid || 0).toFixed(0) + 'm)', part.mid > 1);
+  ok('갈라지는 끝은 제자리다 (' + (part.end || 0).toFixed(2) + 'm)', part.end < 0.5);
+  await page.evaluate(() => CalMap.close());
+  await page.evaluate(() => { window.__geoMode = 'ok'; if (window.MyLoc) MyLoc.forget(); });
+  /* ☠️ 이 칸은 내 위치를 끄고 돌았다(구간 수를 2로 맞추려고).
+     뒤 칸들은 내 위치가 있다고 보고 첫 카드의 직선거리를 잰다 — 되돌려 놓지 않으면
+     **뒤 칸이 엉뚱하게 실패한다**(실제로 한 번 그랬다). 빌린 상태는 그 자리에서 갚는다. */
+  await page.evaluate(() => { window.__geoMode = 'ok'; if (window.MyLoc) MyLoc.forget(); });
 
   /* 구간 수가 안 맞게 오면 주행은 안 적고 직선만 남아야 한다 */
   await page.evaluate(() => {
@@ -261,6 +444,9 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   ok('복귀는 처음엔 꺼져 있다', await page.evaluate(() => MyPlaces.returnTo()) === '');
   ok('그래서 카드는 작업 2장뿐', await page.locator('.cm-card').count() === 2);
 
+  /* ☠️ 가짜 Polyline 은 다시 그려도 계속 쌓기만 한다. 비우지 않고 세면
+     앞에서 그린 선까지 같이 세어 **아무 숫자나 맞아 버린다**(실제로 한 번 당했다). */
+  await page.evaluate(() => { window.__polys = []; });
   await page.locator('.cm-chip[data-ret="home"]').click();
   await page.waitForTimeout(500);
   ok('누르면 그 칩이 켜진 표시가 된다',
@@ -269,8 +455,9 @@ Object.defineProperty(navigator, 'geolocation', { configurable: true, get: funct
   ok('복귀 카드에는 번호 대신 이름이 들어간다',
      (await page.locator('.cm-card[data-i="2"] .cm-num-place').innerText()).trim() === '집');
   ok('복귀 카드도 길안내를 준다', await page.locator('.cm-card[data-i="2"] .cm-nav').count() === 1);
-  ok('동선 선이 복귀까지 이어진다 (내 위치+2곳+복귀=4점)',
-     await page.evaluate(() => (window.__polys.slice(-1)[0].path || []).length) === 4);
+  ok('복귀까지 구간이 하나 늘어난다 (내 위치+2곳+복귀 = 3구간)',
+     await page.evaluate(() => (window.__polys || [])
+       .filter(p => p.strokeStyle === 'shortdash').length) === 3);
 
   await page.locator('.cm-chip[data-ret="home"]').click();
   await page.waitForTimeout(400);

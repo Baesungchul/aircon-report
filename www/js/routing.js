@@ -16,11 +16,17 @@
        다루는 방식과 같다.
 
    서버가 돌려줄 모양(그대로 그릴 수 있게 미리 정한다):
-     { path: [[lat,lng], ...],        // 이어 그릴 좌표. 없으면 실패로 본다
+     { path:  [[lat,lng], ...],       // 전부 이어 붙인 좌표. 없으면 실패로 본다
+       paths: [[[lat,lng], ...], ...], // 구간별 좌표 (2026-09-20) — 없을 수도 있다
        distance: 12345,               // m
        duration: 1800,                // 초
        legs: [{ distance, duration }] // 구간별(출발→1번, 1번→2번 …)
      }
+   ⭐ paths 가 왜 따로 있나 — 앱이 구간마다 색을 달리 칠하고, 왔던 길을 되짚는
+      구간은 나란히 옆으로 밀어 두 줄로 보여 준다. 이어 붙인 path 하나로는
+      어디부터 어디까지가 한 구간인지 알 수 없다.
+   ⚠️ paths 가 안 와도 동작해야 한다(서버가 아직 옛 판일 수 있다) —
+      그때는 path 하나를 한 색으로 긋는다.
 
    ⚠️ 카카오 쪽 응답은 x=경도, y=위도 순서다(위도·경도가 아니다).
       서버에서 [lat,lng] 로 바꿔 보내기로 한다 — 앱에서 뒤집으면 언젠가 한 번은
@@ -93,6 +99,9 @@
             if (!j || !Array.isArray(j.path) || j.path.length < 2) { finish(null); return; }
             finish({
               path: j.path,
+              /* ☠️ 여기서 빠뜨리면 구간 색이 조용히 한 색으로 돌아간다.
+                 서버·앱 둘 다 맞는데 이 한 줄이 없어서 안 되는 꼴 — 찾기 어렵다. */
+              paths: Array.isArray(j.paths) ? j.paths : null,
               distance: j.distance || 0,
               duration: j.duration || 0,
               legs: Array.isArray(j.legs) ? j.legs : []

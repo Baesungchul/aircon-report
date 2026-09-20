@@ -3247,3 +3247,128 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .sync-warn-banner .sw-tx{flex:1;min-width:0;}
 .sync-warn-banner .sw-x{flex:0 0 auto;width:28px;height:28px;border-radius:8px;border:none;
   background:rgba(255,255,255,.18);color:#fff;font-size:13px;cursor:pointer;font-family:inherit;}
+
+/* ── 사용 설명서 (2026-09-19) ─────────────────────────────────────
+   설정 ▸ 소개 ▸ [사용 설명서 보기]. 큰제목만 죽 있고 누르면 펼쳐진다.
+   ⚠️ 지도(.cm-ov 3800)보다 위, 주소 찍기(.mp-ov 4000)와 같은 층에 둔다 —
+      설명서 위에 다른 전체화면이 뜰 일은 없다. */
+.mn-ov{position:fixed;inset:0;z-index:4000;background:var(--bg);display:flex;flex-direction:column;
+  overscroll-behavior:contain;}
+.mn-head{display:flex;align-items:center;gap:10px;flex:0 0 auto;
+  padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top,0));
+  border-bottom:1px solid var(--bd);background:var(--sf);}
+.mn-title{flex:1;min-width:0;font-size:16px;font-weight:800;color:var(--tx);
+  -webkit-user-select:none;user-select:none;}
+.mn-x{flex:0 0 auto;width:36px;height:36px;border-radius:10px;border:1px solid var(--bd);
+  background:var(--sf2);color:var(--tx);font-size:15px;cursor:pointer;font-family:inherit;}
+.mn-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:14px 14px calc(28px + env(safe-area-inset-bottom,0));}
+.mn-lead{font-size:12.5px;color:var(--slate,var(--mu));line-height:1.7;margin-bottom:16px;}
+
+.mn-part{font-size:11.5px;font-weight:800;color:var(--ac);letter-spacing:.02em;
+  margin:18px 0 8px;}
+.mn-part:first-of-type{margin-top:0;}
+
+.mn-item{border:1px solid var(--bd);border-radius:12px;background:var(--sf);
+  margin-bottom:8px;overflow:hidden;}
+.mn-item.on{border-color:var(--ac);}
+.mn-h{display:flex;align-items:center;gap:10px;width:100%;
+  padding:13px 14px;border:0;background:transparent;cursor:pointer;
+  font-family:inherit;text-align:left;color:var(--tx);}
+.mn-ht{flex:1;min-width:0;font-size:14.5px;font-weight:800;line-height:1.45;}
+.mn-ht em{display:block;margin-top:3px;font-style:normal;
+  font-size:11.5px;font-weight:600;color:var(--mu);line-height:1.5;}
+.mn-ar{flex:0 0 auto;font-size:12px;color:var(--mu);transition:transform .15s;}
+.mn-item.on .mn-ar{transform:rotate(180deg);color:var(--ac);}
+.mn-b{padding:2px 14px 14px;border-top:1px solid var(--bd);}
+
+.mn-steps{margin:12px 0 0;padding:0 0 0 2px;list-style:none;counter-reset:mn;}
+.mn-steps li{position:relative;padding-left:28px;margin-bottom:16px;counter-increment:mn;}
+.mn-steps li:last-child{margin-bottom:0;}
+.mn-steps li::before{content:counter(mn);position:absolute;left:0;top:1px;
+  width:19px;height:19px;border-radius:50%;background:var(--brand-soft);color:var(--ac);
+  font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.mn-steps li b{display:block;font-size:13.5px;font-weight:800;color:var(--tx);line-height:1.5;}
+.mn-steps li span b{display:inline;font-size:inherit;color:var(--tx);}
+.mn-steps li span{display:block;margin-top:3px;font-size:12.5px;
+  color:var(--slate,var(--mu));line-height:1.75;}
+
+.mn-tip{margin-top:13px;padding:10px 12px;border-radius:10px;
+  background:var(--brand-soft);color:var(--ac);font-size:12px;font-weight:700;line-height:1.6;}
+
+.mn-pics{margin-top:9px;display:flex;flex-direction:column;gap:10px;}
+/* 단계 안에 들어간 그림 — 글 아래로 살짝 물려 단계에 붙어 보이게 한다 */
+.mn-steps .mn-pics{margin-top:8px;margin-bottom:2px;}
+.mn-steps li b + .mn-pics{margin-top:6px;}
+.mn-fig{margin:0;}
+.mn-fig img{display:block;width:100%;height:auto;border-radius:10px;border:1px solid var(--bd);
+  background:var(--sf2);cursor:zoom-in;}
+.mn-fig figcaption{margin-top:5px;font-size:11.5px;color:var(--mu);line-height:1.6;}
+
+/* ☠️ 세로로 긴 그림(휴대폰 화면 통째로)을 width:100% 로 두면 **화면 한 장을 통째로 먹는다.**
+   390px 폭에서 9:19.5 캡처는 높이가 845px — 설명 한 줄 읽자고 한 화면을 넘겨야 한다.
+   → 세로 그림은 폭을 묶어 가운데 놓는다. 가로/세로 판단은 manual.js 가 **그림을 실제로
+     불러와서** 한다(사람이 표시를 빠뜨려도 알아서 맞는다). 눌러서 크게 볼 수 있다. */
+.mn-fig-tall img{width:auto;max-width:200px;max-height:430px;margin:0 auto;}
+.mn-fig-tall figcaption{text-align:center;}
+
+/* 빈 자리는 만드는 사람에게만 보인다 (머리줄 제목 다섯 번).
+   ⚠️ 액자 모양이 실제로 들어갈 그림과 달라야 할 이유가 없다 — 다르면 '이 비율로 어떻게
+      넣지' 가 된다. shape:'tall' 을 적은 칸은 액자도 세로로 세운다. */
+.mn-slotbox{display:flex;align-items:center;justify-content:center;height:120px;
+  border:1px dashed var(--bd);border-radius:10px;background:var(--sf2);
+  font-size:11.5px;color:var(--mu);}
+.mn-slot-tall .mn-slotbox{width:200px;height:415px;margin:0 auto;}
+.mn-slot-tall figcaption{text-align:center;}
+
+/* ── 세로 그림 한 장짜리 단계: 글 왼쪽 / 그림 오른쪽 ── 2026-09-20
+   ☠️ 세로 캡처를 글 아래에 깔면 단계 하나가 화면 절반을 먹는다(430px).
+      옆으로 돌리면 같은 내용이 절반 높이에 들어간다.
+
+   ⚠️ grid 로 두 칸을 나눴더니 **글이 짧은 단계는 왼쪽 아래가 통째로 비었다.**
+      아낀 높이를 다른 모양으로 도로 까먹는 꼴이다.
+      → float 로 바꾼다. 글이 짧으면 그림 옆에서 끝나고, 길면 그림 **아래로 흘러**
+        폭을 전부 쓴다. 단계마다 글 길이가 제각각이라 이쪽이 맞다.
+   ⚠️ 그림 칸을 넓게 잡으면 글이 한 줄에 열 자도 안 들어간다.
+      390px 폭에서 글칸이 180px 는 남아야 읽힌다 → 그림은 112px.
+      그 폭이면 화면 생김새는 알아보고, 자세히는 눌러서 크게 본다.
+   ⚠️ 가로 조각에는 안 쓴다 — 절반 폭이면 가리키는 버튼이 안 보인다.
+   ⚠️ li::before 는 번호 배지가 쓰고 있다. 띄움 해제는 ::after 로 한다. */
+.mn-li-split > .mn-pics{float:right;width:112px;margin:2px 0 6px 12px;}
+.mn-li-split::after{content:'';display:block;clear:both;}
+.mn-li-split .mn-fig-tall img{max-width:100%;max-height:none;}
+.mn-li-split .mn-slot-tall .mn-slotbox{width:100%;height:240px;}
+/* ⚠️ 좁은 칸에서는 설명이 여덟 줄까지 늘어나 아낀 높이를 도로 까먹는다.
+   세 줄로 끊는다 — 지금 들어 있는 긴 문구는 '무엇을 찍어 올지' 메모라서
+   그림을 넣을 때 짧게 고치거나 지우면 이 제한에 걸리지 않는다. */
+.mn-li-split figcaption{text-align:left;font-size:10px;line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+/* 화면이 넓으면 그림을 키운다 (태블릿·가로·PC 미리보기) */
+@media (min-width:520px){
+  .mn-li-split > .mn-pics{width:180px;}
+  .mn-li-split .mn-slot-tall .mn-slotbox{height:385px;}
+  .mn-li-split figcaption{font-size:10.5px;}
+}
+
+/* 눌러서 크게 보기 — 세로 그림을 200px 로 묶은 대신 열어 볼 길을 준다 */
+.mn-zoom{position:fixed;inset:0;z-index:4200;background:rgba(0,0,0,.93);
+  display:flex;align-items:center;justify-content:center;padding:14px;}
+.mn-zoom img{max-width:100%;max-height:100%;border-radius:8px;display:block;}
+.mn-zoom-x{position:absolute;top:calc(10px + env(safe-area-inset-top,0));right:12px;
+  width:38px;height:38px;border-radius:10px;border:0;background:rgba(255,255,255,.16);
+  color:#fff;font-size:15px;cursor:pointer;font-family:inherit;}
+
+.mn-end{margin-top:22px;font-size:11.5px;color:var(--mu);line-height:1.7;text-align:center;}
+
+/* ── 동선 구간 색 (2026-09-20) ────────────────────────────────────
+   선·핀·카드를 같은 색으로 묶는다. 색은 cal_map.js 의 SEG 가 --seg 로 넣어 준다.
+   ☠️ 지도 위 요소(핀)는 **밝기 모드와 무관하게** 그 색 그대로 쓴다 —
+      지도 타일이 늘 밝기 때문이다. 카드는 앱 배경 위라서 테두리·점으로만 쓴다.
+   ⚠️ --seg 가 없을 때(출발점 카드 등)는 이 규칙이 아예 안 걸리게
+      .cm-card-seg / --seg 가 있을 때만 칠한다. 빈 var() 로 색이 검정이 되면 안 된다. */
+.cm-pin[style*="--seg"]{background:var(--seg);}
+.cm-pin[style*="--seg"].on{background:var(--seg);filter:brightness(1.15);}
+.cm-card-seg{border-color:var(--seg);}
+.cm-card-seg.on{border-color:var(--seg);box-shadow:inset 0 0 0 1px var(--seg);}
+/* 카드 번호에도 같은 색 — 선을 보고 카드를 찾는 길이 하나 더 생긴다 */
+.cm-card-seg .cm-num{background:var(--seg);}

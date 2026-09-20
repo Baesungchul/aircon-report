@@ -1273,6 +1273,14 @@ exports.naviRoute = onRequest(
       origin: xy(pts[0]),
       destination: xy(pts[pts.length - 1]),
       waypoints: pts.slice(1, -1).map(xy),
+      /* ☠️ priority 는 바꾸지 말 것 — 'RECOMMEND' 가 **카카오내비의 추천경로**다.
+         지도에 그리는 실선과, 카드에서 [길안내]로 넘어간 뒤 내비가 안내하는 길이
+         같아야 한다. 'TIME'(최단시간)·'DISTANCE'(최단거리)로 바꾸면 화면의 선과
+         실제 안내가 달라져 "앱이 알려준 거리랑 다른데?" 가 된다.
+         (2026-09-20 사용자 요청: "실선 길안내가 카카오내비 기준 추천경로로")
+         ⚠️ RECOMMEND 는 실시간 교통을 본다 — 같은 날이라도 시간대에 따라
+            경로와 소요시간이 달라진다. 그게 맞는 동작이다.
+         ⚠️ summary 를 켜면 sections·roads 가 통째로 빠져 **선을 못 그린다.** 넣지 말 것. */
       priority: 'RECOMMEND',
       car_fuel: 'GASOLINE',
       car_hipass: false,

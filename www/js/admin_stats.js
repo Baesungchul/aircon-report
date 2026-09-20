@@ -387,6 +387,16 @@
       h += row('계정 정리', bad('표시 실패'), '이 항목을 그리지 못했습니다: ' + esc((e && e.message) || ''));
     }
 
+    /* ★ 2026-09-20 내가 부여한 플랜 + 그 계정들의 사용 내역 (admin_grants.js)
+       ⚠️ 서버(adminStats)가 주는 값이 아니다. 앱에서 Firestore 를 직접 읽어 채운다 —
+          그래서 이 자리만 비워 두고 그린 뒤에 채운다.
+       ☠️ render() 는 '수동 지정 제외' 를 누를 때마다 다시 돈다. 그때 이 칸도 통째로
+          새로 만들어지므로 **다시 채워 넣어야 한다**(안 하면 토글 한 번에 사라진다).
+          admin_grants 가 읽은 값을 들고 있어서 두 번째부터는 바로 그려진다. */
+    h += sechead('🎟️ 내가 부여한 플랜');
+    h += '<div id="asGrants" style="padding:4px 0 8px;"></div>';
+    h += '<div style="text-align:center;"><button class="btn b-ghost" id="asGrantsMore" style="font-size:12px;width:100%;justify-content:center;">계정별 사용 내역 보기</button></div>';
+
     h += '<div style="text-align:center;margin-top:14px;"><button class="btn b-ghost" id="asDiag" style="font-size:12px;">🔧 공유 진단 (팀원 작업 표시 문제)</button></div>';
     h += '<div style="font-size:10px;color:var(--mu);margin-top:10px;text-align:center;">생성: ' + esc((j.generatedAt || '').replace('T', ' ').slice(0, 16)) + ' · 금액은 참고용(추정 포함)</div>';
     ov.innerHTML = card(h);
@@ -398,5 +408,14 @@
     };
         var _cce = ov.querySelector('#claudeCostEdit'); if (_cce) _cce.onclick = function () { _editClaudeCost(ov, j); };
     var _dg = ov.querySelector('#asDiag'); if (_dg) _dg.onclick = function () { _diagShare(); };
+    /* 부여 내역 — 그린 뒤에 채운다(위 주석 참고) */
+    if (window.AdminGrants) {
+      AdminGrants.summaryInto(ov.querySelector('#asGrants'));
+      var _gm = ov.querySelector('#asGrantsMore');
+      if (_gm) _gm.onclick = function () { AdminGrants.open(); };
+    } else {
+      var _gb = ov.querySelector('#asGrants');
+      if (_gb) _gb.innerHTML = '<span style="color:var(--mu);font-size:12px;">부여 내역 기능을 불러오지 못했습니다.</span>';
+    }
   }
 })();

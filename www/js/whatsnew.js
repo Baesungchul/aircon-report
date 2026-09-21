@@ -362,7 +362,19 @@
     show(ver, note);
   }
 
+  /* ☠️ 2026-09-21 업데이트 안내를 **저절로 띄우지 않는다** (사용자 결정).
+       앱을 켤 때마다 판이 뜨는 것이 성가시다고 하셨다.
+       화면·문구는 그대로 두고 **자동으로 부르는 것만** 끊는다 —
+       나중에 다시 켜고 싶으면 아래 한 줄을 되살리면 된다.
+       ⚠️ 그래도 버전 표시(WN_KEY)는 조용히 따라가게 둔다. 안 그러면 나중에
+          다시 켰을 때 예전 안내가 한꺼번에 몰려 뜬다. */
   document.addEventListener('DOMContentLoaded', function () {
-    setTimeout(tick, 2600);   // version_gate(2000ms) 가 먼저 판단하도록 뒤에 선다
+    setTimeout(function () {
+      try {
+        var v = String(window.APP_VERSION || '');
+        if (v) set(WN_KEY, v);
+      } catch (e) {}
+    }, 2600);
+    /* 다시 켜려면 이 줄:  setTimeout(tick, 2600); */
   });
 })();

@@ -2102,6 +2102,10 @@
     });
   }
 
+  /* 접기 한 동작의 길이. 아이폰 시트가 닫히는 느낌에 맞춘 곡선·시간이다
+     (cubic-bezier(.32,.72,0,1) — 빠르게 떠나 천천히 멎는다). styles.css 와 같이 고칠 것. */
+  var COLLAPSE_MS = 380;
+
   /* ── 확장/접힘 전환 ──────────────────────────────
      높이를 직접 애니메이션한다. transform:scaleY 는 날짜 숫자까지 찌그러뜨려서 못 쓴다.
      확장 중에는 grid-auto-rows:1fr → 그 달이 5줄이든 6줄이든 알아서 나눠 갖는다. */
@@ -2321,16 +2325,18 @@
     var from = grid.offsetHeight;
     var sc   = grid.scrollTop || 0;
     var op   = grid.style.opacity;          /* 드래그로 접는 중이면 이미 흐리다 */
+    var wrap = document.getElementById('calWrap');
 
     /* ① 지금 보이는 것을 유령으로 띄운다 */
+    var isGrid = !grid.classList.contains('cal-agenda');
     var ghost = document.createElement('div');
-    ghost.className = 'cal-ghost' + (grid.classList.contains('cal-agenda') ? '' : ' cal-ghost-grid');
-    ghost.style.top = (-sc) + 'px';
-    if (!grid.classList.contains('cal-agenda')) ghost.style.height = from + 'px';
+    ghost.className = 'cal-ghost' + (isGrid ? ' cal-ghost-grid' : '');
+    ghost.style.top    = (-sc) + 'px';
+    ghost.style.height = (from + sc) + 'px';
     ghost.style.opacity = (op === '' || op == null) ? '1' : op;
     while (grid.firstChild) ghost.appendChild(grid.firstChild);
 
-    /* ② 접힘 모양·접힘 크기로 격자를 그린다.
+    /* ② 접힘 모양·**최종 크기**로 격자를 그린다. 레이아웃은 여기서 딱 한 번 돈다.
        ⚠️ cal-expanded 를 먼저 벗겨야 칸 스타일이 접힘 것이 되어 높이가 제대로 나온다 */
     body.classList.add('cal-collapsing');
     body.classList.remove('cal-expanded');
@@ -2344,33 +2350,42 @@
     grid.style.height       = '';
     renderCalendarGrid();
     var nat = Math.max(1, grid.offsetHeight);     /* ☠️ 과거 값이 아니라 지금 실측 */
-    grid.style.height   = from + 'px';
-    grid.style.overflow = 'hidden';               /* 통이 줄어드는 만큼 유령이 잘린다 */
+    var dy  = Math.max(0, from - nat);            /* 아래 것들이 올라올 거리 */
+    grid.style.height = nat + 'px';               /* 처음부터 최종 높이 — 이후로 레이아웃 없음 */
     grid.appendChild(ghost);
-    void grid.offsetHeight;                       /* 시작 높이를 확정 (안 하면 첫 프레임이 날아간다) */
 
-    /* ③ 다음 프레임에 셋을 같이 움직인다 — 유령은 걷히고, 통은 줄고, 점은 뒤따라 뜬다 */
+    /* ③ 아래 것들(손잡이·매출·상세)을 '있던 자리'로 되돌려 둔다.
+       높이가 아니라 transform 이라 레이아웃이 아니다 — 여기가 부드러움의 핵심이다. */
+    if (wrap) wrap.style.setProperty('--cal-dy', dy + 'px');
+    body.classList.add('cal-sliding');
+    void grid.offsetHeight;                       /* 시작 자리를 확정 (안 하면 첫 프레임이 날아간다) */
+
+    /* ④ 다음 프레임에 **한 동작으로** 움직인다 */
     requestAnimationFrame(function () {
       if (_expanded) { _collapseDone(grid, ghost, body); return; }   /* 그새 다시 펼쳤다 */
+      body.classList.add('cal-slide-go');
       ghost.classList.add('out');
-      grid.style.transition = 'height .24s cubic-bezier(.22,.68,.3,1)';
-      grid.style.height     = nat + 'px';
-      setTimeout(function () { if (!_expanded) grid.classList.remove('cal-swapping'); }, 170);
-      setTimeout(function () { _collapseDone(grid, ghost, body); }, 260);
+      setTimeout(function () { if (!_expanded) grid.classList.remove('cal-swapping'); }, 190);
+      setTimeout(function () { _collapseDone(grid, ghost, body); }, COLLAPSE_MS + 40);
     });
   }
 
-  /* 뒷정리는 한 군데로 모은다 — 중간에 다시 펼쳐도 유령과 잠금이 남으면 안 된다 */
+  /* 뒷정리는 한 군데로 모은다 — 중간에 다시 펼쳐도 유령·잠금·will-change 가 남으면 안 된다 */
   function _collapseDone(grid, ghost, body) {
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
     grid.classList.remove('cal-swapping');
     body.classList.remove('cal-collapsing');
+    body.classList.remove('cal-sliding');
+    body.classList.remove('cal-slide-go');
+    var wrap = document.getElementById('calWrap');
+    if (wrap) wrap.style.removeProperty('--cal-dy');
     if (_expanded) return;                        /* 다시 펼쳐졌으면 높이는 건드리지 않는다 */
     grid.style.transition   = 'none';
     grid.style.height       = '';
     grid.style.gridAutoRows = '';
     grid.style.overflow     = '';
   }
+
   /* ★ 2026-08-21 화면 조건이 바뀌면(회전·키보드·글자 크기 변경) 확장 높이를 다시 맞춘다.
        예전엔 펼친 뒤 글자 크기를 바꾸면 높이가 그대로라 화면 밖으로 넘쳤다. */
   window.__calRefit = _fitExpanded;

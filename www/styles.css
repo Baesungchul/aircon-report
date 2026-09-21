@@ -2938,22 +2938,46 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
    칸 '내용'(점/아이콘/막대)만 잠깐 흐려진 사이에 갈아 끼운다 — 날짜 숫자는 그대로 둔다.
    ⚠️ 펼칠 때는 이 연출을 쓰지 않는다(어색하다는 사용자 피드백).
    ⚠️ 매출·목록을 떠오르게 하는 연출(calFadeUp)도 넣었다가 화면이 살짝 위로 움직여 제거했다. */
-.cal-grid .cal-icos, .cal-grid .cal-dots, .cal-grid .cal-bars{transition:opacity .15s linear;}
+.cal-grid .cal-icos, .cal-grid .cal-dots, .cal-grid .cal-bars{transition:opacity .22s ease-out;}
 .cal-grid.cal-swapping .cal-icos,
 .cal-grid.cal-swapping .cal-dots,
 .cal-grid.cal-swapping .cal-bars{opacity:0;}
 
-/* ⭐ 2026-09-21 접기 연출 — 걷히는 목록은 '유령'으로 띄운다 (calendar.js _collapseAnim 주석 참고)
+/* ⭐ 2026-09-21 접기 연출 (calendar.js _collapseAnim 주석에 왜 이렇게 했는지 적어 두었다)
+   ☠️☠️ 움직이는 값은 **transform 과 opacity 뿐이다.** 높이(height)를 움직이면 매 프레임
+        레이아웃이 다시 돌아 달력 42칸을 새로 재는데, 그게 폰에서 프레임이 빠지는 이유였다.
+        transform·opacity 는 합성기(compositor)가 맡아 레이아웃 없이 흐른다.
+        → 높이를 애니메이션하는 규칙을 여기에 **다시 넣지 말 것.**
+   ⚠️ 곡선은 아이폰 시트가 닫히는 느낌(빠르게 떠나 천천히 멎는다)에 맞췄다.
+      시간은 calendar.js 의 COLLAPSE_MS 와 **같이** 고칠 것 — 어긋나면 끝에서 툭 끊긴다.
    ☠️ 예전에는 .cal-grid.cal-swapping .cal-ag-day 로 목록을 숨겼다. 지금은 목록이 유령 안에 있어
       그 규칙을 그대로 두면 **유령이 그 자리에서 사라져** 걷히는 모습이 통째로 없어진다. 지웠다.
    ⚠️ 유령은 레이아웃 밖에 있어야 한다. 안 그러면 격자를 그리는 순간 목록이 아래로 밀려 덜컥인다.
    ⚠️ 격자 보기에서 접을 때는 유령도 7열 격자여야 한다 — 블록으로 두면 칸이 세로로 쏟아진다. */
-.cal-ghost{position:absolute;left:0;right:0;pointer-events:none;
-  transition:opacity .17s linear, transform .2s ease-out;}
-.cal-ghost.out{opacity:0!important;transform:translateY(-12px);}
+/* ⚠️ 걷히는 목록은 **빨리 옅어지고 천천히 물러난다.** 옅어짐을 뒤로 미루면
+      빽빽한 목록 글자가 날짜 숫자 위에 오래 겹쳐 지저분해 보인다(실측으로 고름). */
+.cal-ghost{position:absolute;left:0;right:0;pointer-events:none;overflow:hidden;
+  transition:opacity .2s cubic-bezier(.2,0,0,1),
+             transform .38s cubic-bezier(.32,.72,0,1);}
+.cal-ghost.out{opacity:0!important;transform:translateY(-30px);}
 .cal-ghost-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:1fr;}
 /* 유령 안의 칸은 '펼친 모습' 그대로여야 한다 — body 에서 cal-expanded 를 이미 벗겼기 때문 */
 .cal-ghost-grid .cal-cell{justify-content:flex-start;padding:5px 1px;overflow:hidden;}
+
+/* 달력 아래(손잡이·매출·상세)는 한 몸처럼 미끄러져 올라온다.
+   ☠️ 시작 자리(--cal-dy)만 인라인으로 넣고, 움직임은 클래스 하나로 건다. */
+.cal-sliding #calGrab,
+.cal-sliding #calRevenue,
+.cal-sliding #calDetail{transform:translateY(var(--cal-dy,0px));will-change:transform;}
+.cal-slide-go #calGrab,
+.cal-slide-go #calRevenue,
+.cal-slide-go #calDetail{transform:translateY(0);
+  transition:transform .38s cubic-bezier(.32,.72,0,1);}
+/* 유령도 합성기에 올려 둔다 — 접히는 동안만. 늘 켜 두면 메모리를 물고 글자가 뿌예진다 */
+.cal-ghost{will-change:transform,opacity;}
+/* 맨 아래 힌트는 화면에 고정돼 있어 밀 것이 없다 → 제자리에서 떠오르게만 */
+.cal-swipe-hint{transition:opacity .3s ease-out;}
+.rd-body.cal-mode.cal-collapsing .cal-swipe-hint{opacity:0;}
 /* 접히는 동안에는 매출·상세가 튀어나오거나 스크롤이 생기지 않게 잠가 둔다 */
 .rd-body.cal-mode.cal-collapsing{overflow:hidden;}
 /* ═══ 달 이동을 부드럽게 (2026-09-07) ═══════════════════════════════════════

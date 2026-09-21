@@ -199,26 +199,85 @@ chk('드래그로 접을 때 흐려진 정도를 이어받는다', () => {
   return '이어받음';
 });
 
-chk('무거운 일을 트랜지션 **앞**에서 끝낸다', () => {
-  /* 다시 그리기가 트랜지션 중간에 끼어들면 그 프레임이 통째로 밀린다.
+chk('☠️☠️ 높이를 애니메이션하지 않는다 (합성기만 쓴다)', () => {
+  /* 여기가 부드러움의 핵심이다. 높이를 움직이면 **매 프레임 레이아웃**이 다시 돌아
+     달력 42칸을 새로 잰다 — 폰에서 프레임이 빠지던 이유가 그것이었다.
+     transform 과 opacity 만 쓰면 합성기가 맡아 레이아웃 없이 흐른다.
+     ⚠️ 높이 트랜지션을 '되살리는' 수정이 제일 들어오기 쉬운 자리라 못 박아 둔다. */
+  must(!/transition[^;]*height/.test(COL),
+       '접기에서 높이를 애니메이션합니다 — 매 프레임 레이아웃이 돌아 프레임이 빠집니다');
+  const rules = cssR.slice(cssR.indexOf('.cal-ghost{'), cssR.indexOf('.rd-body.cal-mode.cal-collapsing{') + 90);
+  must(!/transition:[^;]*height/.test(rules), 'CSS 접기 규칙에 높이 트랜지션이 있습니다');
+  must(/transition:transform/.test(rules.replace(/\s+/g, '')) ||
+       /transform \.\d/.test(rules), 'transform 을 움직이지 않습니다');
+  return 'transform · opacity 만';
+});
+
+chk('☠️ 아래 것들은 한 몸처럼 transform 으로 올라온다', () => {
+  /* 손잡이·매출·상세가 따로 나타나면 화면이 여러 조각으로 움직여 보인다 */
+  must(/setProperty\('--cal-dy'/.test(COL), '올라올 거리를 정하지 않습니다');
+  must(/classList\.add\('cal-sliding'\)/.test(COL) && /classList\.add\('cal-slide-go'\)/.test(COL),
+       '시작 자리와 움직임을 두 단계로 걸지 않습니다');
+  const r = cssR.replace(/\s+/g, '');
+  must(/\.cal-sliding#calGrab,\.cal-sliding#calRevenue,\.cal-sliding#calDetail\{transform:translateY\(var\(--cal-dy/.test(r),
+       'CSS 에서 아래 것들을 같이 밀어 두지 않습니다');
+  /* ☠️ 2026-09-21 여기서 한 번 빠져나갔다 — 규칙이 '있는지'만 보고 **움직이는지**를
+     안 봤더니, transition 을 통째로 지워 툭 튀게 만들어도 검사가 통과했다.
+     연출 검사는 '값이 있다'가 아니라 '움직인다'를 봐야 한다. */
+  const go = r.slice(r.indexOf('.cal-slide-go#calGrab'));
+  must(/^[^}]*transition:transform/.test(go.slice(go.indexOf('{'))),
+       '아래 것들이 제자리로 **미끄러지지** 않고 툭 튑니다 (transition 이 없습니다)');
+  return '--cal-dy → 0';
+});
+
+chk('무거운 일을 움직이기 **전에** 끝낸다', () => {
+  /* 다시 그리기가 움직이는 도중에 끼어들면 그 프레임이 통째로 밀린다.
      실제로 재 보니 예전 방식은 멈춤이 시작 150~200ms 지점(움직이는 한가운데)에 생겼고,
-     새 방식은 시작 0ms 지점 하나로 모였다. */
+     지금은 시작 0ms 지점 하나로 모였다. */
   const draw = COL.indexOf('renderCalendarGrid()');
-  const tr = COL.indexOf("grid.style.transition = 'height");
-  must(draw > 0 && tr > 0, '다시 그리기나 트랜지션을 못 찾았습니다');
-  must(draw < tr, '트랜지션을 걸고 나서 다시 그립니다 — 움직이는 도중에 프레임이 밀립니다');
+  const go = COL.indexOf("classList.add('cal-slide-go')");
+  must(draw > 0 && go > 0, '다시 그리기나 움직임 시작을 못 찾았습니다');
+  must(draw < go, '움직이기 시작하고 나서 다시 그립니다');
   must(/requestAnimationFrame\(function \(\) \{/.test(COL), '다음 프레임으로 넘기지 않습니다');
   return '그리고 → 움직인다';
 });
 
-chk('시작 높이를 확정하는 reflow 가 있다', () => {
+chk('시작 자리를 확정하는 reflow 가 있다', () => {
   must(/void grid\.offsetHeight;/.test(COL),
-       'reflow 가 없습니다 — 시작값과 목표값이 합쳐져 높이 애니메이션이 사라집니다');
-  const set = COL.indexOf("grid.style.height   = from + 'px'");
+       'reflow 가 없습니다 — 시작 자리와 목표가 한 프레임에 합쳐져 움직임이 사라집니다');
+  const set = COL.indexOf("classList.add('cal-sliding')");
   const v = COL.indexOf('void grid.offsetHeight;');
-  const go = COL.indexOf("grid.style.height     = nat + 'px'");
-  must(set > 0 && v > set && go > v, 'reflow 가 시작값과 목표값 사이에 있지 않습니다');
+  const go = COL.indexOf("classList.add('cal-slide-go')");
+  must(set > 0 && v > set && go > v, 'reflow 가 시작 자리와 목표 사이에 있지 않습니다');
   return '자리 정상';
+});
+
+chk('☠️ 길이가 JS 와 CSS 에서 같다', () => {
+  /* 어긋나면 한쪽이 먼저 끝나 마지막에 툭 끊기거나, 유령이 남았다 사라진다 */
+  const m = cal.match(/var COLLAPSE_MS = (\d+);/);
+  must(m, 'COLLAPSE_MS 를 못 찾았습니다');
+  const ms = +m[1];
+  const r = cssR.replace(/\s+/g, '');
+  const want = '.' + String(ms).replace(/0$/, '') + 's';        // 380 → .38s
+  /* 걷히는 목록과 올라오는 아래 것들이 **둘 다** 같은 길이여야 한 동작으로 보인다.
+     ⚠️ 한 군데만 보면 다른 쪽 규칙이 대신 걸려 통과해 버린다(실제로 그랬다). */
+  const ghostRule = r.slice(r.indexOf('.cal-ghost{'), r.indexOf('.cal-ghost.out'));
+  const slideRule = r.slice(r.indexOf('.cal-slide-go#calGrab'));
+  must(ghostRule.indexOf('transform' + want + 'cubic-bezier(.32,.72,0,1)') >= 0,
+       '유령이 물러나는 길이가 ' + ms + 'ms 와 다릅니다');
+  must(slideRule.slice(0, slideRule.indexOf('}')).indexOf('transform' + want + 'cubic-bezier(.32,.72,0,1)') >= 0,
+       '아래 것들이 올라오는 길이가 ' + ms + 'ms 와 다릅니다');
+  must(ms >= 260 && ms <= 460, ms + 'ms 는 한 동작으로 읽히기에 너무 짧거나 깁니다');
+  return ms + 'ms';
+});
+
+chk('☠️ will-change 를 끝나면 뗀다', () => {
+  /* 물고 있으면 메모리를 먹고 기기에 따라 글자가 뿌옇게 남는다 (달 이동에서 겪은 것과 같다) */
+  const done = cal.slice(cal.indexOf('function _collapseDone('), cal.indexOf('function _collapseDone(') + 900);
+  must(/classList\.remove\('cal-sliding'\)/.test(done), 'cal-sliding 을 안 뗍니다');
+  must(/classList\.remove\('cal-slide-go'\)/.test(done), 'cal-slide-go 를 안 뗍니다');
+  must(/removeProperty\('--cal-dy'\)/.test(done), '남은 값을 안 치웁니다');
+  return '뗀다';
 });
 
 chk('접히는 동안 화면을 잠갔다가 끝에 푼다', () => {

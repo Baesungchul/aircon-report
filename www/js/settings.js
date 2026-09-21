@@ -636,7 +636,7 @@ function bindSettings() {
     Notify.requestExact().then(function (st) {
       refreshExactAlarmUi();
       if (typeof showToast === 'function') {
-        showToast(st === 'granted' ? '⏰ 이제 정확한 시간에 알림이 옵니다' : '허용하지 않으면 알림이 늦게 올 수 있어요',
+        showToast(st === 'granted' ? '⏰ 이제 정확한 시간에 알림이 옵니다' : '허용하지 않으면 알림이 늦게 올 수 있습니다',
                   st === 'granted' ? 'ok' : 'err');
       }
     }).catch(function () {});

@@ -1401,7 +1401,7 @@
     var ov = overlayShell(
       '<div style="font-size:16px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:6px;">' + chIcon(chId, 18) + '<span>' + ch.label + ' 초안</span></div>' +
       '<div style="font-size:11px;color:var(--mu);margin-bottom:6px;">' + ch.copyHint +
-        (isQuote ? '' : ' 닫으면 현재 작업에 자동 저장되어 <b>📂 저장된 글</b>에서 다시 열 수 있어요.') +
+        (isQuote ? '' : ' 닫으면 현재 작업에 자동 저장되어 <b>📂 저장된 글</b>에서 다시 열 수 있습니다.') +
         (isQuote && learnCtx ? ' 내용을 고쳐서 복사하면 다음 견적서에 그 방식이 반영됩니다. 🧠' : '') + '</div>' +
       /* ⭐ 2026-09-07 (사용자 요청) — "찍고쓰다는 글 사이사이에 사진이 들어가는데
            현장매니저는 마커만 들어간다". 마커가 사진으로 바뀌는 곳이 PC 링크뿐이라
@@ -1471,7 +1471,7 @@
               postId = pid;
               // 아직 폴더에 저장된 적 없는 새 작업이면 디스크에 못 넣으므로 그 사실을 알려준다
               var noFolder = (typeof currentFolderName === 'undefined' || !currentFolderName);
-              toast(noFolder ? '글을 임시 보관했어요 — 작업을 저장하면 함께 보관됩니다' : '📂 저장된 글에 보관했습니다', 'ok');
+              toast(noFolder ? '글을 임시 보관했습니다 — 작업을 저장하면 함께 보관됩니다' : '📂 저장된 글에 보관했습니다', 'ok');
             }
           }
         } catch (e) {}
@@ -1529,7 +1529,7 @@
       quotaBadge('blog', 'AI 글작성') +
       '<label style="font-size:12px;color:var(--mu);font-weight:700;">추가 메모 / 강조하고 싶은 점 (선택)</label>' +
       '<textarea class="cust-memo" id="aiBlogMemo" rows="3" placeholder="예) 곰팡이 심했던 점, 알러지 가족이라 항균 강조" style="width:100%;margin-top:4px;">' + esc((typeof workPostMemo !== 'undefined' && workPostMemo) ? workPostMemo : '') + '</textarea>' +
-      ((typeof workPostMemo !== 'undefined' && workPostMemo) ? '<div style="font-size:11px;color:var(--mu);margin-top:4px;">이전에 입력한 참고사항이 자동으로 채워졌어요. 필요하면 수정하세요.</div>' : '') +
+      ((typeof workPostMemo !== 'undefined' && workPostMemo) ? '<div style="font-size:11px;color:var(--mu);margin-top:4px;">이전에 입력한 참고사항이 자동으로 채워졌습니다. 필요하면 수정하세요.</div>' : '') +
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">' +
         '<button class="btn b-blue" id="aiBlogGo" style="flex:1;"' + (hasWork ? '' : ' disabled') + '>글 생성</button>' +
         '<button class="btn b-ghost" id="aiBlogGuide">지침 편집</button>' +
@@ -1550,7 +1550,7 @@
         '작업 사진·메모 확인하는 중...',
         ch.label + ' 스타일로 글 구상하는 중...',
         '문장 다듬는 중...',
-        '거의 다 됐어요...'
+        '거의 다 됐습니다...'
       ]) : null;
       try {
         var t = await generatePost(chId, memo);
@@ -1584,7 +1584,7 @@
     var ov = overlayShell(
       '<div style="font-size:16px;font-weight:800;margin-bottom:4px;">🧾 문자/캡처 → 견적서 작성</div>' +
       '<div style="font-size:12px;color:var(--mu);margin-bottom:10px;">고객 요청 문자를 붙여넣거나 대화 캡처를 첨부하면, 지침에 적어둔 가격표·업체정보를 참고해 견적서를 만듭니다.</div>' +
-      (getChGuide('quote') ? '' : '<div style="font-size:12px;color:#e06;margin:-4px 0 10px;line-height:1.5;">⚠️ 견적 지침(가격표)이 아직 없습니다. 가격을 알아야 견적서를 만들 수 있어요 — 아래 <b>지침 편집</b>에서 가격표·업체명·연락처를 먼저 입력하세요.</div>') +
+      (getChGuide('quote') ? '' : '<div style="font-size:12px;color:#e06;margin:-4px 0 10px;line-height:1.5;">⚠️ 견적 지침(가격표)이 아직 없습니다. 가격을 알아야 견적서를 만들 수 있습니다 — 아래 <b>지침 편집</b>에서 가격표·업체명·연락처를 먼저 입력하세요.</div>') +
       quotaBadge('sched', 'AI 견적서(일정등록 횟수 사용)') +
       '<label style="font-size:12px;color:var(--mu);font-weight:700;">고객 요청 / 작업 내용</label>' +
       '<textarea class="cust-memo" id="aiQuoteReq" rows="4" placeholder="예) 행복아파트 101동 벽걸이 2대, 스탠드 1대 분해청소 견적 부탁드려요" style="width:100%;margin-top:4px;"></textarea>' +
@@ -1662,7 +1662,7 @@
         '요청 내용 확인하는 중...',
         '견적 항목 정리하는 중...',
         '금액 계산하는 중...',
-        '거의 다 됐어요...'
+        '거의 다 됐습니다...'
       ]) : null;
       try {
         // 캡처가 있으면 먼저 글자만 정확히 전사(OCR) 후 요청 텍스트에 합침

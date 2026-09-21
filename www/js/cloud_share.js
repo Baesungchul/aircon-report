@@ -107,7 +107,7 @@
       if (existing) {
         if (existing.status === 'accepted') toast('이미 공유 중입니다','ok');
         else if (existing.requestedBy === myUid()) toast('이미 요청을 보냈습니다 (상대 수락 대기중)','ok');
-        else toast('상대가 보낸 요청이 있어요. 받은 요청에서 수락해주세요.','ok');
+        else toast('상대가 보낸 요청이 있습니다. 받은 요청에서 수락해주세요.','ok');
         return;
       }
       await db().collection('shares').doc(id).set({
@@ -1234,7 +1234,7 @@
           '<div style="flex:1;font-size:16px;font-weight:800;">🗑 공유 휴지통</div>' +
           '<button class="btn b-ghost" id="trashClose">닫기</button>' +
         '</div>' +
-        '<div style="font-size:12px;color:var(--mu);margin-bottom:12px;">삭제한 작업은 30일간 보관 후 자동 삭제됩니다. 항목을 눌러 자세히 보고 복원할 수 있어요.</div>' +
+        '<div style="font-size:12px;color:var(--mu);margin-bottom:12px;">삭제한 작업은 30일간 보관 후 자동 삭제됩니다. 항목을 눌러 자세히 보고 복원할 수 있습니다.</div>' +
         '<div id="trashList">' + workRows + rows + '</div>' +
       '</div>';
     document.body.appendChild(ov);

@@ -334,7 +334,7 @@
     if (!loggedIn()) { toast('먼저 로그인해주세요', 'err'); return; }
     /* ⭐ 2026-09-07 라이트(월 4,900원)부터 팀을 만들 수 있다 — 안내 문구도 같이 고쳤다.
          예전 문구("베이직 이상")를 그대로 두면 무료 사용자에게 거짓말이 된다. */
-    if (window.Subs && !Subs.gateFeature('teamCreate', '팀 만들기', '팀 만들기는 라이트 플랜(월 4,900원)부터 가능합니다. 무료 플랜은 초대 코드로도 참여할 수 없어요.')) return;
+    if (window.Subs && !Subs.gateFeature('teamCreate', '팀 만들기', '팀 만들기는 라이트 플랜(월 4,900원)부터 가능합니다. 무료 플랜은 초대 코드로도 참여할 수 없습니다.')) return;
     name = (name || '').trim();
     if (!name) { toast('팀 이름을 입력해주세요', 'err'); return; }
     var code = genCode();
@@ -459,7 +459,7 @@
   /* 팀 업종 칩 — 아이콘은 그림(svg:)·이미지(img:)도 그릴 수 있게 Profiles.iconHtml 을 거친다 */
   function _indChipsHtml(t) {
     var list = Array.isArray(t && t.industries) ? t.industries : [];
-    if (!list.length) return '<span style="font-size:11px;color:var(--mu);">미지정 — 팀원마다 각자 업종을 씁니다 (팀장이 지정할 수 있어요)</span>';
+    if (!list.length) return '<span style="font-size:11px;color:var(--mu);">미지정 — 팀원마다 각자 업종을 씁니다 (팀장이 지정할 수 있습니다)</span>';
     return list.map(function (e) {
       var ic = '';
       try { ic = (window.Profiles && Profiles.iconHtml) ? Profiles.iconHtml(e.icon || '', 13) : (e.icon || ''); } catch (er) { ic = ''; }
@@ -588,7 +588,7 @@
                 (t.shareGuides !== false
                   ? '<br><b>글쓰기 지침과 견적 가격표도 함께 내려갑니다</b> — 팀 업종의 지침은 내가 쓴 것으로 통일되고, ' +
                     '팀원 폰에서는 읽기 전용이 됩니다. 내가 고치면 자동으로 따라와요.'
-                  : '<br>지침·가격표는 지금 <b>공유하지 않는 중</b>입니다 — 지정 화면에서 켤 수 있어요.') +
+                  : '<br>지침·가격표는 지금 <b>공유하지 않는 중</b>입니다 — 지정 화면에서 켤 수 있습니다.') +
                 '<br>해제하면 더 이상 맞추지 않습니다. 다만 <b>이미 팀원 폰에 들어간 업종이 사라지지는 않아요</b> — ' +
                 '필요 없으면 각자 업종 목록에서 빼면 됩니다.' +
               '</div>'
@@ -597,11 +597,11 @@
                 '이름·아이콘·호칭이 팀 기준으로 맞춰집니다.' +
                 (t.shareGuides !== false
                   ? '<br>이 업종들의 <b>글쓰기 지침과 견적 가격표는 팀장이 작성</b>합니다(읽기 전용). ' +
-                    '팀장이 고치면 내 폰에도 자동으로 반영돼요.'
+                    '팀장이 고치면 내 폰에도 자동으로 반영됩니다.'
                   : '') +
                 '<br>내가 직접 만든 업종과 지침은 그대로 남고, 업로드한 엑셀 견적 양식은 공유되지 않습니다.' +
               '</div>') +
-          (isOwner ? '<div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">초대받는 팀원은 <b>라이트 플랜(월 4,900원)</b>으로 참여할 수 있어요.</div>' : '') +
+          (isOwner ? '<div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.5;">초대받는 팀원은 <b>라이트 플랜(월 4,900원)</b>으로 참여할 수 있습니다.</div>' : '') +
         '</div>';
       });
     } else {
@@ -614,11 +614,11 @@
       if (!canCreate) {
         h += '<div style="border:1.5px solid var(--wn);background:rgba(240,180,41,.12);border-radius:10px;padding:10px 12px;margin-bottom:8px;">' +
           '<div style="font-size:13px;font-weight:800;color:var(--wn);line-height:1.5;">🔒 팀 만들기는 베이직(월 9,900원)부터</div>' +
-          '<div style="font-size:12px;color:var(--tx);margin-top:5px;line-height:1.6;">지금 요금제로는 <b>초대 코드로 참여</b>만 할 수 있어요. 팀장에게 코드를 받아 아래에 넣어주세요.</div>' +
+          '<div style="font-size:12px;color:var(--tx);margin-top:5px;line-height:1.6;">지금 요금제로는 <b>초대 코드로 참여</b>만 할 수 있습니다. 팀장에게 코드를 받아 아래에 넣어주세요.</div>' +
           '</div>';
       }
       h += '<div style="display:flex;gap:6px;margin-bottom:8px;' + (canCreate ? '' : 'opacity:.5;') + '">' +
-        '<input class="co-input" id="teamNewName" type="text" placeholder="' + (canCreate ? '새 팀 이름' : '베이직부터 만들 수 있어요') + '" style="flex:1;"' + (canCreate ? '' : ' disabled') + '>' +
+        '<input class="co-input" id="teamNewName" type="text" placeholder="' + (canCreate ? '새 팀 이름' : '베이직부터 만들 수 있습니다') + '" style="flex:1;"' + (canCreate ? '' : ' disabled') + '>' +
         '<button class="btn b-blue" id="teamCreateBtn" style="white-space:nowrap;">' + (canCreate ? '만들기' : '🔒 만들기') + '</button>' +
         '</div>';
       h += '<div style="display:flex;gap:6px;margin-bottom:12px;">' +

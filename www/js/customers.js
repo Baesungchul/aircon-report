@@ -140,10 +140,10 @@ async function openCustomerModal() {
       body.innerHTML = `
         <div style="padding:40px 24px;text-align:center;">
           <div style="font-size:40px;margin-bottom:16px;">🔒</div>
-          <div style="font-weight:700;font-size:16px;margin-bottom:10px;">폴더 연결이 일시 해제되었어요</div>
+          <div style="font-weight:700;font-size:16px;margin-bottom:10px;">폴더 연결이 일시 해제되었습니다</div>
           <div style="font-size:13px;color:var(--mu);line-height:1.7;margin-bottom:20px;">
             앱을 오래 사용하지 않으면 보안상 폴더 접근 권한이<br>
-            자동으로 해제됩니다. 작업 데이터는 안전하게 남아있어요.<br>
+            자동으로 해제됩니다. 작업 데이터는 안전하게 남아있습니다.<br>
             아래 버튼을 눌러 다시 연결해주세요.
           </div>
           <button id="reconnectFolderBtn" style="background:var(--ac);color:#fff;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;">
@@ -679,7 +679,7 @@ async function renderCustomerList(opts) {
       ${filtered.length === 0
         ? '<div style="padding:30px 14px;text-align:center;color:var(--mu);">' +
           (q ? '검색 결과가 없습니다' :
-            (_customerUseDefault ? `최근 ${CUSTOMER_DEFAULT_DAYS}일 내 작업이 없습니다.<br>"기간 변경"으로 이전 작업도 볼 수 있어요.` : '해당 기간에 작업이 없습니다')
+            (_customerUseDefault ? `최근 ${CUSTOMER_DEFAULT_DAYS}일 내 작업이 없습니다.<br>"기간 변경"으로 이전 작업도 볼 수 있습니다.` : '해당 기간에 작업이 없습니다')
           ) +
           '</div>'
         : filtered.map(it => it.type === 'customer' ? renderCustomerCard(it.data) : renderWorkCard(it.data)).join('')
@@ -1983,10 +1983,10 @@ async function exportCustomersExcel(mode) {
     const fh = await photoFolderHandle.getFileHandle('customers.xlsx');
     blob = await fh.getFile();
   } catch(e) {
-    showToast('고객 엑셀 파일이 아직 없어요. 작업을 먼저 저장해 주세요.', 'err');
+    showToast('고객 엑셀 파일이 아직 없습니다. 작업을 먼저 저장해 주세요.', 'err');
     return;
   }
-  if (!blob || blob.size === 0) { showToast('내보낼 고객 데이터가 없어요.', 'err'); return; }
+  if (!blob || blob.size === 0) { showToast('내보낼 고객 데이터가 없습니다.', 'err'); return; }
 
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
@@ -1996,7 +1996,7 @@ async function exportCustomersExcel(mode) {
   // ── 네이티브 앱 ──
   if (_ccIsNative()) {
     const FS = _ccPlugin('Filesystem');
-    if (!FS) { showToast('파일 저장 모듈이 없어요(앱 재빌드 필요)', 'err'); return; }
+    if (!FS) { showToast('파일 저장 모듈이 없습니다(앱 재빌드 필요)', 'err'); return; }
     try {
       const b64 = await _ccBlobToBase64(blob);
       const relDir = '작업보고서';
@@ -2023,8 +2023,8 @@ async function exportCustomersExcel(mode) {
 
       const where = (dir === 'DOCUMENTS') ? '내장메모리 > Documents > 작업보고서' : '앱 전용 폴더 > 작업보고서';
       const extra = (mode === 'share' && !_ccPlugin('Share'))
-        ? '\n\n※ 카톡 등으로 바로 공유하려면 공유 기능 추가가 필요해, 우선 파일로 저장했어요.\n\'내 파일\' 앱에서 이 파일을 열어 공유할 수 있어요.'
-        : '\n\n\'내 파일\' 앱이나 PC에서 이 파일을 열 수 있어요.';
+        ? '\n\n※ 카톡 등으로 바로 공유하려면 공유 기능 추가가 필요해, 우선 파일로 저장했어요.\n\'내 파일\' 앱에서 이 파일을 열어 공유할 수 있습니다.'
+        : '\n\n\'내 파일\' 앱이나 PC에서 이 파일을 열 수 있습니다.';
       showToast('엑셀로 저장했습니다', 'ok');
       return;
     } catch(e) {

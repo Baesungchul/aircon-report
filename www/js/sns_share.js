@@ -47,7 +47,7 @@
                    이 두 줄을 빼면 사장님이 제목 칸을 보고 어떻게 해야 할지 모른다. */
               steps: ['<b>1️⃣ 갤러리에 저장</b>을 누르세요 — 사진이 현장매니저 앨범에 담깁니다',
                       '<b>2️⃣ 글 복사 + 공유</b>를 누르고, 공유 목록에서 <b>네이버 블로그</b>를 고르세요',
-                      '본문에 글이 그대로 들어갑니다 (안 들어갔으면 본문 칸을 길게 눌러 <b>붙여넣기</b> — 글은 복사해 뒀어요)',
+                      '본문에 글이 그대로 들어갑니다 (안 들어갔으면 본문 칸을 길게 눌러 <b>붙여넣기</b> — 글은 복사해 두었습니다)',
                       '본문 맨 위 <b>추천 제목</b> 중 하나를 길게 눌러 <b>복사</b> → <b>제목 칸의 글자를 모두 지우고</b> 거기에 <b>붙여넣기</b> 하세요 (＂[공유]…＂ 는 네이버가 붙인 것이라 지우면 됩니다)',
                       '본문에 남은 <b>추천 제목 줄</b>을 지우세요',
                       '글 속 <b>🔴 작업 전 1</b> · <b>🟢 작업 후 1</b> 표시를 <b>지우고</b>, 그 자리에 <b>[사진]</b> 으로 갤러리의 같은 번호 사진을 넣으세요',
@@ -55,13 +55,13 @@
                       '사진을 다 넣은 뒤 발행하세요'] },
     insta:  { label: '인스타그램', pick: '인스타그램', max: 20,
               steps: ['공유 목록에서 <b>인스타그램</b>을 고르세요 (피드/스토리 선택)',
-                      '<b>사진만</b> 들어간 게시물 작성 화면이 열립니다 — 캡션은 아직 비어 있어요',
+                      '<b>사진만</b> 들어간 게시물 작성 화면이 열립니다 — 캡션은 아직 비어 있습니다',
                       '캡션 칸을 길게 눌러 <b>붙여넣기</b> 하세요'] },
     /* ⚠️ 키는 ai.js CHANNELS 의 키와 같아야 한다 — 'fb' 로 적어 뒀다가 안 맞아서
          페이스북만 버튼이 안 떴다(2026-08-27 수정). */
     facebook: { label: '페이스북', pick: '페이스북', max: 30,
               steps: ['공유 목록에서 <b>페이스북</b>을 고르세요',
-                      '<b>사진만</b> 첨부된 게시물 작성 화면이 열립니다 — 내용은 아직 비어 있어요',
+                      '<b>사진만</b> 첨부된 게시물 작성 화면이 열립니다 — 내용은 아직 비어 있습니다',
                       '내용 칸을 길게 눌러 <b>붙여넣기</b> 하세요'] },
     carrot: { label: '당근', pick: null, max: 10, gallery: true,
               steps: ['사진을 <b>갤러리에 저장</b>했습니다 — 당근은 공유 시트를 안 받아서 갤러리를 거칩니다',
@@ -301,7 +301,7 @@
       var _payload = { text: text || '', dialogTitle: ch.label + '에 올리기' };
       if (_ti) _payload.title = _ti;
       await _Share().share(_payload);
-      if (!okCopy) toast('글 복사가 안 됐어요 — 결과 화면에서 다시 복사해주세요', 'err');
+      if (!okCopy) toast('글 복사에 실패했습니다 — 결과 화면에서 다시 복사해주세요', 'err');
       try { window.Review && Review.maybeAskSoon('sns-mobile', 2500); } catch (e) {}
     } catch (e) {
       var m = (e && (e.message || e.code)) || '';
@@ -337,7 +337,7 @@
       if (typeof hideOverlay === 'function') hideOverlay();
       if (!uris.length) { toast('공유할 사진을 준비하지 못했습니다', 'err'); return; }
       await _Share().share({ files: uris, dialogTitle: ch.label + '에 올리기' });
-      if (!okCopy) toast('사진은 보냈어요 — 글은 복사가 안 됐으니 다시 복사해주세요', 'err');
+      if (!okCopy) toast('사진은 전송했습니다 — 글은 복사되지 않았으니 다시 복사해주세요', 'err');
       /* ★ 2026-08-27 별점 — 글과 사진을 무사히 보낸 직후. 아무것도 묻지 않는다(js/review.js). */
       try { window.Review && Review.maybeAskSoon('sns-mobile', 2500); } catch (e2) {}
     } catch (e) {
@@ -431,7 +431,7 @@
       var l = picked();
       var over = all.filter(function (x) { return sel[x.kind]; }).length - l.length;
       document.getElementById('snsCnt').innerHTML = '보낼 사진 ' + l.length + '장' +
-        (over > 0 ? ' <span style="color:var(--wn);">(' + esc(ch.label) + ' 한 번에 ' + ch.max + '장까지 — 뒤 ' + over + '장은 빠집니다)</span>' : '');
+        (over > 0 ? ' <span style="color:var(--wn);">(' + esc(ch.label) + ' 한 번에 ' + ch.max + '장까지 — 뒤 ' + over + '장은 제외됩니다)</span>' : '');
       document.getElementById('snsGo').disabled = (l.length === 0);
     }
     refresh();
@@ -583,10 +583,10 @@
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2500;display:flex;' +
       'align-items:flex-start;justify-content:center;padding:40px 16px 16px;overflow-y:auto;';
     ov.innerHTML = '<div style="background:var(--sf);border-radius:14px;padding:18px;max-width:440px;width:100%;">' +
-      '<div style="font-size:16px;font-weight:800;margin-bottom:4px;">💻 PC용 링크를 만들었어요</div>' +
+      '<div style="font-size:16px;font-weight:800;margin-bottom:4px;">💻 PC용 링크를 만들었습니다</div>' +
       '<div style="font-size:12px;color:var(--mu);margin-bottom:10px;line-height:1.6;">사진 ' + res.n + '장이 글과 함께 담겼습니다.' +
-        (res.reused > 0 ? ' (' + res.reused + '장은 이미 서버에 있어 다시 올리지 않았어요)' : '') +
-        (res.skipped > 0 ? ' (한 링크에 ' + LINK_MAX + '장까지 — 뒤 ' + res.skipped + '장은 빠졌어요)' : '') + '</div>' +
+        (res.reused > 0 ? ' (' + res.reused + '장은 이미 서버에 있어 다시 올리지 않았습니다)' : '') +
+        (res.skipped > 0 ? ' (한 링크에 ' + LINK_MAX + '장까지 — 뒤 ' + res.skipped + '장은 제외됐습니다)' : '') + '</div>' +
       '<div style="border:1px solid var(--bd);border-radius:10px;padding:10px 12px;font-size:12px;' +
         'word-break:break-all;line-height:1.6;background:var(--sf2);">' + esc(res.url) + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:10px;">' +
@@ -601,7 +601,7 @@
              발행된 글의 사진이 통째로 깨진다.
            ⚠️ '한 번에 들어간다'고 다시 쓰지 말 것 — 붙여넣기는 자리만 잡아 줄 뿐,
               **사진은 사용자가 교체해야** 자기 블로그에 남는다(사용자가 정한 방법 2026-09-08). */
-        '<li>이 링크를 <b>PC에서</b> 여세요 (카톡으로 나에게 보내면 편해요)</li>' +
+        '<li>이 링크를 <b>PC에서</b> 여세요 (카톡으로 나에게 보내면 편합니다)</li>' +
         '<li><b>사진을 내려받고</b>, <b>글+사진 전체 복사</b>로 블로그에 붙여넣으세요</li>' +
         /* ⚠️ 2026-09-08 사용자 확인 — 네이버 블로그 PC 편집기에서 [교체]는
              **사진 위에 뜨는 도구막대가 아니라 화면 맨 위 도구모음**에 있다.

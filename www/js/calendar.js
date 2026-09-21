@@ -3170,7 +3170,7 @@
       close();
       if (typeof window.openQuickWorkAdd === 'function') {
         window.openQuickWorkAdd(_today, pf);
-        if (typeof showToast === 'function') showToast('📑 오늘 날짜로 복제했어요 — 확인 후 저장하세요', 'ok');
+        if (typeof showToast === 'function') showToast('📑 오늘 날짜로 복제했습니다 — 확인 후 저장하세요', 'ok');
       } else if (typeof showToast === 'function') {
         showToast('복제 기능을 사용할 수 없습니다', 'err');
       }
@@ -3329,7 +3329,7 @@
                남아 있으면 같은 작업이 옛 날짜·새 날짜 두 곳에 보인다. */
           var _oldGone = false;
           try { await photoFolderHandle.getDirectoryHandle(oldName); } catch (e) { _oldGone = true; }
-          if (!_oldGone) _moveWarn = '날짜는 바뀌었지만 예전 폴더를 지우지 못했습니다. 같은 작업이 두 날짜에 보일 수 있어요';
+          if (!_oldGone) _moveWarn = '날짜는 바뀌었지만 예전 폴더를 지우지 못했습니다. 같은 작업이 두 날짜에 보일 수 있습니다';
 
           /* ★ 열려 있는 작업이 바로 이 작업이면 폴더 이름을 새 것으로 갈아 끼운다.
                ⚠️ 순서가 중요하다 — 아래 purge 안의 clearIfCurrent 가 옛 이름과 맞으면
@@ -4296,7 +4296,7 @@
       if (typeof renderAll === 'function') renderAll();
       if (typeof updateStats === 'function') updateStats();
       if (typeof sessionAutoSaveNow === 'function') { try { await sessionAutoSaveNow(); } catch(e){} }
-      if (typeof showToast === 'function') showToast('일정을 불러왔어요. 사진을 추가하고 저장하면 내 작업이 됩니다', 'ok');
+      if (typeof showToast === 'function') showToast('일정을 불러왔습니다. 사진을 추가하고 저장하면 내 작업이 됩니다', 'ok');
     } catch (e) { console.warn('[달력] startPhotoWork 오류', e); }
   };
 

@@ -159,8 +159,8 @@
         var title = w.apt || (w.workType === 'facility' ? '공용시설 작업' : '작업');
         var lm = Notify.leadMin();
         var body = (lm > 0)
-          ? (st + ' 작업 시작 ' + (lm >= 1440 ? Math.round(lm / 1440) + '일' : (lm >= 60 ? Math.round(lm / 60) + '시간' : lm + '분')) + ' 전이에요')
-          : (st + ' 작업 시작 시간이에요');
+          ? (st + ' 작업 시작 ' + (lm >= 1440 ? Math.round(lm / 1440) + '일' : (lm >= 60 ? Math.round(lm / 60) + '시간' : lm + '분')) + ' 전입니다')
+          : (st + ' 작업 시작 시간입니다');
         jobs.push({
           id: id,
           title: '🔔 ' + title,

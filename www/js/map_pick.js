@@ -176,7 +176,7 @@
         hideRipple();
         if (moved) return;
         try { onLongPress(toLatLng(cx, cy)); }
-        catch (err) { toastErr('이 자리를 읽지 못했어요'); }
+        catch (err) { toastErr('이 자리를 읽지 못했습니다'); }
       }, LP_MS);
     }
     function move(x, y) {
@@ -285,7 +285,7 @@
           if (_ov !== ov) return;
           if (!addr) {
             showPick(null);
-            toastErr('이 자리의 주소를 찾지 못했어요. 조금 옮겨서 다시 눌러보세요');
+            toastErr('이 자리의 주소를 찾지 못했습니다. 조금 옮겨서 다시 눌러보세요');
             return;
           }
           clearMarks();
@@ -302,7 +302,7 @@
         places.keywordSearch(q, function (r, st) {
           if (_ov !== ov) return;
           if (st !== kakao.maps.services.Status.OK || !r || !r.length) {
-            toastErr('찾지 못했어요. 지도를 길게 눌러 그 자리 주소를 쓸 수도 있어요');
+            toastErr('찾지 못했습니다. 지도를 길게 눌러 그 자리 주소를 쓸 수도 있습니다');
             return;
           }
           clearMarks();

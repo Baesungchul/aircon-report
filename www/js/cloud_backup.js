@@ -635,7 +635,7 @@
                  'padding:11px 12px;margin-bottom:12px;text-align:left;">' +
                  '<div style="font-size:12px;color:var(--tx);line-height:1.65;">' +
                    '📄 <b>작업 기록·고객정보·글</b>은 복구됩니다.<br>' +
-                   '<span style="color:var(--mu);">사진 복구는 구독 사용자만 가능해요.</span>' +
+                   '<span style="color:var(--mu);">사진 복구는 구독 사용자만 가능합니다.</span>' +
                  '</div>' +
                  '<button class="btn b-ghost b-xs" id="bupSeePlans" style="margin-top:8px;padding:5px 10px;">구독 보기 ›</button>' +
                '</div>';
@@ -651,7 +651,7 @@
           '<div style="text-align:center;">' +
             '<div style="font-size:30px;">☁️</div>' +
             '<div style="font-size:16px;font-weight:800;margin:4px 0 6px;">서버에 백업된 작업</div>' +
-            '<div style="font-size:12px;color:var(--mu);line-height:1.6;margin-bottom:14px;">이 기기에 없는 작업 <b style="color:var(--tx);">' + missing.length + '개</b>가 서버에 있어요.<br>복구할 항목을 고르거나, 필요 없으면 서버에서 삭제하세요.</div>' +
+            '<div style="font-size:12px;color:var(--mu);line-height:1.6;margin-bottom:14px;">이 기기에 없는 작업 <b style="color:var(--tx);">' + missing.length + '개</b>가 서버에 있습니다.<br>복구할 항목을 고르거나, 필요 없으면 서버에서 삭제하세요.</div>' +
           '</div>' +
           freeNoteHtml() +
           '<div style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:60px;">' + rowsHtml() + '</div>' +
@@ -782,7 +782,7 @@
     if (!force) return;                       // 자동 팝업 없음 — 온보딩 재설치 복구에서만 동작
     /* ★ 2026-08-24 작업 기록 복구는 **로그인만으로** 가능하다(구독 무관).
          사진 복구만 구독 전용으로 남는다 — bgDownloadCurrentMonth / ensureWorkPhotos / redownloadWork 참고. */
-    if (!loggedIn()) { say('서버 복구는 로그인 후 이용할 수 있어요', 'err'); return; }
+    if (!loggedIn()) { say('서버 복구는 로그인 후 이용할 수 있습니다', 'err'); return; }
     if (typeof photoFolderHandle === 'undefined' || !photoFolderHandle) {
       if (notify) { say('저장 폴더를 먼저 연결해주세요', 'err'); return; }   // 사용자 클릭 → 즉시 안내(자동 재시도 X)
       if (_checkTries++ < 5) setTimeout(function () { CloudBackup.checkAndOfferRestore(true); }, 3000);
@@ -791,7 +791,7 @@
     try {
       say('서버 백업 확인 중…');
       var server = await serverFullList();
-      if (!server.length) { say('서버에 백업된 작업이 없어요', 'ok'); return; }
+      if (!server.length) { say('서버에 백업된 작업이 없습니다', 'ok'); return; }
       var local = await localFolderNames();
       // ★ 삭제한 작업은 복구 목록에서 제외 (필요없는 작업 부활 방지)
       //   ① 전체본 자체의 trashedAt(신규 삭제)
@@ -803,10 +803,10 @@
       } catch (e) { console.warn('[CloudBackup] 휴지통 교차확인 실패(무시)', e && e.code); }
       var missing = server.filter(function (w) { return !local[w.workId] && !w.trashedAt && !trashedIds[w.workId]; });
       if (missing.length) showRestorePopup(missing);
-      else say('복구할 작업이 없어요 — 이미 모두 기기에 있어요', 'ok');
+      else say('복구할 작업이 없습니다 — 이미 모두 기기에 있습니다', 'ok');
     } catch (e) {
       console.warn('[CloudBackup] 복구 확인 실패', e && (e.code || e.message));
-      say('복구 확인 중 오류가 났어요', 'err');
+      say('복구 확인 중 오류가 발생했습니다', 'err');
     }
   };
 

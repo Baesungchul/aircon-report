@@ -1014,7 +1014,7 @@ function addCapturedPhotoDataUrl(dataUrl, uid, type, sid) {
     const label = type === 'before' ? '전' : '후';
     enqueueAutoSave(photo, u.name, label);
   }
-  if (typeof showToast === 'function') showToast('📸 사진을 추가했어요', 'ok');
+  if (typeof showToast === 'function') showToast('📸 사진을 추가했습니다', 'ok');
   return photo;
 }
 
@@ -2941,7 +2941,7 @@ function initInlineReorder() {
     // 상대가 보탠 사진은 전↔후 이동 금지(순서만) → 원위치 복원
     if (crossing && !window.canMovePhotoSide(photo)) {
       if (fromBefore) u.before.push(photo); else u.after.push(photo);
-      if (typeof showToast === 'function') showToast('상대가 보탠 사진은 작업 전↔후 이동을 할 수 없어요 (순서만 변경 가능)', 'err');
+      if (typeof showToast === 'function') showToast('상대가 보탠 사진은 작업 전↔후 이동을 할 수 없습니다 (순서만 변경 가능)', 'err');
       afterCommit(); return;
     }
     var dest = toAfter ? u.after : u.before;

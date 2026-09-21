@@ -138,7 +138,7 @@
         try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
       });
       if (typeof onFilled === 'function') { try { onFilled(fixed); } catch (e) {} }
-      toast(n ? ('✅ ' + n + '개 항목을 채웠어요') : '채울 항목이 없었어요', n ? 'ok' : 'err');
+      toast(n ? ('✅ ' + n + '개 항목을 채웠습니다') : '채울 항목이 없었습니다', n ? 'ok' : 'err');
     });
   };
 })();

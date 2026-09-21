@@ -173,7 +173,7 @@
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(txt).then(function () {
-          if (typeof showToast === 'function') showToast('✓ 소개 문구를 복사했어요. 카톡에 붙여넣으세요', 'ok');
+          if (typeof showToast === 'function') showToast('✓ 소개 문구를 복사했습니다. 카톡에 붙여넣으세요', 'ok');
         });
         return;
       }

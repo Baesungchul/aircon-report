@@ -1216,7 +1216,7 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       _lastArrSig[key] = sig;
       /* ⭐ 2026-08-13: 내가 방금 바꾼 순서에도 배너가 떴다.
          (내가 원작업자 문서에 photoOrder 를 쓰면 내 구독이 그 변경을 감지해
-          '상대가 순서를 변경했어요 → 다시 불러오기' 를 나에게 띄운다.
+          '상대가 순서를 변경했습니다 → 다시 불러오기' 를 나에게 띄운다.
           거기서 다시 불러오면 방금 내가 바꾼 순서가 되돌아간 것처럼 보였다.)
          → 마지막으로 순서를 쓴 사람이 나면 배너를 띄우지 않는다.
          비교 기준(_lastArrSig)은 위에서 이미 갱신했으므로 다음 진짜 변경은 정상 감지된다. */
@@ -1241,9 +1241,9 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       var msg = document.createElement('span');
       msg.style.cssText = 'flex:1;line-height:1.4;';
       var m = (info && info.matched) || 0, t = (info && info.total) || 0;
-      if (ok) msg.textContent = '상대가 사진 순서를 변경했어요. 이 작업에 반영했습니다. (사진 ' + m + '/' + t + '장)';
-      else if (status === 'retry') msg.textContent = '상대가 사진 순서를 변경했어요. 지금은 반영할 수 없어 잠시 뒤 다시 시도합니다.';
-      else if (status === 'nothing') msg.textContent = '상대가 사진 순서를 변경했어요. 작업을 열면 그 순서로 보입니다. (이 작업의 내 사진끼리는 바꿀 순서가 없었습니다)';
+      if (ok) msg.textContent = '상대가 사진 순서를 변경했습니다. 이 작업에 반영했습니다. (사진 ' + m + '/' + t + '장)';
+      else if (status === 'retry') msg.textContent = '상대가 사진 순서를 변경했습니다. 지금은 반영할 수 없어 잠시 뒤 다시 시도합니다.';
+      else if (status === 'nothing') msg.textContent = '상대가 사진 순서를 변경했습니다. 작업을 열면 그 순서로 보입니다. (이 작업의 내 사진끼리는 바꿀 순서가 없었습니다)';
       else if (status === 'nomatch') {
         var _d = (info && info.dg) || {};
         msg.textContent = '순서를 반영하지 못했습니다 (일치 ' + m + '/' + t + '장). '
@@ -1283,7 +1283,7 @@ async function _cpsBuildUnitsFromSession(dateDir, sess){
       bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:3000;background:var(--ac,#2f6fed);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,.35);';
       var msg = document.createElement('span');
       msg.style.cssText = 'flex:1;line-height:1.4;';
-      msg.textContent = '상대가 사진 순서를 변경했어요. 최신 상태로 보려면 작업을 다시 불러와 주세요.';
+      msg.textContent = '상대가 사진 순서를 변경했습니다. 최신 상태로 보려면 작업을 다시 불러와 주세요.';
       var reload = document.createElement('button');
       reload.textContent = '다시 불러오기';
       reload.style.cssText = 'background:#fff;color:var(--ac,#2f6fed);border:none;border-radius:7px;padding:7px 12px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;';

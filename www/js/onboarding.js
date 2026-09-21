@@ -137,7 +137,7 @@ function onboardingNext() {
     const nEl = document.getElementById('obMyName');
     const nm = ((nEl && nEl.value) || '').trim();
     if (!nm) {
-      if (typeof showToast === 'function') showToast('이름을 입력해주세요 (작업자 이름으로 사용돼요)', 'err');
+      if (typeof showToast === 'function') showToast('이름을 입력해주세요 (작업자 이름으로 사용됩니다)', 'err');
       if (nEl) nEl.focus();
       return;
     }
@@ -178,7 +178,7 @@ function _obOpenLogin() {
   } catch (e) { if (typeof showToast === 'function') showToast('로그인 창 오류: ' + (e && e.message), 'err'); }
   var cm = document.getElementById('cloudModal');
   if (cm) { try { document.body.appendChild(cm); } catch (e2) {} cm.classList.add('open'); }
-  else if (typeof showToast === 'function') showToast('로그인 모듈을 불러오는 중이에요. 잠시 후 다시 시도해주세요', 'err');
+  else if (typeof showToast === 'function') showToast('로그인 모듈을 불러오는 중입니다. 잠시 후 다시 시도해주세요', 'err');
 }
 
 /* ── 로그인 게이트: 로그인이 필요한 선택(서버복구·초대)을 미로그인 상태에서 고르면
@@ -192,7 +192,7 @@ function _obRequireLogin(path, targetStep) {
   _setObPath(path);                            // 경로 유지(로그인 슬라이드는 모든 경로의 1단계)
   _obStep = 1;                                 // 로그인 슬라이드로 이동
   renderOnboardingStep();
-  if (typeof showToast === 'function') showToast('이 기능은 로그인이 필요해요', 'ok');
+  if (typeof showToast === 'function') showToast('이 기능은 로그인이 필요합니다', 'ok');
   _obOpenLogin();
 }
 
@@ -346,20 +346,20 @@ function renderSlideLogin(c) {
   var _fSched = 30, _fBlog = 5;
   try { if (window.Subs && Subs.freeInit) { _fSched = Subs.freeInit('sched'); _fBlog = Subs.freeInit('blog'); } } catch (e) {}
   /* ★ 2026-09-02 문구 정리 (사용자 지시).
-       - "로그인하면 무료로 드려요" 서브타이틀 삭제 — 아래 캘아웃과 내용이 겹쳐 불필요.
-       - "작업 기록이 서버에 보관돼 폰을 바꿔도 되살릴 수 있어요" 캘아웃 삭제 —
+       - "로그인하면 무료로 드립니다" 서브타이틀 삭제 — 아래 캘아웃과 내용이 겹쳐 불필요.
+       - "작업 기록이 서버에 보관돼 폰을 바꿔도 되살릴 수 있습니다" 캘아웃 삭제 —
          서버 보관(백업/복구)은 무료 로그인이 아니라 구독(유료) 기능이라, 로그인만 하면
          받는 혜택인 것처럼 안내하면 사실과 다르다. 로그인 시 실제로 바로 받는 혜택인
          AI 일정등록/글작성 무료 횟수만 남긴다. */
-  /* ★ 2026-09-02 "로그인됨 · 무료 — 작업 기록이 서버에 보관돼요"도 삭제(사용자 지시: 사실과 다름).
+  /* ★ 2026-09-02 "로그인됨 · 무료 — 작업 기록이 서버에 보관됩니다"도 삭제(사용자 지시: 사실과 다름).
        서버 보관은 구독 전용이라, 무료 로그인 상태에는 그 혜택을 붙여 말하지 않는다. */
   var statusHtml = isIn
-    ? '<div class="ob-callout" style="margin-top:12px;"><span class="ob-callout-num">✓</span><span class="ob-callout-txt">로그인됨' + (isSub ? ' · <b>구독 중</b> — 사진까지 서버에 보관돼요' : '') + '</span></div>'
+    ? '<div class="ob-callout" style="margin-top:12px;"><span class="ob-callout-num">✓</span><span class="ob-callout-txt">로그인됨' + (isSub ? ' · <b>구독 중</b> — 사진까지 서버에 보관됩니다' : '') + '</span></div>'
     : '<div class="ob-callout" style="margin-top:12px;"><span class="ob-callout-num">1</span><span class="ob-callout-txt">로그인하면 <b>AI 일정등록 ' + _fSched + '회, AI 글작성 ' + _fBlog + '회</b> 무료 지급</span></div>';
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">로그인</div>
-    ${isIn ? '<p class="ob-setup-sub">쓰던 데이터가 있다면 복구할 수 있어요</p>' : ''}
+    ${isIn ? '<p class="ob-setup-sub">쓰던 데이터가 있다면 복구할 수 있습니다</p>' : ''}
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px;">
       <button class="btn ${isIn ? 'b-ghost' : 'b-blue'}" id="obLoginBtn" style="width:100%;justify-content:center;padding:14px 16px;">
         ${isIn ? '✓ 로그인됨' : '☁️ 로그인 / 회원가입'}
@@ -389,7 +389,7 @@ function renderSlideLogin(c) {
   var _g = document.getElementById('obGoogleBtn');
   if (_g) _g.onclick = function () {
     if (!(window.Cloud && Cloud.signInWithGoogle)) {
-      if (typeof showToast === 'function') showToast('로그인 모듈을 불러오는 중이에요. 잠시 후 다시 시도해주세요', 'err');
+      if (typeof showToast === 'function') showToast('로그인 모듈을 불러오는 중입니다. 잠시 후 다시 시도해주세요', 'err');
       return;
     }
     var b = this;
@@ -414,15 +414,15 @@ function renderSlideBranch(c) {
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:18px;">
       <button class="btn b-blue" id="obBranchNew" style="width:100%;justify-content:flex-start;padding:14px 16px;text-align:left;">
         <span style="font-size:20px;margin-right:10px;">🆕</span>
-        <span><b>처음 시작해요</b><br><small style="opacity:.85;font-weight:400;">기본 설정 몇 가지만 하면 바로 시작</small></span>
+        <span><b>처음 시작합니다</b><br><small style="opacity:.85;font-weight:400;">기본 설정 몇 가지만 하면 바로 시작</small></span>
       </button>
       <button class="btn b-ghost" id="obBranchRestore" style="width:100%;justify-content:flex-start;padding:14px 16px;text-align:left;">
         <span style="font-size:20px;margin-right:10px;">☁️</span>
-        <span><b>쓰던 데이터가 있어요</b><br><small style="opacity:.85;font-weight:400;">재설치·기기 변경 — 백업에서 복구</small></span>
+        <span><b>쓰던 데이터가 있습니다</b><br><small style="opacity:.85;font-weight:400;">재설치·기기 변경 — 백업에서 복구</small></span>
       </button>
       <button class="btn b-ghost" id="obBranchInvite" style="width:100%;justify-content:flex-start;padding:14px 16px;text-align:left;">
         <span style="font-size:20px;margin-right:10px;">💌</span>
-        <span><b>초대코드가 있어요</b><br><small style="opacity:.85;font-weight:400;">동료에게 초대받아 설치했어요</small></span>
+        <span><b>초대코드가 있습니다</b><br><small style="opacity:.85;font-weight:400;">동료에게 초대받아 설치했습니다</small></span>
       </button>
     </div>
     <div style="text-align:center;margin-top:16px;">
@@ -444,7 +444,7 @@ function renderSlideBranch(c) {
     var _isSub = false;
     try { _isSub = !!(window.CloudBackup && CloudBackup.isSub && CloudBackup.isSub()); } catch (e) {}
     if (!_isSub) {
-      if (typeof showToast === 'function') showToast('라이트 플랜(월 4,900원)부터 팀 초대를 쓸 수 있어요', 'ok');
+      if (typeof showToast === 'function') showToast('라이트 플랜(월 4,900원)부터 팀 초대를 쓸 수 있습니다', 'ok');
       if (window.Subs && Subs.openPlans) Subs.openPlans();
       return;
     }
@@ -502,7 +502,7 @@ function renderSlideIndustry(c) {
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">어떤 일을 하세요?</div>
-    <p class="ob-setup-sub">하시는 일을 <b>전부</b> 눌러주세요 · 여러 개 괜찮아요<br><small style="color:var(--mu);">보고서 제목·호칭은 자동으로 맞춰집니다 · ⚙️설정에서 언제든 변경</small></p>
+    <p class="ob-setup-sub">하시는 일을 <b>전부</b> 눌러주세요 · 여러 개 선택해도 됩니다<br><small style="color:var(--mu);">보고서 제목·호칭은 자동으로 맞춰집니다 · ⚙️설정에서 언제든 변경</small></p>
     <div style="text-align:left;margin-bottom:12px;">
       <label class="ob-setup-label">앱 아이콘</label>
       <div class="ob-setup-icons">
@@ -523,7 +523,7 @@ function renderSlideIndustry(c) {
   // 등록된 내 업종 칩은 온보딩에서 끄지 않는다(설정에서 관리) — 눌러도 아무 일 없게
   document.querySelectorAll('.ob-mine-chip').forEach(function (b2) {
     b2.addEventListener('click', function () {
-      if (typeof showToast === 'function') showToast('이미 등록된 업종이에요 — 설정에서 관리할 수 있어요', 'ok');
+      if (typeof showToast === 'function') showToast('이미 등록된 업종입니다 — 설정에서 관리할 수 있습니다', 'ok');
     });
   });
 
@@ -627,9 +627,9 @@ function renderSlideMyName(c) {
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">이름을 알려주세요</div>
-    <p class="ob-setup-sub">작업 저장 시 <b>작업자 이름</b>으로 자동 입력돼요<br><small style="color:var(--mu);">팀 공유를 쓰면 표시 이름(닉네임)으로도 사용됩니다</small></p>
+    <p class="ob-setup-sub">작업 저장 시 <b>작업자 이름</b>으로 자동 입력됩니다<br><small style="color:var(--mu);">팀 공유를 쓰면 표시 이름(닉네임)으로도 사용됩니다</small></p>
     <div class="ob-setup-form">
-      <label class="ob-setup-label">내 이름 (별명도 좋아요) <span style="color:var(--dn);">*</span></label>
+      <label class="ob-setup-label">내 이름 (별명도 가능합니다) <span style="color:var(--dn);">*</span></label>
       <input class="ob-setup-input" id="obMyName" type="text" maxlength="20" placeholder="예: 홍길동" value="${escHtml(_obData.myName || _obData.coNick || '')}">
     </div>
   </div>`;
@@ -643,7 +643,7 @@ function renderSlideBackup(c) {
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">자동백업을 사용할까요?</div>
-    <p class="ob-setup-sub">앱을 벗어날 때마다 작업·사진을 지정 폴더로 자동 복사해<br>앱을 삭제해도 데이터를 지킬 수 있어요</p>
+    <p class="ob-setup-sub">앱을 벗어날 때마다 작업·사진을 지정 폴더로 자동 복사해<br>앱을 삭제해도 데이터를 지킬 수 있습니다</p>
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
       <button class="btn ob-bk-opt" data-v="1" style="width:100%;justify-content:flex-start;padding:14px 16px;text-align:left;">
         <span style="font-size:20px;margin-right:10px;">📲</span>
@@ -651,7 +651,7 @@ function renderSlideBackup(c) {
       </button>
       <button class="btn ob-bk-opt" data-v="0" style="width:100%;justify-content:flex-start;padding:14px 16px;text-align:left;">
         <span style="font-size:20px;margin-right:10px;">🚫</span>
-        <span><b>사용 안 함</b><br><small style="opacity:.85;font-weight:400;">저장공간 절약 · 설정 → 데이터 백업/복원에서 언제든 켤 수 있어요</small></span>
+        <span><b>사용 안 함</b><br><small style="opacity:.85;font-weight:400;">저장공간 절약 · 설정 → 데이터 백업/복원에서 언제든 켤 수 있습니다</small></span>
       </button>
     </div>
 
@@ -661,11 +661,11 @@ function renderSlideBackup(c) {
     <div style="margin-top:20px;padding-top:15px;border-top:1px solid var(--bd);">
       <div style="font-size:12.5px;font-weight:800;color:var(--ac);margin-bottom:4px;">💬 사용자 오픈채팅방</div>
       <div style="font-size:11px;color:var(--mu);line-height:1.6;margin-bottom:9px;">
-        같은 일 하는 기사님들이 모여 있어요.<br>
+        같은 일 하는 기사님들이 모여 있습니다.<br>
         쓰다가 막히는 것·불편한 것 남겨주시면 만든 사람이 직접 봅니다.
       </div>
       <button type="button" id="obOpenChat" class="btn b-ghost" style="width:100%;justify-content:center;font-size:12px;">카카오톡 오픈채팅방 들어가기</button>
-      <div style="font-size:10px;color:var(--mu);text-align:center;margin-top:6px;">나중에 ⚙️설정 → 앱 정보에서도 들어갈 수 있어요</div>
+      <div style="font-size:10px;color:var(--mu);text-align:center;margin-top:6px;">나중에 ⚙️설정 → 앱 정보에서도 들어갈 수 있습니다</div>
     </div>` : '' }
   </div>`;
 
@@ -709,12 +709,12 @@ function renderSlideRestore(c) {
       </button>
       ${serverBtnHtml}
     </div>
-    <div style="font-size:12px;color:var(--mu);margin-top:14px;text-align:center;line-height:1.7;">복구가 끝나면 아래 <b>다음</b>을 눌러주세요<br><a href="#" id="obRestoreNone" style="color:var(--ac);">복구할 데이터가 없어요 → 처음부터 시작</a></div>
+    <div style="font-size:12px;color:var(--mu);margin-top:14px;text-align:center;line-height:1.7;">복구가 끝나면 아래 <b>다음</b>을 눌러주세요<br><a href="#" id="obRestoreNone" style="color:var(--ac);">복구할 데이터가 없습니다 → 처음부터 시작</a></div>
   </div>`;
   document.getElementById('obRestoreLocal').onclick = function () {
     if (typeof importBackupFromPicker === 'function') importBackupFromPicker();
     else if (typeof restoreBackupFromFolder === 'function') restoreBackupFromFolder();
-    else if (typeof showToast === 'function') showToast('복원 모듈을 찾을 수 없어요', 'err');
+    else if (typeof showToast === 'function') showToast('복원 모듈을 찾을 수 없습니다', 'err');
   };
   var _srvBtn = document.getElementById('obRestoreServer');
   if (_srvBtn) _srvBtn.onclick = function () {
@@ -727,7 +727,7 @@ function renderSlideRestore(c) {
     try { _isSub = !!(window.CloudBackup && CloudBackup.isSub && CloudBackup.isSub()); } catch (e) {}
     if (!_isSub) {
       // 로그인+무료 → 구독 안내 페이지
-      if (typeof showToast === 'function') showToast('구독하면 서버 복구를 쓸 수 있어요', 'ok');
+      if (typeof showToast === 'function') showToast('구독하면 서버 복구를 쓸 수 있습니다', 'ok');
       if (window.Subs && Subs.openPlans) Subs.openPlans();
       return;
     }
@@ -760,7 +760,7 @@ function renderSlideInvite(c) {
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">팀 초대코드로 시작</div>
-    <div class="ob-callout" style="margin-bottom:12px;"><span class="ob-callout-num">💳</span><span class="ob-callout-txt">팀 공유는 <b>구독 기능</b>이에요.<br>초대받아 <b>참여</b>만 한다면 <b>라이트 플랜(월 4,900원)</b>이면 충분해요.</span></div>
+    <div class="ob-callout" style="margin-bottom:12px;"><span class="ob-callout-num">💳</span><span class="ob-callout-txt">팀 공유는 <b>구독 기능</b>입니다.<br>초대받아 <b>참여</b>만 한다면 <b>라이트 플랜(월 4,900원)</b>이면 충분합니다.</span></div>
     <div class="ob-setup-form">
       <button type="button" class="btn ${isIn ? 'b-ghost' : 'b-blue'}" id="obInvLogin" style="width:100%;justify-content:center;margin-bottom:10px;">${isIn ? '✓ 로그인됨' : '① ☁️ 로그인'}</button>
       <label class="ob-setup-label">② 팀에 표시될 이름</label>
@@ -786,7 +786,7 @@ function renderSlideInvite(c) {
     var code = ((document.getElementById('obInvCode') || {}).value || '').trim();
     if (!code) { if (typeof showToast === 'function') showToast('초대코드를 입력해주세요', 'err'); return; }
     if (window.CloudTeams && CloudTeams.joinByCode) await CloudTeams.joinByCode(code);
-    else if (typeof showToast === 'function') showToast('팀 모듈을 찾을 수 없어요', 'err');
+    else if (typeof showToast === 'function') showToast('팀 모듈을 찾을 수 없습니다', 'err');
   };
 }
 
@@ -828,7 +828,7 @@ function renderSlideIntro(c) {
       <div class="ob-feat"><span>📞</span><div><b>전화·문자·길안내</b><br><small>고객 정보에서 바로 연결</small></div></div>
       <div class="ob-feat"><span>👥</span><div><b>고객 자동 관리</b><br><small>전화번호로 이력 추적</small></div></div>
     </div>
-    <div class="ob-intro-hint">👉 다음에서 기본 설정 몇 가지만 하면 바로 시작해요</div>
+    <div class="ob-intro-hint">👉 다음에서 기본 설정 몇 가지만 하면 바로 시작합니다</div>
   </div>`;
 }
 
@@ -845,7 +845,7 @@ function renderSlideScreen1(c) {
         zone: { top: 10.2, left: 0.7, w: 98.3, h: 12.1 },
         finger: { top: 20.2, left: 25.2 },
         title: '작업 정보 입력',
-        desc: '먼저 <b>작업명</b>을 적어요. 아파트면 단지명(예: 청솔타운 2동), 상가면 상호를 넣으면 나중에 찾기 쉬워요. 날짜는 오늘로 자동 입력돼요.'
+        desc: '먼저 <b>작업명</b>을 입력합니다. 아파트면 단지명(예: 청솔타운 2동), 상가면 상호를 넣으면 나중에 찾기 쉽습니다. 날짜는 오늘로 자동 입력됩니다.'
       },
       {
         zone: { top: 23, left: 1.2, w: 98.3, h: 12.6 },
@@ -863,7 +863,7 @@ function renderSlideScreen1(c) {
         zone: { top: 48.1, left: 2.1, w: 95, h: 21 },
         finger: { top: 56.3, left: 61.1 },
         title: '호수 관리',
-        desc: '작업할 <b>호수</b>를 추가해요. 한 개씩은 <b>➕추가</b>, 여러 개는 <b>📋일괄</b>(예: 101~105 한 번에). 호수가 많으면 <b>검색</b>으로 빨리 찾아요.'
+        desc: '작업할 <b>호수</b>를 추가합니다. 한 개씩은 <b>➕추가</b>, 여러 개는 <b>📋일괄</b>(예: 101~105 한 번에). 호수가 많으면 <b>검색</b>으로 빨리 찾아요.'
       },
     ]
   });
@@ -882,25 +882,25 @@ function renderSlideScreen2(c) {
         zone: { top: 0.4, left: 3.9, w: 92.8, h: 21.2 },
         finger: { top: 9.2, left: 53.6 },
         title: '호수명 · 완료 · 순서편집',
-        desc: '<b>호수명</b>을 ✏️로 바꿀 수 있어요. 작업이 끝나면 <b>✅완료</b>로 표시하고, 사진 순서를 바꾸려면 <b>🔄순서편집</b>을 눌러요.'
+        desc: '<b>호수명</b>을 ✏️로 바꿀 수 있습니다. 작업이 끝나면 <b>✅완료</b>로 표시하고, 사진 순서를 바꾸려면 <b>🔄순서편집</b>을 눌러요.'
       },
       {
         zone: { top: 23.9, left: 3.3, w: 92.7, h: 22.3 },
         finger: { top: 31.3, left: 40.7 },
         title: '작업 전 / 작업 후 사진',
-        desc: '<b>작업 전</b>(🔴) 사진과 <b>작업 후</b>(🟢) 사진을 따로 찍어요. 📷<b>카메라</b>로 바로 찍거나 📁<b>파일</b>에서 기존 사진을 골라요.'
+        desc: '<b>작업 전</b>(🔴) 사진과 <b>작업 후</b>(🟢) 사진을 따로 찍습니다. 📷<b>카메라</b>로 바로 찍거나 📁<b>파일</b>에서 기존 사진을 골라요.'
       },
       {
         zone: { top: 45.8, left: 3.5, w: 92.7, h: 38.1 },
         finger: { top: 58.3, left: 17.8 },
         title: '사진 관리',
-        desc: '추가한 사진들이에요. 잘못 찍었으면 <b>✗</b>로 지우고(휴지통에 보관), <b>⬇️</b>로 그 사진 원본을 따로 저장할 수 있어요.'
+        desc: '추가한 사진들입니다. 잘못 찍었으면 <b>✗</b>로 지우고(휴지통에 보관), <b>⬇️</b>로 그 사진 원본을 따로 저장할 수 있습니다.'
       },
       {
         zone: { top: 87, left: 3.4, w: 93, h: 13 },
         finger: { top: 96.9, left: 59 },
         title: '특이사항',
-        desc: '고장·누수처럼 특별히 남길 게 있으면 <b>특이사항</b>에 사진과 메모로 기록해요. 보고서에 따로 표시돼요.'
+        desc: '고장·누수처럼 특별히 남길 게 있으면 <b>특이사항</b>에 사진과 메모로 기록합니다. 보고서에 따로 표시됩니다.'
       },
     ]
   });
@@ -919,19 +919,19 @@ function renderSlideScreen3(c) {
         zone: { top: 0, left: 0.1, w: 99.9, h: 7.9 },
         finger: { top: 5.3, left: 74.7 },
         title: '순서 편집 화면',
-        desc: '호수 카드의 <b>🔄순서편집</b>을 누르면 이 화면이 열려요.'
+        desc: '호수 카드의 <b>🔄순서편집</b>을 누르면 이 화면이 열립니다.'
       },
       {
         zone: { top: 12.3, left: 0.4, w: 99.2, h: 8.7 },
         finger: { top: 17.2, left: 83.1 },
         title: '드래그로 순서 변경',
-        desc: '사진을 <b>길게 눌러 끌면</b> 순서가 바뀌어요. 사진을 한 번 탭하면 크게 볼 수 있어요.'
+        desc: '사진을 <b>길게 눌러 끌면</b> 순서가 바뀝니다. 사진을 한 번 탭하면 크게 볼 수 있습니다.'
       },
       {
         zone: { top: 21.5, left: 0, w: 100, h: 65.3 },
         finger: { top: 42.4, left: 41.4 },
         title: '작업 전 / 작업 후',
-        desc: '왼쪽이 <b>작업 전</b>, 오른쪽이 <b>작업 후</b>예요. 전·후를 같은 순서로 맞추면 보고서에서 나란히 짝지어 나와요(전1↔후1). 전↔후로 옮길 수도 있어요.'
+        desc: '왼쪽이 <b>작업 전</b>, 오른쪽이 <b>작업 후</b>입니다. 전·후를 같은 순서로 맞추면 보고서에서 나란히 짝지어 나옵니다(전1↔후1). 전↔후로 옮길 수도 있습니다.'
       },
       {
         zone: { top: 91.3, left: 57.5, w: 42.5, h: 8.7 },
@@ -962,19 +962,19 @@ function renderSlideScreen4(c) {
         zone: { top: 23.9, left: 0, w: 99.9, h: 12.4 },
         finger: { top: 33.7, left: 71.8 },
         title: '기간 필터',
-        desc: '기본은 <b>최근 3일</b>만 보여줘요. 예전 작업을 찾으려면 <b>기간 변경</b>으로 7일·30일·전체로 넓혀요.'
+        desc: '기본은 <b>최근 3일</b>만 보여줍니다. 예전 작업을 찾으려면 <b>기간 변경</b>으로 7일·30일·전체로 넓혀요.'
       },
       {
         zone: { top: 43.4, left: 0, w: 100, h: 46.2 },
         finger: { top: 50.3, left: 55.6 },
         title: '작업 불러오기 · 수정 · 삭제',
-        desc: '작업을 다시 보려면 카드를 누르거나 <b>📂열기</b>를 눌러요. <b>✏️</b>로 고객 정보를 고치고, <b>🗑️</b>로 지울 수 있어요. 이름·호수·전화번호로 검색도 돼요.'
+        desc: '작업을 다시 보려면 카드를 누르거나 <b>📂열기</b>를 눌러요. <b>✏️</b>로 고객 정보를 고치고, <b>🗑️</b>로 지울 수 있습니다. 이름·호수·전화번호로 검색도 됩니다.'
       },
       {
         zone: { top: 93, left: 39.6, w: 60.4, h: 7 },
         finger: { top: 98.1, left: 76.5 },
         title: '엑셀 파일',
-        desc: '모든 고객 기록은 <b>엑셀 파일</b>로도 저장돼요. 이 버튼으로 위치를 확인해 컴퓨터에서 열어볼 수 있어요.'
+        desc: '모든 고객 기록은 <b>엑셀 파일</b>로도 저장됩니다. 이 버튼으로 위치를 확인해 컴퓨터에서 열어볼 수 있습니다.'
       },
     ]
   });
@@ -992,19 +992,19 @@ function renderSlideScreen5(c) {
         zone: { top: 0, left: 0, w: 99.8, h: 11 },
         finger: { top: 9, left: 81.2 },
         title: '저장 · 공유 도구',
-        desc: '위쪽 도구막대에서 글자 크기를 ➖➕로 조절하고, <b>⬇️PDF</b>나 <b>🖼️JPG</b>로 저장해요. 저장한 파일을 고객에게 보내면 돼요.'
+        desc: '위쪽 도구막대에서 글자 크기를 ➖➕로 조절하고, <b>⬇️PDF</b>나 <b>🖼️JPG</b>로 저장합니다. 저장한 파일을 고객에게 보내면 됩니다.'
       },
       {
         zone: { top: 14.4, left: 0, w: 100, h: 40.9 },
         finger: { top: 33.1, left: 39.7 },
         title: '표지',
-        desc: '<b>표지</b>에는 회사 정보·작업 현장·날짜·담당자·완료율이 자동으로 들어가요.'
+        desc: '<b>표지</b>에는 회사 정보·작업 현장·날짜·담당자·완료율이 자동으로 들어갑니다.'
       },
       {
         zone: { top: 55.2, left: 0, w: 100, h: 29.1 },
         finger: { top: 66.2, left: 81.4 },
         title: '작업 상세 · 사진',
-        desc: '요약 통계와 호수별 작업 내역이 정리돼요. 그 아래로 호수마다 <b>작업 전·후 사진이 나란히</b>(왼쪽 전 / 오른쪽 후) 출력돼요.'
+        desc: '요약 통계와 호수별 작업 내역이 정리됩니다. 그 아래로 호수마다 <b>작업 전·후 사진이 나란히</b>(왼쪽 전 / 오른쪽 후) 출력됩니다.'
       },
     ]
   });
@@ -1022,7 +1022,7 @@ function renderSlideScreen6(c) {
         zone: { top: 0.8, left: 0, w: 100, h: 15.5 },
         finger: { top: 8.8, left: 33.8 },
         title: '업체 정보',
-        desc: '<b>업체명·연락처·사업자번호</b>를 넣으면 보고서 표지에 자동으로 들어가요. 한 번 넣으면 계속 쓰여요.'
+        desc: '<b>업체명·연락처·사업자번호</b>를 넣으면 보고서 표지에 자동으로 들어갑니다. 한 번 넣으면 계속 쓰여요.'
       },
       {
         zone: { top: 21.3, left: 0, w: 99.8, h: 18.2 },
@@ -1034,7 +1034,7 @@ function renderSlideScreen6(c) {
         zone: { top: 42, left: 0, w: 100, h: 10.5 },
         finger: { top: 50.1, left: 42.8 },
         title: '저장 폴더',
-        desc: '사진과 작업 내용이 저장되는 <b>폴더</b>예요. 위치를 확인하거나 바꿀 수 있어요. (폴더 연결이 풀리면 여기서 다시 연결해요.)'
+        desc: '사진과 작업 내용이 저장되는 <b>폴더</b>입니다. 위치를 확인하거나 바꿀 수 있습니다. (폴더 연결이 풀리면 여기서 다시 연결합니다.)'
       },
       {
         zone: { top: 54, left: 0, w: 99.5, h: 39.9 },
@@ -1053,7 +1053,7 @@ function renderSlideSetup(c) {
   c.innerHTML = `
   <div class="ob-slide">
     <div class="ob-slide-ttl">업체 정보</div>
-    <p class="ob-setup-sub">보고서·견적서에 표시될 정보예요 <b>(건너뛰어도 돼요)</b><br><small style="color:var(--mu);">⚙️설정에서 언제든 입력·변경 가능</small></p>
+    <p class="ob-setup-sub">보고서·견적서에 표시될 정보입니다 <b>(건너뛰어도 됩니다)</b><br><small style="color:var(--mu);">⚙️설정에서 언제든 입력·변경 가능</small></p>
     <button type="button" id="obLoginBtn" class="btn b-blue" style="width:100%;justify-content:center;margin-bottom:8px;">☁️ 기존 계정으로 로그인 · 업체정보 불러오기</button>
     <button type="button" id="obBizFill" class="btn b-ghost" style="width:100%;justify-content:center;margin-bottom:4px;">📄 사업자등록증으로 자동입력</button>
     <input type="file" id="obBizFillFile" accept="image/*" style="display:none;">
@@ -1073,7 +1073,7 @@ function renderSlideSetup(c) {
       <input class="ob-setup-input" id="obCoEmail" type="email" placeholder="example@email.com" value="">
       <label class="ob-setup-label">입금계좌 <span style="color:var(--mu);font-size:11px;">(거래명세서)</span></label>
       <input class="ob-setup-input" id="obCoBank" type="text" placeholder="예: 국민 123456-01-234567" value="">
-      ${ hasFolder ? '' : `<div class="ob-callout" style="margin-top:14px;"><span class="ob-callout-num">📁</span><span class="ob-callout-txt">사진·데이터 저장을 위해 <b>폴더 접근 권한</b>이 필요할 수 있어요. 권한 요청이 나타나면 <b>허용</b>해 주세요.</span></div>` }
+      ${ hasFolder ? '' : `<div class="ob-callout" style="margin-top:14px;"><span class="ob-callout-num">📁</span><span class="ob-callout-txt">사진·데이터 저장을 위해 <b>폴더 접근 권한</b>이 필요할 수 있습니다. 권한 요청이 나타나면 <b>허용</b>해 주세요.</span></div>` }
     </div>
   </div>`;
 
@@ -1272,8 +1272,8 @@ document.addEventListener('cloud-auth-changed', function (e) {
       ['coName','coTel','coBiz','coCeo','coAddr','coEmail','coBank','coIndustryMajor','coIndustryMinor','coReportTitle','coUnitLabel','coStageLabel'].forEach(function (k) { if (ci[k]) { _obData[k] = ci[k]; filled++; } });
       var ic = (typeof CO_ICON_KEY !== 'undefined') ? ((typeof safeGetItem === 'function') ? safeGetItem(CO_ICON_KEY) : localStorage.getItem(CO_ICON_KEY)) : null;
       if (ic && ic.length <= 4) _obData.coIcon = ic;
-      if (filled) { if (typeof renderOnboardingStep === 'function') renderOnboardingStep(); if (typeof showToast === 'function') showToast('☁️ 저장된 업체정보를 불러왔어요', 'ok'); }
-      else if (typeof showToast === 'function') showToast('로그인됨 · 저장된 업체정보가 없어요', 'ok');
+      if (filled) { if (typeof renderOnboardingStep === 'function') renderOnboardingStep(); if (typeof showToast === 'function') showToast('☁️ 저장된 업체정보를 불러왔습니다', 'ok'); }
+      else if (typeof showToast === 'function') showToast('로그인됨 · 저장된 업체정보가 없습니다', 'ok');
     } catch (err) {}
   }, 1900);
 });

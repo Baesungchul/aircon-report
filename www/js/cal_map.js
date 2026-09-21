@@ -386,7 +386,7 @@
     });
     if (!located.length) {
       box.innerHTML = '<div class="cm-msg">주소로 위치를 찾은 작업이 없습니다.' +
-        '<br><span class="cm-msg-sub">아래 카드에서 길안내는 그대로 쓸 수 있어요.</span></div>';
+        '<br><span class="cm-msg-sub">아래 카드에서 길안내는 그대로 쓸 수 있습니다.</span></div>';
       return;
     }
 
@@ -686,7 +686,7 @@
       }).catch(function (e) {
         if (_ov !== ov) return;
         box.innerHTML = '<div class="cm-msg">' + esc((e && e.message) || '지도를 열지 못했습니다') +
-          '<br><span class="cm-msg-sub">길안내는 아래에서 그대로 쓸 수 있어요.</span></div>';
+          '<br><span class="cm-msg-sub">길안내는 아래에서 그대로 쓸 수 있습니다.</span></div>';
       });
     };
 

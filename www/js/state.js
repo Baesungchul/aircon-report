@@ -516,7 +516,7 @@ function setupBackButtonHandler() {
     } else {
       _loadBackAt = now;
       if (typeof showToast === 'function') {
-        showToast('불러오는 중이에요. 중단하려면 뒤로가기를 한 번 더 누르세요', 'err');
+        showToast('불러오는 중입니다. 중단하려면 뒤로가기를 한 번 더 누르세요', 'err');
       }
     }
     return true;

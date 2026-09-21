@@ -145,7 +145,7 @@
       '<div style="font-size:12px;font-weight:800;color:var(--ac);margin-bottom:7px;">⭐ 내 업종 (등록됨)</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:7px;">' + chips + '</div>' +
       '<div style="font-size:10px;color:var(--mu);margin-top:7px;line-height:1.5;">' +
-        '눌러서 끄면 목록에서 빠집니다 (지난 작업의 보고서는 그대로 유지)</div></div>';
+        '눌러서 끄면 목록에서 제외됩니다 (지난 작업의 보고서는 그대로 유지)</div></div>';
   };
 
   /* ═══ 업종 고르기 시트 (온보딩·설정 공용) ═══════════════
@@ -180,7 +180,7 @@
     var ov = shell(
       '<div style="font-size:17px;font-weight:800;margin-bottom:4px;">어떤 일을 하세요?</div>' +
       '<div style="font-size:12px;color:var(--mu);margin-bottom:14px;line-height:1.5;">' +
-        '하시는 일을 <b>전부</b> 눌러주세요. 여러 개 고를 수 있어요.<br>' +
+        '하시는 일을 <b>전부</b> 눌러주세요. 여러 개 고를 수 있습니다.<br>' +
         '보고서 제목과 호칭은 자동으로 맞춰집니다.</div>' +
       '<div id="pfChosenBar" style="display:none;background:var(--sf2);border-radius:10px;padding:9px 11px;margin-bottom:14px;font-size:12px;line-height:1.7;"></div>' +
       '<div style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;margin-bottom:12px;">' +
@@ -339,7 +339,7 @@
       var desc  = opts.desc  || (isPick
         ? '바꾸면 보고서 제목·호칭과 글쓰기 지침·견적서 양식이 그 업종 것으로 바뀝니다.<br>' +
           '<b>이미 저장한 글과 견적서는 그대로 남습니다.</b>'
-        : '업종을 누르면 그 업종으로 바뀝니다. 업종마다 <b>글쓰기 지침·견적 지침·양식</b>이 따로 저장돼요.');
+        : '업종을 누르면 그 업종으로 바뀝니다. 업종마다 <b>글쓰기 지침·견적 지침·양식</b>이 따로 저장됩니다.');
 
       ov.querySelector('#pfMgrBody').innerHTML =
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
@@ -595,7 +595,7 @@
       fileInp.addEventListener('change', function () {
         var f = fileInp.files && fileInp.files[0];
         if (!f) return;
-        if (!/^image\//.test(f.type || '')) { toast('이미지 파일만 올릴 수 있어요', 'err'); return; }
+        if (!/^image\//.test(f.type || '')) { toast('이미지 파일만 올릴 수 있습니다', 'err'); return; }
         resizeSquare(f, function (data) {
           if (!data) { toast('이미지를 읽지 못했습니다 — 다른 파일로 해보세요', 'err'); return; }
           showPicked(data);

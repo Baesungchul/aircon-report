@@ -73,7 +73,7 @@
   Billing.purchase = async function (planKey) {
     if (!isNative()) { toast('결제는 앱(안드로이드)에서만 가능합니다', 'err'); return; }
     var rc = RC();
-    if (!rc || !_ready) { toast('결제 모듈이 준비되지 않았어요 (앱 재빌드/설정 확인)', 'err'); return; }
+    if (!rc || !_ready) { toast('결제 모듈이 준비되지 않았습니다 (앱 재빌드/설정 확인)', 'err'); return; }
     var prodId = PLAN_PRODUCTS[planKey];
     if (!prodId) { toast('상품 정보가 없습니다', 'err'); return; }
     try {
@@ -86,7 +86,7 @@
         var _pid = String(pr.identifier || '').split(':')[0];
         if (pr.identifier === prodId || _pid === prodId || pkgs[i].identifier === prodId) { pkg = pkgs[i]; break; }
       }
-      if (!pkg) { toast('구독 상품을 찾을 수 없어요 (Play 상품/RevenueCat 오퍼링 확인)', 'err'); return; }
+      if (!pkg) { toast('구독 상품을 찾을 수 없습니다 (Play 상품/RevenueCat 오퍼링 확인)', 'err'); return; }
       var res = await rc.purchasePackage({ aPackage: pkg });
       applyInfo(readInfo(res));
       toast('✅ 구독이 시작되었습니다', 'ok');

@@ -1407,13 +1407,13 @@ window.abortWorkLoad = function () {
   window._workLoadAbort = true;
   try { if (typeof hideOverlay === 'function') hideOverlay(); } catch (e) {}
   window.resetWorkState();
-  try { if (typeof showToast === 'function') showToast('불러오기를 중단했어요', 'err'); } catch (e) {}
+  try { if (typeof showToast === 'function') showToast('불러오기를 중단했습니다', 'err'); } catch (e) {}
 };
 
 async function restoreFromData(data, dateDir) {
   // ★ 이미 다른 작업을 불러오는 중이면 무시 (상태 뒤엉킴 방지)
   if (window._workLoading) {
-    if (typeof showToast === 'function') showToast('작업을 불러오는 중이에요. 잠시만요', 'err');
+    if (typeof showToast === 'function') showToast('작업을 불러오는 중입니다. 잠시만요', 'err');
     return;
   }
   window._workLoading = true;

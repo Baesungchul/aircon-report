@@ -328,7 +328,7 @@
       '</div>' +
       '<div id="agList" style="color:var(--mu);font-size:13px;padding:18px 0;text-align:center;">불러오는 중…</div>' +
       '<div style="font-size:10.5px;color:var(--mu);margin-top:10px;line-height:1.6;">' +
-        '사용량은 상대 앱이 켜져 있을 때 올라옵니다 — 방금 쓴 건 안 보일 수 있어요.<br>' +
+        '사용량은 상대 앱이 켜져 있을 때 올라옵니다 — 방금 쓴 건 안 보일 수 있습니다.<br>' +
         '「결제중」은 내가 준 게 아니라 실제 결제로 받은 플랜입니다.' +
       '</div>' +
       '</div>';

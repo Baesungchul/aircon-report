@@ -724,7 +724,7 @@
 
   function restoreFromServer() {
     if (!(window.Cloud && Cloud.user)) {
-      if (typeof showToast === 'function') showToast('서버 복구는 로그인이 필요해요', 'ok');
+      if (typeof showToast === 'function') showToast('서버 복구는 로그인이 필요합니다', 'ok');
       _afterLogin = restoreFromServer; _afterLoginAt = Date.now();   // ★ 로그인 끝나면 여기로 되돌아온다
       if (window.Cloud && Cloud.openModal) Cloud.openModal();
       else if (typeof openCloudModal === 'function') openCloudModal();
@@ -732,7 +732,7 @@
     }
     _afterLogin = null; _afterLoginAt = 0;           // 이어달리기 완료 — 남겨두면 다음 로그인 때 또 뜬다
     if (window.CloudBackup && CloudBackup.checkAndOfferRestore) CloudBackup.checkAndOfferRestore(true, { notify: true });
-    else if (typeof showToast === 'function') showToast('복구 모듈을 찾을 수 없어요', 'err');
+    else if (typeof showToast === 'function') showToast('복구 모듈을 찾을 수 없습니다', 'err');
   }
   window.restoreFromServer = restoreFromServer;
 
@@ -777,8 +777,8 @@
       '<div style="font-size:12px;color:var(--mu);line-height:1.6;margin-bottom:14px;">' +
         '지금 있는 사진·정보는 그대로 두고 <b>없어진 것만</b> 채웁니다.</div>' +
       card('btnRestoreServer', '☁️', '서버에서 복구',
-           '로그인 계정에 백업된 작업 기록을 받아옵니다. 기기를 바꿨을 때 가장 간단해요.' +
-           (isSub ? ' 사진도 함께 받아옵니다.' : ' <b>사진은 구독 사용자만</b> 받아올 수 있어요.'),
+           '로그인 계정에 백업된 작업 기록을 받아옵니다. 기기를 바꿨을 때 가장 간단합니다.' +
+           (isSub ? ' 사진도 함께 받아옵니다.' : ' <b>사진은 구독 사용자만</b> 받아올 수 있습니다.'),
            '') +
       card('btnRestorePicker', '📁', '백업 폴더에서 복원', '자동백업으로 만들어진 폴더를 골라 되돌립니다.') +
       card('btnRestoreZip', '🗜️', 'ZIP 파일에서 복원', '다른 곳에 옮겨 둔 백업 ZIP 파일이 있을 때 사용하세요.') +

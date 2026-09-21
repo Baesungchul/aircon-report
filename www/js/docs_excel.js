@@ -118,7 +118,7 @@
     var blob = new Blob([buffer], { type: MIME });
     if (typeof _ccIsNative === 'function' && _ccIsNative()) {
       var FS = _ccPlugin('Filesystem');
-      if (!FS) { toast('파일 저장 모듈이 없어요(앱 재빌드 필요)', 'err'); return; }
+      if (!FS) { toast('파일 저장 모듈이 없습니다(앱 재빌드 필요)', 'err'); return; }
       try {
         var b64 = await _ccBlobToBase64(blob);
         var relDir = '작업보고서', dir = 'DOCUMENTS';
@@ -358,7 +358,7 @@
     tplFile.onchange = async function () {
       var f = tplFile.files && tplFile.files[0]; tplFile.value = '';
       if (!f) return;
-      if (!/\.xlsx$/i.test(f.name)) { toast('엑셀(.xlsx) 파일만 올릴 수 있어요', 'err'); return; }
+      if (!/\.xlsx$/i.test(f.name)) { toast('엑셀(.xlsx) 파일만 올릴 수 있습니다', 'err'); return; }
       if (f.size > 5 * 1024 * 1024) { toast('양식 파일이 너무 큽니다(5MB 이하)', 'err'); return; }
       if (!window.DocsTemplate) { toast('양식 모듈 로드 안 됨 (앱 재빌드 필요)', 'err'); return; }
       try {

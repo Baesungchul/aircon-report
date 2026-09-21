@@ -193,7 +193,7 @@
       (miss.length ?
         '<div style="background:var(--bg2,rgba(255,255,255,.05));border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;line-height:1.8;">' +
           '<b>지금 비어 있는 항목</b><br><span style="color:var(--mu);">' + miss.join(' · ') + '</span></div>'
-        : '<div style="font-size:13px;color:var(--mu);margin-bottom:12px;line-height:1.7;">주요 항목은 이미 채워져 있어요. 덮어쓰기를 선택하면 백업 시점 값으로 되돌립니다.</div>') +
+        : '<div style="font-size:13px;color:var(--mu);margin-bottom:12px;line-height:1.7;">주요 항목은 이미 채워져 있습니다. 덮어쓰기를 선택하면 백업 시점 값으로 되돌립니다.</div>') +
       '<button class="btn b-blue" id="adFill" style="width:100%;justify-content:center;margin-bottom:8px;">비어있는 것만 채우기 (권장)</button>' +
       '<div style="display:flex;gap:8px;">' +
         '<button class="btn b-ghost b-xs" id="adOver" style="flex:1;justify-content:center;">전부 덮어쓰기</button>' +
@@ -207,7 +207,7 @@
         if (!mode) return resolve(false);
         var r = AppData.apply(snap, mode);
         if (typeof showToast === 'function') {
-          showToast(r.applied ? ('✅ 설정 ' + r.applied + '개 복원됨') : '되살릴 항목이 없었어요', r.applied ? 'ok' : 'err');
+          showToast(r.applied ? ('✅ 설정 ' + r.applied + '개 복원됨') : '되살릴 항목이 없었습니다', r.applied ? 'ok' : 'err');
         }
         if (r.applied) setTimeout(function () {
           if (confirm('설정을 되살렸습니다.\n\n앱을 새로고침해야 모두 반영됩니다. 지금 새로고침할까요?')) location.reload();

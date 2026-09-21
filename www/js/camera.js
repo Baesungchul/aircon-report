@@ -140,7 +140,7 @@
       videoEl.style.transform = (facing === 'user') ? 'scaleX(-1)' : 'none';
       await videoEl.play().catch(() => {});
     } catch (e) {
-      if (typeof showToast === 'function') showToast('카메라를 열 수 없어요. 권한을 확인해주세요.', 'err');
+      if (typeof showToast === 'function') showToast('카메라를 열 수 없습니다. 권한을 확인해주세요.', 'err');
       close();
     }
   }
@@ -161,7 +161,7 @@
     if (capturing) return;
     const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     if (!vw || !vh) {
-      if (typeof showToast === 'function') showToast('카메라 준비 중이에요. 잠시 후 다시 눌러주세요.');
+      if (typeof showToast === 'function') showToast('카메라 준비 중입니다. 잠시 후 다시 눌러주세요.');
       return;
     }
     capturing = true;
@@ -216,7 +216,7 @@
   // 외부 진입점: render.js 버튼에서 호출
   window.openInAppCamera = function (uid, type, sid) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      if (typeof showToast === 'function') showToast('이 기기에서는 카메라를 사용할 수 없어요.', 'err');
+      if (typeof showToast === 'function') showToast('이 기기에서는 카메라를 사용할 수 없습니다.', 'err');
       return;
     }
     // ★ 해상도 설정을 매번 다시 읽음 - 설정 화면에서 바꾸면 다음 촬영부터 바로 반영

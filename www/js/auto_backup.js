@@ -415,7 +415,7 @@
         if (!_rootFiles.length || _srcWorks === 0) {
           console.warn('[자동백업] 원본에 작업이 없음(재설치 직후 등) → 백업/정리 중단하여 백업 보호');
           if (reason === 'manual' && typeof showToast === 'function') {
-            showToast('원본에 작업이 없어 백업을 건너뛰었어요 (기존 백업은 그대로 보호됨)', 'ok');
+            showToast('원본에 작업이 없어 백업을 건너뛰었습니다 (기존 백업은 그대로 보호됨)', 'ok');
           }
           setIncomplete(false);
           return { skipped: true, reason: 'empty-source-guard' };
@@ -503,7 +503,7 @@
           // 권한 상실(재설치 등)로 보이면 폴더 지정 해제 → 사용자에게 재지정 유도
           if (/permission|security|uri|denied|권한/i.test(msg)) {
             setSaf('');
-            if (typeof showToast === 'function') showToast('백업 폴더 권한이 만료됐어요. 설정에서 폴더를 다시 지정해주세요', 'err');
+            if (typeof showToast === 'function') showToast('백업 폴더 권한이 만료됐습니다. 설정에서 폴더를 다시 지정해주세요', 'err');
           }
           return { error: msg };
         }
@@ -596,10 +596,10 @@
     if (!getSaf()) {
       el.innerHTML = '<b style="color:#e0574a;">⚠️ 백업 폴더를 정해주세요</b><br>' +
         '<span style="color:var(--mu);">지금은 앱을 삭제하면 백업까지 함께 지워집니다. ' +
-        '폴더를 직접 골라야 사진이 남아요.</span>';
+        '폴더를 직접 골라야 사진이 남습니다.</span>';
       return;
     }
-    el.innerHTML = '<b style="color:#1b8a5f;">✓ 자동으로 백업되고 있어요</b><br>' +
+    el.innerHTML = '<b style="color:#1b8a5f;">✓ 자동으로 백업되고 있습니다</b><br>' +
       '<span style="color:var(--mu);">앱을 삭제해도 사진이 남습니다' +
       (when ? ' · 마지막 ' + when : '') + '</span>';
   }
@@ -665,18 +665,18 @@
       '<div style="font-size:17px;font-weight:800;margin:8px 0 10px;text-align:center;">사진 백업 폴더를 지정해주세요</div>' +
       '<div style="font-size:13px;color:var(--mu);line-height:1.75;margin-bottom:8px;">' +
         '<b style="color:#e0574a;">앱을 삭제하면 앱 안의 사진은 안드로이드가 모두 지웁니다.</b> ' +
-        '기기를 바꾸거나 앱을 다시 설치할 때 사진이 사라질 수 있어요.' +
+        '기기를 바꾸거나 앱을 다시 설치할 때 사진이 사라질 수 있습니다.' +
       '</div>' +
       '<div style="font-size:13px;color:var(--mu);line-height:1.75;margin-bottom:14px;">' +
         '백업 폴더를 직접 골라두면 앱을 지워도 사진이 그 폴더에 남습니다. ' +
-        '<b style="color:var(--tx);">사진을 한 번 더 저장하므로 저장공간은 최대 2배가 필요해요.</b>' +
+        '<b style="color:var(--tx);">사진을 한 번 더 저장하므로 저장공간은 최대 2배가 필요합니다.</b>' +
       '</div>' +
       '<button class="btn b-blue" id="abPick" style="width:100%;justify-content:center;margin-bottom:8px;">📁 백업 폴더 고르기</button>' +
       '<div style="display:flex;gap:8px;">' +
         '<button class="btn b-ghost b-xs" id="abLater" style="flex:1;justify-content:center;">나중에</button>' +
         '<button class="btn b-ghost b-xs" id="abNever" style="flex:1;justify-content:center;">백업 안 함</button>' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--mu);margin-top:10px;text-align:center;">설정 → 데이터 백업/복원에서 언제든 바꿀 수 있어요</div>' +
+      '<div style="font-size:11px;color:var(--mu);margin-top:10px;text-align:center;">설정 → 데이터 백업/복원에서 언제든 바꿀 수 있습니다</div>' +
       '</div>';
     document.body.appendChild(ov);
 
@@ -691,7 +691,7 @@
       try { await AutoBackup.pickFolder(); } catch (e) {}
       refreshStatus();
       if (getSaf()) {
-        if (typeof showToast === 'function') showToast('✓ 백업 폴더가 지정됐어요. 첫 백업을 시작합니다', 'ok');
+        if (typeof showToast === 'function') showToast('✓ 백업 폴더가 지정됐습니다. 첫 백업을 시작합니다', 'ok');
         AutoBackup.run('manual');
       }
     };

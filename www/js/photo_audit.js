@@ -392,7 +392,7 @@
       (cnt.lost > 0 ?
         '<div style="background:#e0574a1a;border:1px solid #e0574a55;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;line-height:1.7;">' +
         '<b style="color:#e0574a;">⚠️ 유실 의심 ' + cnt.lost + '개는 재기록에서 제외됩니다.</b><br>' +
-        '기록만 있고 파일이 0장인 상태예요. 사진이 정말 사라진 건지, 앱이 다른 폴더를 보고 있는 건지 먼저 확인해야 합니다. ' +
+        '기록만 있고 파일이 0장인 상태입니다. 사진이 정말 사라진 건지, 앱이 다른 폴더를 보고 있는 건지 먼저 확인해야 합니다. ' +
         '지금 재기록하면 “몇 장이 있었는지”라는 단서까지 지워집니다.<br>' +
         '<b>📋 폴더 진단</b>으로 실제 파일이 어디 있는지 먼저 확인하세요.' +
         '</div>' : '');
@@ -528,7 +528,7 @@
       if (!confirm('유실 의심 ' + targets.length + '건을 서버 백업에서 다시 받을까요?\n\n' +
                    '· 이미 있는 사진은 건너뜁니다\n' +
                    '· 구독 계정에 백업된 사진만 받을 수 있습니다\n' +
-                   '· 시간이 걸릴 수 있어요')) return;
+                   '· 시간이 걸릴 수 있습니다')) return;
       _busy = true; btnDL.disabled = true; btnScan.disabled = true; btnFix.disabled = true;
       try {
         var r = await PhotoAudit.redownload(targets, function (cur, total, nm) {

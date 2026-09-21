@@ -321,7 +321,7 @@
   // 사용 지점 표시용: {admin, free, base(총), left(남은), coupon}
   /* ★ 2026-08-24 '아직 무료 지급분을 못 받은 상태'인가.
        = 로그인한 적이 없어서 계정에 지급이 안 된 사람. 이 사람에게 필요한 말은
-         '구독하세요'가 아니라 '로그인하면 드려요' 다. */
+         '구독하세요'가 아니라 '로그인하면 드립니다' 다. */
   Subs.needsLoginForFree = function () {
     load();
     return !loggedIn() && !S.freeGranted;
@@ -353,7 +353,7 @@
     var i = Subs.quotaInfo(kind);
     if (i.admin) return '무제한 (관리자)';
     // ★ 2026-08-24 아직 지급 전이면 잔량 대신 '로그인하면 드린다'를 보여준다
-    if (Subs.needsLoginForFree()) return '로그인하면 무료 ' + FREE_INIT[kind] + '회를 드려요';
+    if (Subs.needsLoginForFree()) return '로그인하면 무료 ' + FREE_INIT[kind] + '회를 드립니다';
     var txt = (i.free ? '무료 총 ' : '이번 달 총 ') + i.base + '회 중 ' + i.left + '회 남음';
     /* ★ 2026-08-24 무료 지급분은 30일이면 끝난다 → 남은 기간을 같이 보여준다 */
     var _d = Subs.freeDaysLeft();
@@ -370,7 +370,7 @@
          무료 횟수는 계정에 지급되므로, 이 사람에게 맞는 다음 행동은 로그인이다. */
     if (Subs.needsLoginForFree()) {
       return { ok: false, needLogin: true,
-               msg: '로그인하면 ' + KIND_LABEL[kind] + ' 무료 ' + FREE_INIT[kind] + '회를 바로 드려요' };
+               msg: '로그인하면 ' + KIND_LABEL[kind] + ' 무료 ' + FREE_INIT[kind] + '회를 바로 드립니다' };
     }
     /* ★ 2026-08-24 다 써서 없는 것과 기간이 끝나 없는 것은 다른 말이어야 한다 */
     if (S.freeExp && Date.now() > S.freeExp && (Subs.planInfo()[kind] || 0) === 0) {
@@ -396,7 +396,7 @@
   /* 로그인 창 열기 — 온보딩의 _obOpenLogin 과 같은 경로(cloudModal)를 쓴다.
      ⚠️ 모달이 다른 오버레이 밑에 깔리는 경우가 있어 body 끝으로 옮긴 뒤 연다. */
   /* ★ 2026-08-30 '로그인하고 나면 이어서 할 일'.
-       그 전에는 "로그인하면 무료 5회 드려요" 를 보고 로그인해도 아무 일이 없어서,
+       그 전에는 "로그인하면 무료 5회 드립니다" 를 보고 로그인해도 아무 일이 없어서,
        하려던 작업(글작성·일정등록·견적서) 버튼을 사용자가 다시 눌러야 했다.
        backup.js 의 서버복구와 같은 얼개다. */
   var _afterLogin = null, _afterLoginKind = null, _afterLoginAt = 0;
@@ -436,7 +436,7 @@
       if (window.Cloud && Cloud.openModal) Cloud.openModal();
       var cm = document.getElementById('cloudModal');
       if (cm) { try { document.body.appendChild(cm); } catch (e) {} cm.classList.add('open'); }
-      else toast('로그인 창을 불러오는 중이에요. 잠시 후 다시 시도해주세요', 'err');
+      else toast('로그인 창을 불러오는 중입니다. 잠시 후 다시 시도해주세요', 'err');
     } catch (e) { toast('로그인 창 오류: ' + (e && e.message), 'err'); }
   };
   Subs.gateFeature = function (k, label, msg) {

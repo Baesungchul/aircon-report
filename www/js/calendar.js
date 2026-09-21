@@ -2286,32 +2286,90 @@
       renderCalendarGrid(); applyHeight(); return;
     }
 
-    /* ⭐ 2026-08-24 접는 '순서'를 고쳤다 (사용자: "달력으로 돌아갈 때 화면 전환이 부자연스럽다").
-       예전엔 cal-expanded 를 **맨 먼저** 벗겼다. 그런데 그 클래스가 월매출·상세목록·스와이프
-       힌트를 감추고 body 스크롤을 잠그고 있어서, 달력이 아직 화면을 가득 채운 상태에서
-       그것들이 한꺼번에 튀어나오고 스크롤까지 생겨 목록이 사라지기도 전에 화면이 덜컹였다.
-       → 클래스 제거를 '내용 교체'와 같은 프레임으로 미룬다. 순서:
-         (1) 목록만 조용히 흐려짐 → (2) 그 사이 격자로 교체 → (3) 높이가 줄어듦 →
-         (4) 다 줄어든 뒤에야 격자가 떠오름.
-       ⚠️ _naturalHeight() 는 cal-expanded 가 걸린 상태에서 재면 칸 스타일이 달라 값이 틀린다.
-          그래서 클래스 제거는 renderCalendarGrid()/applyHeight() **앞**이어야 한다. */
+    _collapseAnim(body, grid);
+  }
+
+  /* ── 접기 연출 ────────────────────────────── 2026-09-21 다시 씀
+     ☠️ 사용자: "펼친 달력을 접을 때 동작이 부자연스럽다".
+        화면을 프레임 단위로 찍어 보고서야 무엇이 어색한지 알았다.
+
+        예전 순서는 이랬다.
+          ① 목록을 흐리게        (0ms)
+          ② 150ms 뒤 격자로 교체
+          ③ 그제서야 높이를 줄임 (150 → 390ms)
+        ②에서 격자는 **접힘 모양인데 화면을 가득 채운 높이**로 그려진다. 날짜 줄이
+        성기게 벌어진 그 모습은 접힘에도 펼침에도 없는 중간 모습이다. 그게 200ms 넘게
+        보이다가 쭈그러드니 '목록이 사라지고 → 엉성한 달력이 떴다가 → 그게 접힌다'
+        세 토막으로 읽혔다. 게다가 시작 150ms 동안은 아무 일도 안 일어나 반응이 늦었다.
+
+     ⭐ 답은 **펼칠 때가 왜 멀쩡한가**에 있었다. 펼칠 때는 안에 든 목록의 크기가 그대로고
+        바깥 통만 커져서 목록이 더 보일 뿐이다. 접기도 그렇게 만든다 —
+        격자를 처음부터 **제 크기(접힘 높이)** 로 그려 두고 통 높이만 줄인다.
+        격자는 한 번도 늘어나지 않는다.
+
+     · 걷히는 목록은 **유령으로 띄운다**(position:absolute). 레이아웃에서 빼내지 않으면
+       격자를 그리는 순간 목록이 아래로 밀려 덜컥인다.
+     · 유령은 손가락이 가던 쪽(위)으로 물러나며 옅어진다. 드래그로 접을 때는 이미
+       흐려져 있으므로 그 투명도를 그대로 이어받는다 — 안 그러면 여기서 한 번 번쩍인다.
+     · 점·막대는 목록이 다 걷힌 뒤에 올린다(cal-swapping 을 그대로 쓴다).
+       날짜 숫자는 처음부터 보인다 — 그게 '달력으로 돌아왔다'는 신호다.
+     · 매출·상세가 튀어나오고 스크롤이 생겨 덜컹이던 문제는 cal-collapsing 으로
+       끝까지 잠가 두었다가 한 번에 푼다.
+     ⚠️ 목표 높이는 **지금 실측**이다. 예전에는 마지막으로 기억해 둔 접힘 높이를 썼는데,
+        달이 5줄↔6줄로 바뀌었거나 글자 크기를 바꿨으면 어긋나서 끝에 한 번 툭 튀었다. */
+  function _collapseAnim(body, grid) {
+    var from = grid.offsetHeight;
+    var sc   = grid.scrollTop || 0;
+    var op   = grid.style.opacity;          /* 드래그로 접는 중이면 이미 흐리다 */
+
+    /* ① 지금 보이는 것을 유령으로 띄운다 */
+    var ghost = document.createElement('div');
+    ghost.className = 'cal-ghost' + (grid.classList.contains('cal-agenda') ? '' : ' cal-ghost-grid');
+    ghost.style.top = (-sc) + 'px';
+    if (!grid.classList.contains('cal-agenda')) ghost.style.height = from + 'px';
+    ghost.style.opacity = (op === '' || op == null) ? '1' : op;
+    while (grid.firstChild) ghost.appendChild(grid.firstChild);
+
+    /* ② 접힘 모양·접힘 크기로 격자를 그린다.
+       ⚠️ cal-expanded 를 먼저 벗겨야 칸 스타일이 접힘 것이 되어 높이가 제대로 나온다 */
+    body.classList.add('cal-collapsing');
+    body.classList.remove('cal-expanded');
+    _applyExpViewClass(body);
+    grid.classList.remove('cal-agenda');
     grid.classList.add('cal-swapping');
-    setTimeout(function () {
-      if (_expanded !== on) { grid.classList.remove('cal-swapping'); return; }  // 그 사이 또 바뀌었으면 취소
-      // 손가락을 따라 올라가 있던 목록의 잔상 정리 (흐려짐은 cal-swapping 이 이어받는다)
-      grid.style.transform = 'none';
-      grid.style.opacity   = '';
-      body.classList.remove('cal-expanded');
-      _applyExpViewClass(body);
-      renderCalendarGrid();
-      applyHeight();
-      // 격자는 높이가 다 줄어든 뒤에 떠오르게 — 줄어드는 도중에 나타나면 아랫줄이 잘려 보인다
-      setTimeout(function () {
-        if (_expanded) return;
-        var g = document.getElementById('calGrid');
-        if (g) g.classList.remove('cal-swapping');
-      }, 190);
-    }, 150);
+    grid.style.transition   = 'none';
+    grid.style.transform    = 'none';
+    grid.style.opacity      = '';
+    grid.style.gridAutoRows = '';
+    grid.style.height       = '';
+    renderCalendarGrid();
+    var nat = Math.max(1, grid.offsetHeight);     /* ☠️ 과거 값이 아니라 지금 실측 */
+    grid.style.height   = from + 'px';
+    grid.style.overflow = 'hidden';               /* 통이 줄어드는 만큼 유령이 잘린다 */
+    grid.appendChild(ghost);
+    void grid.offsetHeight;                       /* 시작 높이를 확정 (안 하면 첫 프레임이 날아간다) */
+
+    /* ③ 다음 프레임에 셋을 같이 움직인다 — 유령은 걷히고, 통은 줄고, 점은 뒤따라 뜬다 */
+    requestAnimationFrame(function () {
+      if (_expanded) { _collapseDone(grid, ghost, body); return; }   /* 그새 다시 펼쳤다 */
+      ghost.classList.add('out');
+      grid.style.transition = 'height .24s cubic-bezier(.22,.68,.3,1)';
+      grid.style.height     = nat + 'px';
+      setTimeout(function () { if (!_expanded) grid.classList.remove('cal-swapping'); }, 170);
+      setTimeout(function () { _collapseDone(grid, ghost, body); }, 260);
+    });
+  }
+
+  /* 뒷정리는 한 군데로 모은다 — 중간에 다시 펼쳐도 유령과 잠금이 남으면 안 된다 */
+  function _collapseDone(grid, ghost, body) {
+    if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    grid.classList.remove('cal-swapping');
+    body.classList.remove('cal-collapsing');
+    if (_expanded) return;                        /* 다시 펼쳐졌으면 높이는 건드리지 않는다 */
+    grid.style.transition   = 'none';
+    grid.style.height       = '';
+    grid.style.gridAutoRows = '';
+    grid.style.overflow     = '';
   }
   /* ★ 2026-08-21 화면 조건이 바뀌면(회전·키보드·글자 크기 변경) 확장 높이를 다시 맞춘다.
        예전엔 펼친 뒤 글자 크기를 바꾸면 높이가 그대로라 화면 밖으로 넘쳤다. */

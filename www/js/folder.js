@@ -850,6 +850,90 @@ async function doWriteOne(photo, unitName, typeLabel) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   사진 휴지통 — 작업 폴더 안에 지운 사진을 따로 둔다   (2026-09-21)
+   ----------------------------------------------------------------
+   ☠️ 왜 필요한가 (사용자 신고: "지운 사진을 복구할 수 없다")
+      사진 파일 이름은 **화면에서의 자리**로 정해진다(A_image02.jpg = 작업 전 2번).
+      그래서 2번을 지우고 새 사진을 그 자리에 넣으면 **지운 사진의 파일을 덮어쓴다.**
+      화면 휴지통(u._trash)은 메모리에만 있어서 작업을 닫으면 사라졌다.
+      → 지운 사진을 **T_<사진번호>.jpg** 라는 자리와 무관한 이름으로 따로 복사해 둔다.
+        자리 번호를 안 쓰니 무엇에도 덮이지 않는다. 사용자가 휴지통을 비울 때만 지운다.
+
+   ⚠️ 원본 바이트를 지킨다 — 화면에 남은 건 작은 썸네일일 수 있으므로,
+      폴더에 원본 파일이 있으면 **그 파일을 그대로 복사**하고,
+      없을 때만(아직 한 번도 저장 안 된 새 사진) 화면 자료로 쓴다.
+   ═══════════════════════════════════════════════════════════════ */
+const TRASH_PREFIX = 'T_';
+function trashFileName(photo) {
+  var pid = String((photo && photo.id) || '').replace(/[^A-Za-z0-9_-]/g, '');
+  return TRASH_PREFIX + (pid || ('x' + Date.now())) + '.jpg';
+}
+window.trashFileName = trashFileName;
+
+/* 지운 사진 한 장을 작업 폴더에 보관한다. 이미 있으면 그냥 둔다. */
+async function keepTrashPhoto(photo, unitName, folderName) {
+  if (!photo || !photoFolderHandle) return false;
+  const dir = folderName || currentFolderName || _currentSaveDateFolderName;
+  if (!dir) return false;                       /* 아직 폴더가 없는 새 작업 — 저장할 때 다시 부른다 */
+  const _u = (typeof units !== 'undefined' && Array.isArray(units))
+    ? units.find(x => x && x.name === unitName) : null;
+  const workNum = _u ? getWorkNumberForUnit(_u) : getWorkNumber(unitName);
+  const workDir = await getCachedWorkDir(dir, workNum);
+  const fname = trashFileName(photo);
+
+  try { await workDir.getFileHandle(fname, { create: false }); return true; } catch (e) {}
+
+  let blob = null;
+  /* ① 폴더에 있는 원본을 그대로 복사한다 (제일 좋은 길) */
+  if (photo.fileName) {
+    try {
+      const src = await workDir.getFileHandle(photo.fileName, { create: false });
+      blob = await src.getFile();
+    } catch (e) { blob = null; }
+  }
+  /* ② 아직 저장 안 된 사진이면 화면에 든 자료로 쓴다 */
+  if (!blob && photo.dataUrl) {
+    try { blob = dataURLtoBlob(photo.dataUrl); } catch (e) { blob = null; }
+  }
+  if (!blob || !blob.size) return false;
+
+  const fh = await workDir.getFileHandle(fname, { create: true });
+  const w = await fh.createWritable();
+  await w.write(blob);
+  await w.close();
+  photo._trashFile = fname;
+  return true;
+}
+window.keepTrashPhoto = keepTrashPhoto;
+
+/* 휴지통에 없는 T_ 파일을 지운다 — 복원했거나 사용자가 비웠을 때 */
+async function pruneTrashPhotos(unitName, keepNames, folderName) {
+  if (!photoFolderHandle) return 0;
+  const dir = folderName || currentFolderName || _currentSaveDateFolderName;
+  if (!dir) return 0;
+  const _u = (typeof units !== 'undefined' && Array.isArray(units))
+    ? units.find(x => x && x.name === unitName) : null;
+  const workNum = _u ? getWorkNumberForUnit(_u) : getWorkNumber(unitName);
+  let workDir;
+  try { workDir = await getCachedWorkDir(dir, workNum); } catch (e) { return 0; }
+  const keep = {};
+  (keepNames || []).forEach(function (n) { keep[n] = 1; });
+  let gone = 0;
+  try {
+    const names = [];
+    for await (const ent of workDir.entries()) {
+      const n = Array.isArray(ent) ? ent[0] : ent.name;
+      if (n && n.indexOf(TRASH_PREFIX) === 0 && !keep[n]) names.push(n);
+    }
+    for (const n of names) {
+      try { await workDir.removeEntry(n); gone++; } catch (e) {}
+    }
+  } catch (e) {}
+  return gone;
+}
+window.pruneTrashPhotos = pruneTrashPhotos;
+
 // ★ 썸네일을 백그라운드에서 _thumbs 폴더에 저장 + photo 객체에 dataUrl 보관
 async function saveThumbnailInBackground(workDir, fname, originalBlob, photo) {
   // 썸네일 비활성화 시 즉시 종료

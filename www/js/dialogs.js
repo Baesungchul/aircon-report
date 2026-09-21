@@ -415,6 +415,20 @@ async function saveToFolder(opts) {
 
   _currentSaveDateFolderName = dateFolderName;
 
+  /* ☠️ 사진을 쓰기 **전에** 휴지통부터 챙긴다.
+     아래 사진 저장은 파일 이름을 화면 자리로 정하므로(A_image02.jpg = 작업 전 2번),
+     지운 사진이 쓰던 이름을 새 사진이 가져가 덮어쓸 수 있다. 순서를 바꾸면 안 된다.
+     (지울 때도 한 번 보관하지만, 그때 폴더가 없던 새 작업은 여기서 처음 챙겨진다) */
+  try {
+    for (const u of units) {
+      if (!u._trash || !u._trash.length) continue;
+      for (const tp of u._trash) {
+        try { await keepTrashPhoto(tp, u.name, dateFolderName); }
+        catch (e) { console.warn('[휴지통] 보관 실패:', e && e.message); }
+      }
+    }
+  } catch (e) { console.warn('[휴지통] 보관 루프 실패:', e && e.message); }
+
   try {
     // 1) 사진 저장 - ★ 이미 저장된 사진은 스킵
     for (const u of units) {
@@ -532,6 +546,15 @@ async function saveToFolder(opts) {
           photoCount: (u._photosOnDisk?.skipPhotoSync) ? (u._photosOnDisk.specials?.[si] || 0) : _own(s.photos).length,
           photosMeta: s.photos.map(mapPhotoMeta).filter(Boolean)
         })),
+        /* ★ 2026-09-21 지운 사진 목록. 이게 있어야 작업을 닫았다 열어도 휴지통이 남는다.
+             파일 이름은 자리와 무관한 T_<사진번호>.jpg 라 무엇에도 안 덮인다. */
+        trashMeta: (u._trash || []).map((tp) => {
+          const m = mapPhotoMeta(tp);
+          if (!m) return null;
+          m.fname = trashFileName(tp);
+          m.t = tp._trashType || 'before';
+          return m;
+        }).filter(Boolean),
         customer: currentWorkType === 'facility'
           ? { phone: '', address: '', memo: '' }
           : (u.customer || { phone: '', address: '', memo: '' })
@@ -1765,6 +1788,14 @@ async function _restoreFromDataInner(data, dateDir) {
         // 새 번호를 계산 → 실제 디스크 폴더명(workNN)과 어긋남 → "메모리에 없는 호수 폴더"로 오판되어
         // 정상 사진 폴더가 통째로 삭제됨 (호수 삭제 정리 로직, saveToFolder 참고)
         newUnit._workNum = u.workNum || (ui + 1);
+
+        /* ★ 2026-09-21 휴지통 되살리기 — 이게 없으면 작업을 닫는 순간 지운 사진을
+             영영 못 찾는다(파일은 폴더에 남아 있는데 아무도 그걸 모르는 상태였다) */
+        newUnit._trash = (u.trashMeta || []).map((m) => {
+          const o = buildFromMeta(m);
+          if (o) o._trashType = m.t || 'before';
+          return o;
+        }).filter(Boolean);
 
         units.push(newUnit);
         continue;

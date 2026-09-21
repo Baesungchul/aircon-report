@@ -203,6 +203,7 @@
     ov.innerHTML =
       '<div class="mn-head">' +
         '<div class="mn-title" id="mnTitle">사용 설명서</div>' +
+        '<button type="button" class="mn-web" id="mnWeb" title="브라우저에서 보기">🌐</button>' +
         '<button type="button" class="mn-x" id="mnClose" aria-label="닫기">✕</button>' +
       '</div>' +
       '<div class="mn-scroll">' +
@@ -212,6 +213,21 @@
       '</div>';
     document.body.appendChild(ov);
     _ov = ov;
+
+    /* 🌐 — 같은 설명서를 브라우저에서 크게 본다.
+       ⚠️ 앱 안 웹뷰가 아니라 **바깥 브라우저**로 열어야 뜻이 있다(주소를 복사·공유할 수 있다).
+          legal.js 가 쓰는 것과 같은 길을 쓴다. */
+    var _webBtn = ov.querySelector('#mnWeb');
+    if (_webBtn) _webBtn.onclick = function () {
+      var url = 'https://work-report-826ec.web.app/manual.html';
+      try {
+        if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser) {
+          Capacitor.Plugins.Browser.open({ url: url });
+          return;
+        }
+      } catch (e) {}
+      try { window.open(url, '_system'); } catch (e) { window.open(url, '_blank'); }
+    };
 
     ov.querySelector('#mnClose').onclick = close;
 

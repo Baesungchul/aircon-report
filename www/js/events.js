@@ -723,6 +723,15 @@ function bindAll() {
       e.stopPropagation();
       startEdit(+t.closest('[data-uid]').dataset.uid); return;
     }
+    /* 휴지통에 남은 사진만 폴더에 남긴다 (복원한 것은 T_ 파일을 지운다) */
+    function _syncTrashFiles(u) {
+      if (typeof pruneTrashPhotos !== 'function') return;
+      var keep = (u._trash || []).map(function (p) {
+        return (typeof trashFileName === 'function') ? trashFileName(p) : '';
+      }).filter(Boolean);
+      pruneTrashPhotos(u.name, keep).catch(function () {});
+    }
+
     // ★ 휴지통 토글
     const trashHdr = t.closest('.trash-hdr');
     if (trashHdr) {
@@ -744,7 +753,9 @@ function bindAll() {
         if (!u[type]) u[type] = [];
         u[type].push(p);
         if (u._trash.length === 0) u._trashOpen = false;
+        p.savedToFolder = false;         /* 제자리에 다시 쓰도록 — 자리가 바뀌었을 수 있다 */
         renderAll(); updateStats(); sessionAutoSave();
+        _syncTrashFiles(u);
       }
       return;
     }
@@ -764,6 +775,7 @@ function bindAll() {
         u._trash = [];
         u._trashOpen = false;
         renderAll(); updateStats(); sessionAutoSave();
+        _syncTrashFiles(u);
         showToast('복원했습니다', 'ok');
       }
       return;
@@ -774,10 +786,19 @@ function bindAll() {
       e.stopPropagation();
       const u = findU(+trashEmpty.dataset.uid);
       if (u && u._trash && u._trash.length > 0) {
-        if (confirm(`🗑️ 삭제된 사진 ${u._trash.length}장을 완전히 비울까요?\n\n(이 작업은 되돌릴 수 없습니다)`)) {
+        if (confirm(`🗑️ 삭제된 사진 ${u._trash.length}장을 완전히 비울까요?\n\n사진 파일이 폴더에서도 지워집니다.\n(이 작업은 되돌릴 수 없습니다)`)) {
+          const _uname = u.name;
           u._trash = [];
           u._trashOpen = false;
           renderAll();
+          /* ☠️ 여기가 **유일하게** 휴지통 사진이 실제로 지워지는 곳이다.
+             남길 이름을 빈 목록으로 주면 그 호수의 T_ 파일이 전부 사라진다. */
+          if (typeof pruneTrashPhotos === 'function') {
+            pruneTrashPhotos(_uname, []).then(function (n) {
+              if (n && typeof showToast === 'function') showToast(n + '장을 완전히 지웠습니다', 'ok');
+            }).catch(function () {});
+          }
+          if (typeof sessionAutoSave === 'function') sessionAutoSave();
         }
       }
       return;
@@ -844,9 +865,18 @@ function bindAll() {
         if (!_removed && _visualIdx >= 0 && _visualIdx < u[type].length) _removed = u[type].splice(_visualIdx, 1)[0];
         if (!_removed && u[type][idx]) _removed = u[type].splice(idx, 1)[0];
         if (_removed) {
-          if (!u._trash) u._trash = [];   // 휴지통으로 이동 (세션 한정)
+          if (!u._trash) u._trash = [];   // 휴지통으로 이동
           _removed._trashType = type;      // 복원 시 작업전/후 구분
           u._trash.push(_removed);
+          /* ☠️ 2026-09-21 여기서 **지금 당장** 폴더에 복사해 둔다.
+             파일 이름이 화면 자리로 정해지기 때문에, 이 사진이 쓰던 이름을
+             다음 사진이 가져가 덮어쓸 수 있다. 저장할 때까지 기다리면 늦다.
+             실패해도 화면은 그대로 간다(메모리 휴지통은 이미 들어갔다). */
+          if (typeof keepTrashPhoto === 'function') {
+            keepTrashPhoto(_removed, u.name).catch(function (err) {
+              console.warn('[휴지통] 보관 실패:', err && (err.message || err));
+            });
+          }
         }
         if (typeof _updateUnitCardMeta === 'function') _updateUnitCardMeta(u);
         updateStats(); sessionAutoSave();

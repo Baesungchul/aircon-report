@@ -71,7 +71,7 @@ const html = `<!doctype html><html lang="ko" data-mode="light"><head>
  setInterval(function () { if (!document.querySelector('.mn-ov')) window.openManual(); }, 500);
 <\/script>
 <div class="mn-web-foot">
-  현장매니저 · 평택에어컨1004<br>
+  현장매니저 · 미래솔루션<br>
   <a href="app.html">앱 받기</a>
 </div>
 </body></html>`;

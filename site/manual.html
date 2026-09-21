@@ -608,6 +608,8 @@ body.overlay-active{overflow:hidden!important;}
 /* 표지 푸터 */
 .rp-cv-foot{padding:14px 48px;background:#f8fafc;border-top:1px solid rgba(10,22,40,.08);display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#64748b;flex-shrink:0;}
 .rp-cv-foot-brand{font-weight:700;color:#1e3a5f;}
+/* 표지 맨 아래 한 줄 — 눈에 걸리지 않을 만큼 작고 연하게. 서류가 주인공이다 */
+.rp-made{font-size:10.5px;color:#a3b0bf;letter-spacing:-.2px;white-space:nowrap;}
 
 /* ── 상세 페이지 (Detail) ── */
 .rp-det{height:1123px;display:flex;flex-direction:column;overflow:hidden;}
@@ -2430,7 +2432,7 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 /* ⚠️ minmax(0,1fr) — 1fr 은 min-content 가 바닥이라, 글자 크기를 키우면(zoom) 칸 내용이
    열을 밀어내 격자가 가로로 넘치고 요일 헤더와 어긋난다(2026-08-17 실측: 배율 1.44 에서 칸 47→70px).
    0 을 바닥으로 두면 열은 언제나 정확히 1/7 이다. */
-.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;margin-bottom:14px;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;margin-bottom:14px;position:relative;}
 .cal-loading{grid-column:1/-1;text-align:center;padding:24px;color:var(--mu);font-size:13px;}
 /* 날짜 셀 — 삼성식: 테두리 없음, 배경 투명 */
 .cal-cell{display:flex;flex-direction:column;align-items:center;padding:5px 2px 6px;min-height:52px;cursor:default;-webkit-tap-highlight-color:transparent;overflow:hidden;}
@@ -2944,15 +2946,48 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
    칸 '내용'(점/아이콘/막대)만 잠깐 흐려진 사이에 갈아 끼운다 — 날짜 숫자는 그대로 둔다.
    ⚠️ 펼칠 때는 이 연출을 쓰지 않는다(어색하다는 사용자 피드백).
    ⚠️ 매출·목록을 떠오르게 하는 연출(calFadeUp)도 넣었다가 화면이 살짝 위로 움직여 제거했다. */
-.cal-grid .cal-icos, .cal-grid .cal-dots, .cal-grid .cal-bars{transition:opacity .15s linear;}
-/* ⭐ 2026-08-24 접기 연출 — 목록이 그냥 사라지지 않고 위로 살짝 물러나며 옅어진다.
-   (손가락으로 위로 밀던 방향과 같은 쪽으로 빠져야 한 동작으로 이어져 보인다) */
-.cal-grid .cal-ag-day{transition:opacity .16s linear, transform .16s ease-out;}
+.cal-grid .cal-icos, .cal-grid .cal-dots, .cal-grid .cal-bars{transition:opacity .22s ease-out;}
 .cal-grid.cal-swapping .cal-icos,
 .cal-grid.cal-swapping .cal-dots,
-.cal-grid.cal-swapping .cal-ag-day,
 .cal-grid.cal-swapping .cal-bars{opacity:0;}
-.cal-grid.cal-swapping .cal-ag-day{transform:translateY(-10px);}
+
+/* ⭐ 2026-09-21 접기 연출 (calendar.js _collapseAnim 주석에 왜 이렇게 했는지 적어 두었다)
+   ☠️☠️ 움직이는 값은 **transform 과 opacity 뿐이다.** 높이(height)를 움직이면 매 프레임
+        레이아웃이 다시 돌아 달력 42칸을 새로 재는데, 그게 폰에서 프레임이 빠지는 이유였다.
+        transform·opacity 는 합성기(compositor)가 맡아 레이아웃 없이 흐른다.
+        → 높이를 애니메이션하는 규칙을 여기에 **다시 넣지 말 것.**
+   ⚠️ 곡선은 아이폰 시트가 닫히는 느낌(빠르게 떠나 천천히 멎는다)에 맞췄다.
+      시간은 calendar.js 의 COLLAPSE_MS 와 **같이** 고칠 것 — 어긋나면 끝에서 툭 끊긴다.
+   ☠️ 예전에는 .cal-grid.cal-swapping .cal-ag-day 로 목록을 숨겼다. 지금은 목록이 유령 안에 있어
+      그 규칙을 그대로 두면 **유령이 그 자리에서 사라져** 걷히는 모습이 통째로 없어진다. 지웠다.
+   ⚠️ 유령은 레이아웃 밖에 있어야 한다. 안 그러면 격자를 그리는 순간 목록이 아래로 밀려 덜컥인다.
+   ⚠️ 격자 보기에서 접을 때는 유령도 7열 격자여야 한다 — 블록으로 두면 칸이 세로로 쏟아진다. */
+/* ⚠️ 걷히는 목록은 **빨리 옅어지고 천천히 물러난다.** 옅어짐을 뒤로 미루면
+      빽빽한 목록 글자가 날짜 숫자 위에 오래 겹쳐 지저분해 보인다(실측으로 고름). */
+.cal-ghost{position:absolute;left:0;right:0;pointer-events:none;overflow:hidden;
+  transition:opacity .2s cubic-bezier(.2,0,0,1),
+             transform .38s cubic-bezier(.32,.72,0,1);}
+.cal-ghost.out{opacity:0!important;transform:translateY(-30px);}
+.cal-ghost-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:1fr;}
+/* 유령 안의 칸은 '펼친 모습' 그대로여야 한다 — body 에서 cal-expanded 를 이미 벗겼기 때문 */
+.cal-ghost-grid .cal-cell{justify-content:flex-start;padding:5px 1px;overflow:hidden;}
+
+/* 달력 아래(손잡이·매출·상세)는 한 몸처럼 미끄러져 올라온다.
+   ☠️ 시작 자리(--cal-dy)만 인라인으로 넣고, 움직임은 클래스 하나로 건다. */
+.cal-sliding #calGrab,
+.cal-sliding #calRevenue,
+.cal-sliding #calDetail{transform:translateY(var(--cal-dy,0px));will-change:transform;}
+.cal-slide-go #calGrab,
+.cal-slide-go #calRevenue,
+.cal-slide-go #calDetail{transform:translateY(0);
+  transition:transform .38s cubic-bezier(.32,.72,0,1);}
+/* 유령도 합성기에 올려 둔다 — 접히는 동안만. 늘 켜 두면 메모리를 물고 글자가 뿌예진다 */
+.cal-ghost{will-change:transform,opacity;}
+/* 맨 아래 힌트는 화면에 고정돼 있어 밀 것이 없다 → 제자리에서 떠오르게만 */
+.cal-swipe-hint{transition:opacity .3s ease-out;}
+.rd-body.cal-mode.cal-collapsing .cal-swipe-hint{opacity:0;}
+/* 접히는 동안에는 매출·상세가 튀어나오거나 스크롤이 생기지 않게 잠가 둔다 */
+.rd-body.cal-mode.cal-collapsing{overflow:hidden;}
 /* ═══ 달 이동을 부드럽게 (2026-09-07) ═══════════════════════════════════════
    사용자 신고: "달력 이동할 때 깨끗하게 안 넘어가고 프레임이 적은 것처럼 버벅인다"
    달력 격자는 칸 42개에 점·막대·아이콘까지 들어 있어 그리는 값이 비싸다. 레이어로
@@ -3389,6 +3424,15 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .set-mini-menu a{color:var(--ac);text-decoration:none;padding:4px 2px;}
 .set-mini-menu a:active{opacity:.6;}
 .set-mini-dot{color:var(--mu);margin:0 7px;}
+
+/* 업체정보의 직인(도장) 칸 (2026-09-21) */
+.co-stamp-row{display:flex;gap:12px;align-items:flex-start;margin-top:4px;}
+.co-stamp-box{width:76px;height:76px;flex:0 0 auto;border:1px dashed var(--bd);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;background:var(--sf2);overflow:hidden;}
+.co-stamp-box img{width:100%;height:100%;object-fit:contain;}
+.co-stamp-box span{font-size:11px;color:var(--mu);}
+.co-stamp-side{flex:1;min-width:0;}
+.co-stamp-side .btn{width:100%;justify-content:center;margin-bottom:5px;}
 </style>
 <style>
  html,body{margin:0;background:var(--bg);}
@@ -3446,8 +3490,13 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
         · 지도 칩은 [집][회사] + 복귀 하나(순환). 넷이 아니다
         · 지도에 ⟳ 다시맞추기 버튼은 없다 (그건 스케줄 머리줄의 일정 다시맞추기)
         · 저장 폴더를 고르는 설정은 없다 (백업 폴더만 고른다)
-      ★ 2026-09-20 — 구간별 색, 되짚는 길 두 줄, 실제 주행 경로(진한 실선)가 모두 들어갔다.
+      ★ 2026-09-20 — 구간별 색, 실제 주행 경로(진한 실선)가 들어갔다.
          경로는 **카카오내비 추천경로** 기준이다.
+      ★ 2026-09-21 — 되짚는 길을 **두 줄로 갈라 그리던 것을 되돌렸다.** 지도가 지저분해서다.
+         지금은 선이 길 위에 **한 줄**이고, 나중에 지나간 구간을 그 위에 점선으로 얹는다.
+         점선 틈으로 아래 색이 비쳐 한 선이 두 색 줄무늬가 된다. '두 줄'이라고 쓰지 말 것.
+      ★ 2026-09-21 — 직인(도장)이 생겼다. 설정 ▸ 업체정보 ▸ 「직인 (도장)」 에 올려 두면
+         견적서·거래명세서에 찍힌다. "도장은 안 들어갑니다" 라고 적힌 곳을 다 고쳤다.
          ⚠️ 실선은 로그인한 사람에게만 나온다(서버가 토큰을 본다). 로그인 안 하면
             점선까지만 보인다 — 설명서에도 그렇게 적었다. 이 조건을 빼지 말 것.
       ☠️ 2026-09-20 한 번 놓친 것 — 이 칸을 고치는 스크립트가 중간에서 멈춰
@@ -3529,7 +3578,18 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
                  '거래명세서를 만들 때만 쓰입니다. 견적서를 쓰지 않으시면 비워 두셔도 됩니다.' },
             { h: '아이콘 또는 로고 한 장',
               d: '맨 위에서 이모지 12개 중 하나를 고르거나, 📷 를 눌러 내 로고 이미지를 ' +
-                 '넣습니다. 이게 표지 맨 위에 붙습니다. (도장을 따로 넣는 칸은 없습니다)' },
+                 '넣습니다. 이게 표지 맨 위에 붙습니다. 서류에 찍는 도장은 로고와 다른 ' +
+                 '것이라 아래 「직인 (도장)」 칸에 따로 넣습니다.' },
+            { h: '직인 (도장) — 견적서·거래명세서에 찍힙니다',
+              d: '「입금계좌」 아래에 「직인 (도장)」 칸이 있습니다. [도장 이미지 올리기] 를 ' +
+                 '누르고 도장 사진을 고르면 바로 옆에 미리보기가 뜹니다. 한 번 넣어 두면 ' +
+                 '견적서와 거래명세서를 만들 때마다 자동으로 찍힙니다. 보고서 표지에는 ' +
+                 '쓰이지 않습니다. 빼려면 [빼기] 를 누릅니다.',
+              img: [{ src: '', shape: 'wide', cap: '업체정보의 「직인 (도장)」 칸 — 올린 도장이 옆에 미리 보입니다.' }] },
+            { h: '도장은 배경이 투명한 PNG 가 가장 깨끗합니다',
+              d: '흰 종이째 찍은 사진을 올리면 흰 배경을 지워서 넣습니다. 다만 종이가 누렇게 ' +
+                 '나왔거나 도장이 흐린 사진은 테두리가 지저분하게 남을 수 있습니다. 배경이 ' +
+                 '없는 PNG 파일이 있으면 그것을 쓰시는 편이 낫습니다.' },
             { h: '업체 소개 / 슬로건',
               d: '적어 두면 표지에 「ABOUT US」 상자로 들어갑니다. 한두 줄이면 충분합니다.' },
             { h: '[📄 보고서 표지 미리보기] 로 확인하고 저장',
@@ -3632,9 +3692,10 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
             { h: '사진을 누르면 크게 보입니다',
               d: '흐릿하게 찍혔는지 확인할 때 씁니다. 누른다고 지워지거나 순서가 바뀌지 않습니다.' },
             { h: '✕ 로 뺍니다 — 바로 사라지지 않습니다',
-              d: '사진 모서리의 ✕ 를 누르면 그 호수 아래 「삭제된 사진 (N장)」 칸으로 ' +
-                 '내려갑니다. 잘못 눌렀으면 거기서 되돌릴 수 있고, [전체 복원] 도 있습니다. ' +
-                 '정말 없앨 때는 [비우기] 를 누릅니다.',
+              d: '사진 모서리의 ✕ 를 누르면 그 호수 아래 「🗑 삭제된 사진 (N장)」 칸으로 ' +
+                 '내려갑니다. **저장해도 그대로 남습니다.** 며칠 뒤에 다시 열어도 사진을 ' +
+                 '하나씩 되돌릴 수 있고, [전체 복원] 도 있습니다. 사진 파일은 [비우기] 를 ' +
+                 '누를 때에만 폴더에서 지워집니다.',
               img: [{ src: '', shape: 'tall', cap: '사진 모서리의 ✕ 와, 그 아래 「삭제된 사진 (N장)」 칸이 보이는 화면.' }] },
             { h: '순서는 ☰ 손잡이를 잡고 끕니다',
               d: '사진이 두 장 이상일 때 썸네일에 ☰ 가 생깁니다. 이걸 잡고 끌어야 움직입니다. ' +
@@ -3652,7 +3713,7 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
               d: '카드 머리줄의 [갤러리 저장] 을 누르면 그 호수 사진이 휴대폰 갤러리로 ' +
                  '나갑니다. 사진 한 장만 따로 저장하는 버튼은 없습니다.' }
           ],
-          tip: '한 쪽이 더 많으면 짝이 없는 사진은 그대로 아래에 이어 붙습니다'
+          tip: '지운 사진은 [비우기] 를 누르기 전까지 없어지지 않습니다'
         },
 
         { t: '고객 정보 · 금액 넣기',
@@ -3822,10 +3883,15 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
               d: '견적서·거래명세서는 파일로 나갈 뿐, 앱 안에 목록으로 쌓이지 않습니다. 나중에 ' +
                  '고치려면 **처음부터 다시** 넣어야 하니, 만들자마자 다운로드나 공유로 꼭 빼 ' +
                  '두세요.' },
-            { h: '도장·로고·입금계좌는 안 들어갑니다',
-              d: '업체 로고(아이콘)는 **보고서 표지에만** 쓰입니다. 엑셀 서류에는 ' +
-                 '도장·직인·로고가 들어가지 않고, 설정에 적어 둔 입금계좌도 지금은 엑셀에 ' +
-                 '찍히지 않습니다. 필요하시면 양식을 올려서 쓰세요.' }
+            { h: '직인(도장)은 넣어 두면 자동으로 찍힙니다',
+              d: '설정 ▸ 🏢 기본 정보 ▸ 업체정보의 「직인 (도장)」 칸에 도장 이미지를 한 번 ' +
+                 '올려 두면, 견적서는 공급자 「대표 ○○○」 옆에, 거래명세서는 공급자 「성명」 ' +
+                 '칸 옆에 찍혀서 나옵니다. 거래명세서는 한 장에 두 벌이라 두 곳 모두 ' +
+                 '찍힙니다. 도장을 안 올렸으면 그냥 빈 자리로 나옵니다.' },
+            { h: '로고와 입금계좌는 아직 엑셀에 안 들어갑니다',
+              d: '업체 로고(아이콘)는 **보고서 표지에만** 쓰입니다. 설정에 적어 둔 입금계좌도 ' +
+                 '지금은 엑셀에 찍히지 않습니다. 필요하시면 「📄 내 양식으로 만들기」로 쓰시던 ' +
+                 '양식을 올려서 쓰세요.' }
           ],
           tip: '거래명세서는 품목 8줄까지 들어가고, 한 장에 보관용으로 한 벌이 더 붙어 나옵니다'
         },
@@ -4154,11 +4220,17 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
               d: '첫 구간, 둘째 구간이 각각 다른 색입니다. 지도의 선 색과 아래 카드 테두리·번호 ' +
                  '색이 같아서, 선 하나만 봐도 어느 구간인지 바로 압니다.',
               img: [{ src: '', shape: 'tall', cap: '구간 색이 여러 개인 지도와, 같은 색 테두리를 두른 아래 카드들.' }] },
-            { h: '왔던 길을 되짚으면 두 줄로 나옵니다',
-              d: '들어갔다 같은 길로 나오는 날에는 가는 선과 오는 선이 **나란히 두 줄**로 ' +
-                 '그려집니다. 각자 제 구간 색이라 어느 쪽이 갈 때고 어느 쪽이 올 때인지 ' +
-                 '구분됩니다. 겹치는 곳만 살짝 벌리고, 한 번만 지나는 길은 그대로 둡니다.',
-              img: [{ src: '', shape: 'wide', cap: '같은 길을 왕복하는 날의 지도. 두 줄이 나란히 붙어 각각 다른 색인 부분을 확대해서.' }] },
+            { h: '왔던 길을 되짚으면 한 선에 두 색으로 나옵니다',
+              d: '들어갔다 같은 길로 나오는 날에도 선은 **길 위에 하나 그대로**입니다. ' +
+                 '나중에 지나간 구간을 그 선 위에 점선으로 얹어서, 점선 틈으로 아래 색이 ' +
+                 '비칩니다. 그래서 한 선이 두 구간 색의 줄무늬로 보입니다. 같은 길을 세 번 ' +
+                 '지나면 점, 네 번이면 쇄선으로 무늬가 바뀝니다.',
+              img: [{ src: '', shape: 'wide', cap: '같은 길을 왕복하는 구간 — 한 선 위에 두 구간 색이 줄무늬로 겹쳐 보이는 부분을 확대해서.' }] },
+            { h: '왜 두 줄로 벌려 놓지 않나',
+              d: '한동안 겹치는 구간을 나란히 두 줄로 벌려 그렸습니다. 왕복은 잘 보였지만 두 ' +
+                 '선 다 실제 도로에서 비껴 나가고, 겹침이 시작하고 끝나는 자리마다 꺾여서 ' +
+                 '지도가 어수선했습니다. 그래서 선은 길 위에 그대로 두고 색으로만 구분하는 ' +
+                 '지금 방식으로 바꿨습니다.' },
             { h: '아래 카드가 지도의 지점과 짝입니다',
               d: '카드 한 장이 지도의 번호 하나입니다. 시간, 작업명, 주소, 그리고 앞 지점에서 ' +
                  '여기까지의 거리가 적혀 있습니다 — 「직선 4.2km · 주행 7.1km 18분」처럼요. ' +
@@ -4336,8 +4408,14 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
             { h: '💾 데이터',
               d: '데이터 백업/복원 · 고객 데이터 · 네이버 캘린더 가져오기.' },
             { h: 'ℹ️ 앱 정보',
-              d: '사용 설명서(지금 보시는 것) · 소개 페이지 · 오픈채팅방 · 별점 · 약관 · ' +
-                 '개인정보, 그리고 🏠 내 장소가 여기 붙어 있습니다.' }
+              d: '소개 페이지 · 오픈채팅방 · 별점 · 약관 · 개인정보, 그리고 🏠 내 장소가 여기 ' +
+                 '붙어 있습니다.' },
+            { h: '사용설명서는 설정 맨 아래에 있습니다',
+              d: '설정을 끝까지 내리면 앱 아이콘과 버전 번호가 나옵니다. 그 바로 밑에 ' +
+                 '[📖 사용설명서] 와 [브라우저에서 보기] 두 줄이 있습니다. 앞쪽이 지금 보시는 ' +
+                 '화면이고, [브라우저에서 보기] 를 누르면 크롬이 열려서 같은 내용을 넓은 ' +
+                 '화면으로 봅니다. 크롬 쪽은 주소를 복사해 PC 에서도 열 수 있습니다.',
+              img: [{ src: '', shape: 'wide', cap: '설정 맨 아래 — 버전 번호 밑의 [📖 사용설명서] 와 [브라우저에서 보기].' }] }
           ],
           tip: '찾는 게 안 보이면 묶음 제목을 하나씩 눌러 펼쳐 보세요'
         },
@@ -4766,7 +4844,7 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
  setInterval(function () { if (!document.querySelector('.mn-ov')) window.openManual(); }, 500);
 </script>
 <div class="mn-web-foot">
-  현장매니저 · 평택에어컨1004<br>
+  현장매니저 · 미래솔루션<br>
   <a href="app.html">앱 받기</a>
 </div>
 </body></html>

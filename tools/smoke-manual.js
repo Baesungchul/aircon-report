@@ -44,9 +44,19 @@ const say = (ok, name, extra) => {
   try { ({ chromium } = require('playwright')); }
   catch (e) { console.log('playwright 가 없다 — 이 검사는 건너뛴다'); process.exit(0); }
 
-  /* 이 컨테이너의 크로미움은 고정 경로에 있다. 없으면 playwright 기본 경로를 쓴다 */
-  const fixed = '/opt/pw-browsers/chromium';
-  const opt = fs.existsSync(fixed) ? { executablePath: fixed } : {};
+  /* 이 컨테이너의 크로미움은 /opt/pw-browsers 아래에 있다. 폴더 이름에 판 번호가
+     붙으므로(chromium-1194 …) 찾아서 쓴다. 못 찾으면 playwright 기본 경로를 쓴다.
+     ☠️ 예전에는 '/opt/pw-browsers/chromium' 을 그대로 썼는데, 그건 **폴더**라
+        존재하기는 해서 검사를 통과하고 실행에서만 터졌다. 있는지가 아니라
+        실행 파일인지를 봐야 한다. */
+  let opt = {};
+  try {
+    const base = '/opt/pw-browsers';
+    for (const d of fs.readdirSync(base)) {
+      const f = path.join(base, d, 'chrome-linux', 'chrome');
+      if (fs.existsSync(f)) { opt = { executablePath: f }; break; }
+    }
+  } catch (e) {}
   const browser = await chromium.launch(opt);
   const page = await browser.newPage({ viewport: { width: 390, height: 780 } });
   page.on('pageerror', e => say(false, '페이지 오류', e.message));

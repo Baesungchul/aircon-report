@@ -262,6 +262,71 @@ chk('한 번에 하나씩만 저장한다', () => {
   return '줄 세움';
 });
 
+console.log('\n── 빠진 그림이 어디인지 (2026-09-21) ──');
+
+/* ☠️ 사용자 요청: "빠진 그림의 위치를 알 수 있게 표시해 달라".
+      62자리를 채우는 동안 어디가 비었는지 칸을 하나씩 넘겨 가며 찾아야 했다.
+      아래 검사는 **세 군데에 같은 번호가 같이 뜨는지**를 지킨다. 한 군데만 남으면
+      기능은 도는데 정작 '어느 칸인지'를 못 찾는 원래 문제로 되돌아간다. */
+
+chk('빈 자리를 세는 곳이 한 군데다', () => {
+  must(/function recount\(/.test(EJS), '세는 함수(recount)가 없습니다');
+  must(!/function prog\(/.test(EJS),
+       '예전 prog 가 남아 있습니다 — 세는 곳이 둘이면 두 숫자가 어긋납니다');
+  return 'recount';
+});
+
+chk('☠️ 세 군데에 같이 보여 준다 (칸 목록 · 위쪽 띠 · 상자 안 번호)', () => {
+  const at = EJS.indexOf('function recount(');
+  must(at > 0, 'recount 를 못 찾았습니다');
+  const end = EJS.indexOf('function goGap(', at);
+  must(end > at, 'goGap 을 못 찾았습니다');
+  const b = EJS.slice(at, end);
+  must(/\$\('sel'\)\.options\[i\]/.test(b), '칸 고르는 목록에 표시하지 않습니다');
+  must(/\$\('gapCnt'\)/.test(b), '위쪽 띠에 개수를 적지 않습니다');
+  must(/\$\('gapList'\)\.innerHTML/.test(b), '빈 자리 목록을 만들지 않습니다');
+  /* ☠️ 이미 그려 둔 상자의 번호까지 고쳐야 한다. 사진을 하나 넣으면 뒤 번호가
+     한 칸씩 당겨지는데, 화면에 남은 상자가 옛 번호를 달고 있으면 목록과 어긋난다 */
+  must(/querySelectorAll\('\.drop'\)[\s\S]{0,240}gnoText/.test(b),
+       '이미 그려 둔 상자의 번호를 안 고칩니다 — 넣고 나면 번호가 어긋납니다');
+  return '세 군데';
+});
+
+chk('☠️ 사진을 넣거나 빼면 다시 센다', () => {
+  /* 안 세면 「빈 자리 5 / 17」 이 그대로 남아 다 채워도 17곳이라고 우긴다 */
+  ['function putSlot(', 'function putBack('].forEach((f) => {
+    const at = EJS.indexOf(f);
+    must(at > 0, f + ' 를 못 찾았습니다');
+    must(/recount\(\)/.test(EJS.slice(at, at + 700)), f + ' 뒤에 다시 세지 않습니다');
+  });
+  return '넣기 · 빼기 둘 다';
+});
+
+chk('건너뛰면 그 자리가 화면에 보이고 잠깐 깜빡인다', () => {
+  /* 옮겨만 놓으면 긴 칸에서는 어디로 왔는지 모른다 */
+  const at = EJS.indexOf('function goGap(');
+  const b = EJS.slice(at, at + 900);
+  must(/scrollIntoView/.test(b), '그 자리로 내려가지 않습니다');
+  must(/classList\.add\('hit'\)/.test(b), '깜빡이지 않습니다');
+  must(/classList\.remove\('hit'\)/.test(b), '깜빡임이 안 꺼집니다');
+  return '내려가고 깜빡임';
+});
+
+chk('빈 상자 안에 몇 번째인지 적는다', () => {
+  const at = EJS.indexOf("return '<div class=\"drop\"");
+  must(at > 0, '빈 상자를 그리는 자리를 못 찾았습니다');
+  must(/gnoText\(k\)/.test(EJS.slice(at, at + 400)), '상자에 번호를 안 적습니다');
+  return '적음';
+});
+
+chk('[다음 빈 자리] 와 [목록] 버튼이 연결돼 있다', () => {
+  must(/id="gapNext"/.test(EJS) && /id="gapShow"/.test(EJS), '버튼이 없습니다');
+  must(/\$\('gapNext'\)\.addEventListener\('click', nextGap\)/.test(EJS),
+       '[다음 빈 자리] 가 아무 일도 안 합니다');
+  must(/\$\('gapShow'\)\.addEventListener/.test(EJS), '[목록] 이 아무 일도 안 합니다');
+  return '둘 다';
+});
+
 chk('package.json 에 여는 명령이 있다', () => {
   const p = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   must(p.scripts && p.scripts['manual:edit'], 'manual:edit 명령이 없습니다');

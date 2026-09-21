@@ -506,6 +506,24 @@ const PAGE = `<!doctype html><html lang="ko"><head>
  .tchip.used::after{content:'✓';position:absolute;right:2px;bottom:0;color:#fff;font-size:13px;
    font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.8);}
  .drop.aim{border-color:var(--ac);background:#eef4fb;}
+ /* 빠진 그림이 어디인지 — 띠 · 목록 · 상자 안 번호 (2026-09-21) */
+ .drop .gno{display:inline-block;background:#fff3d6;color:#8a5d00;border:1px solid #f0e0bf;
+   border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;margin-bottom:8px;}
+ .drop.hit{border-color:#e0a900;background:#fff8e6;box-shadow:0 0 0 4px #ffeab8;}
+ #gapBar{background:#fff7e8;border-bottom:1px solid #f0e0bf;padding:8px 14px;
+   display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:#7a5600;}
+ #gapBar.off{display:none;}
+ #gapBar b{color:#8a5d00;}
+ #gapBar button{border:1px solid #e3cf9f;background:#fff;border-radius:8px;padding:8px 11px;
+   font:inherit;font-size:13px;font-weight:700;color:#7a5600;cursor:pointer;}
+ #gapCnt{margin-right:auto;}
+ #gapList{display:none;background:var(--sf);border-bottom:1px solid var(--bd);max-height:48vh;overflow:auto;}
+ #gapList.on{display:block;}
+ #gapList a{display:block;padding:10px 14px;border-bottom:1px solid var(--bd);
+   color:var(--tx);text-decoration:none;font-size:13.5px;}
+ #gapList a:active{background:#fff7e8;}
+ #gapList .gn{display:inline-block;min-width:28px;color:#8a5d00;font-weight:800;}
+ #gapList .gp{color:var(--mu);font-size:12px;margin-left:28px;}
  #addTray{background:#eef4fb;color:var(--ac);border:1px solid #cfe1f7;border-radius:8px;
    padding:8px 12px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;}
 </style></head><body>
@@ -522,6 +540,13 @@ const PAGE = `<!doctype html><html lang="ko"><head>
   <select id="sel"></select>
   <button type="button" id="next" title="다음 칸">›</button>
 </nav>
+
+<div id="gapBar" class="off">
+  <span id="gapCnt"></span>
+  <button type="button" id="gapNext">다음 빈 자리 ›</button>
+  <button type="button" id="gapShow">목록</button>
+</div>
+<div id="gapList"></div>
 
 <div style="background:var(--sf);border-bottom:1px solid var(--bd);padding:8px 14px;">
   <button type="button" id="addTray">📥 사진 여러 장 담아두기</button>
@@ -634,12 +659,107 @@ const PAGE = `<!doctype html><html lang="ko"><head>
     $('main').querySelectorAll('.drop').forEach(function (z) { z.classList.toggle('aim', !!picked); });
   }
 
-  function prog() {
-    var all = 0, got = 0;
-    D.parts.forEach(function (p) { p.secs.forEach(function (s) { s.steps.forEach(function (t) {
-      (t.img || []).forEach(function (im) { all++; if (im.src) got++; });
-    }); }); });
+  /* ── 빠진 그림이 어디에 있나 ─────────────────────────── 2026-09-21
+     ☠️ 62자리를 채우는 동안 **어디가 비었는지 찾는 일**이 제일 답답했다.
+        칸을 하나씩 넘겨 가며 눈으로 찾아야 했다(사용자 지적).
+     → 빈 자리를 한 줄로 세어 두고 세 군데에 같은 번호로 보여 준다.
+          ① 칸 고르는 목록      「3. 사진 정리하기   ○2」
+          ② 위쪽 노란 띠        「아직 안 넣은 그림 17곳」 + [다음 빈 자리] + [목록]
+          ③ 빈 자리 상자 안     「빈 자리 5 / 17」
+        어느 쪽을 보고 있든 지금이 몇 번째 빈 자리인지 알 수 있어야 한다.
+     ⚠️ 번호는 **데이터 순서**다(1부 → 2부 …). 사진을 하나 넣으면 뒤 번호가 한 칸씩
+        당겨진다. 그래서 화면에 이미 그려 둔 상자의 번호도 그때 같이 고쳐야 한다(③). */
+  var GAPS = [], GAPN = {}, gapAt = -1;
+  function gkey(g) { return g.pi + '/' + g.si + '/' + g.ti + '/' + g.ii; }
+
+  function optText(i) {
+    var f = flat[i];
+    return (i + 1) + '. ' + f.t + (f.gap ? '   ○' + f.gap : '');
+  }
+  function gnoText(q) {
+    var n = GAPN[gkey(q)];
+    return (n == null) ? '' : '빈 자리 ' + (n + 1) + ' / ' + GAPS.length;
+  }
+
+  function recount() {
+    GAPS = []; GAPN = {};
+    var all = 0, got = 0, per = {};
+    D.parts.forEach(function (p, pi) {
+      p.secs.forEach(function (s, si) {
+        (s.steps || []).forEach(function (t, ti) {
+          (t.img || []).forEach(function (im, ii) {
+            all++;
+            if (im.src) { got++; return; }
+            var g = { pi: pi, si: si, ti: ti, ii: ii, part: p.p, sec: s.t, step: t.h };
+            GAPN[gkey(g)] = GAPS.length;
+            GAPS.push(g);
+            per[pi + '/' + si] = (per[pi + '/' + si] || 0) + 1;
+          });
+        });
+      });
+    });
     $('prog').textContent = '그림 ' + got + ' / ' + all;
+
+    /* ① 칸 고르는 목록 */
+    flat.forEach(function (f, i) {
+      f.gap = per[f.pi + '/' + f.si] || 0;
+      var o = $('sel').options[i];
+      if (o) o.textContent = optText(i);
+    });
+
+    /* ② 위쪽 띠와 목록 */
+    var bar = $('gapBar');
+    if (!GAPS.length) {
+      bar.classList.add('off');
+      $('gapList').classList.remove('on');
+      $('gapList').innerHTML = '';
+    } else {
+      bar.classList.remove('off');
+      $('gapCnt').innerHTML = '아직 안 넣은 그림 <b>' + GAPS.length + '곳</b>';
+      $('gapList').innerHTML = GAPS.map(function (g, n) {
+        return '<a href="#" data-n="' + n + '"><span class="gn">' + (n + 1) + '</span>' +
+               esc(g.sec) + ' ▸ ' + (g.ti + 1) + '단계' +
+               '<div class="gp">' + esc(g.part) + ' · ' + esc(g.step || '') + '</div></a>';
+      }).join('');
+      $('gapList').querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault(); goGap(Number(a.getAttribute('data-n')));
+        });
+      });
+    }
+
+    /* ③ 화면에 이미 그려 둔 빈 상자의 번호도 맞춘다 */
+    $('main').querySelectorAll('.drop').forEach(function (el) {
+      var b2 = el.querySelector('.gno');
+      if (b2) b2.textContent = gnoText(keyOf(el));
+    });
+  }
+
+  /* 그 자리로 건너뛴다 — 칸을 바꾸고, 그려진 뒤 그 상자로 내려가 잠깐 깜빡인다.
+     ⚠️ 깜빡임이 없으면 긴 칸에서는 어디로 왔는지 모른다. 옮겨만 놓으면 안 된다. */
+  function goGap(n) {
+    var g = GAPS[n];
+    if (!g) return;
+    gapAt = n;
+    var at = -1;
+    flat.forEach(function (f, i) { if (f.pi === g.pi && f.si === g.si) at = i; });
+    if (at < 0) return;
+    $('gapList').classList.remove('on');
+    if (at !== cur) { cur = at; draw(); }
+    var el = $('main').querySelector('.drop[data-pi="' + g.pi + '"][data-si="' + g.si +
+             '"][data-ti="' + g.ti + '"][data-ii="' + g.ii + '"]');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add('hit');
+    setTimeout(function () { el.classList.remove('hit'); }, 1400);
+    lastDrop = el;
+  }
+
+  /* 누를 때마다 목록 순서대로 한 자리씩 간다. 끝까지 가면 처음으로 돈다 */
+  function nextGap() {
+    if (!GAPS.length) { mark('빈 자리가 없습니다', 'on'); return; }
+    gapAt = (gapAt + 1) % GAPS.length;
+    goGap(gapAt);
   }
 
   /* ── 한 칸 그리기 ───────────────────────────────────── */
@@ -648,6 +768,7 @@ const PAGE = `<!doctype html><html lang="ko"><head>
     $('sel').value = cur;
     var f = flat[cur], s = D.parts[f.pi].secs[f.si];
     var h = '';
+    recount();                 /* 상자 안 번호를 그리려면 먼저 세어 둬야 한다 */
 
     h += '<div class="card">';
     h += '<label>큰제목</label><input type="text" data-f="t" value="' + esc(s.t) + '">';
@@ -675,7 +796,6 @@ const PAGE = `<!doctype html><html lang="ko"><head>
     $('main').querySelectorAll('textarea').forEach(grow);
     wire();
     aimSlots();
-    prog();
     window.scrollTo(0, 0);
   }
 
@@ -701,6 +821,7 @@ const PAGE = `<!doctype html><html lang="ko"><head>
     }
     var want = im.cap || '이 단계에 어울리는 화면';
     return '<div class="drop" ' + key + ' tabindex="0">' +
+      '<div class="gno">' + esc(gnoText(k)) + '</div>' +
       '<div class="want">찍어 올 화면 — ' + esc(want) + '</div>' +
       '<div class="big">사진을 여기로 끌어다 놓으세요</div>' +
       '<div class="hint">눌러서 고르기 · 복사한 사진은 여기 누르고 Ctrl+V</div>' +
@@ -729,7 +850,7 @@ const PAGE = `<!doctype html><html lang="ko"><head>
       tmr[key] = setTimeout(function () {
         post('/api/text', q).then(function () {
           /* 화면에 들고 있는 값도 맞춰 둔다 (다시 그릴 때 옛 값이 안 나오게) */
-          if (fld === 't') { s.t = el.value; flat[cur].t = el.value; $('sel').options[cur].textContent = (cur + 1) + '. ' + el.value; }
+          if (fld === 't') { s.t = el.value; flat[cur].t = el.value; $('sel').options[cur].textContent = optText(cur); }
           else if (fld === 's') s.s = el.value;
           else if (fld === 'tip') s.tip = el.value;
           else if (fld === 'h') s.steps[q.ti].h = el.value;
@@ -785,7 +906,7 @@ const PAGE = `<!doctype html><html lang="ko"><head>
     var neo = box.firstChild;
     old.parentNode.replaceChild(neo, old);
     wireSlot(neo);
-    prog();
+    recount();
   }
 
   function wire() {
@@ -867,7 +988,7 @@ const PAGE = `<!doctype html><html lang="ko"><head>
     var neo = box.firstChild;
     old.parentNode.replaceChild(neo, old);
     wireSlot(neo);
-    prog();
+    recount();
   }
 
   function reload() {
@@ -912,6 +1033,9 @@ const PAGE = `<!doctype html><html lang="ko"><head>
       }
     }
   });
+
+  $('gapNext').addEventListener('click', nextGap);
+  $('gapShow').addEventListener('click', function () { $('gapList').classList.toggle('on'); });
 
   $('sel').addEventListener('change', function () { cur = Number(this.value); draw(); });
   $('prev').addEventListener('click', function () { if (cur > 0) { cur--; draw(); } });

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>현장매니저 받기</title>
+<meta name="description" content="사진만 찍으면 보고서가 끝납니다. 현장 작업자용 보고서·일정·동선 앱.">
+<meta property="og:title" content="현장매니저 — 사진만 찍으면 보고서가 끝납니다">
+<meta property="og:description" content="작업 전·후 사진으로 PDF 보고서 자동 생성. 배정 문자 붙여넣기로 일정 등록, 그날 동선까지.">
+<meta property="og:type" content="website">
+<!-- ═══════════════════════════════════════════════════════════════
+     site/app.html — "플레이스토어로 바로 보내는" 한 장짜리 페이지
+     ----------------------------------------------------------------
+     ☠️ 왜 만들었나 (2026-09-21)
+        블로그 댓글에 play.google.com 주소를 그냥 적었더니, 읽는 사람이
+        **네이버 블로그 앱 안의 브라우저**에서 그 주소를 열었다.
+        그 안에서는 Play 스토어 앱으로 넘어가지 않고 **웹 Play 스토어**가 뜬다.
+        웹에서 설치하려면 구글 로그인을 해야 해서 거기서 다 떨어져 나간다.
+
+     그래서 이 페이지가 중간에 선다. 하는 일은 하나 —
+        **Play 스토어 앱을 여는 주소(intent://)로 넘긴다.**
+
+     ⚠️ 자동으로만 넘기면 안 된다. 인앱 브라우저 상당수는 사용자가
+        **직접 누른 경우에만** 바깥 앱을 열어 준다(자동 이동은 막는다).
+        그래서 큰 버튼을 먼저 보여 주고, 자동 이동은 거들기로만 한 번 시도한다.
+
+     ⚠️ intent:// 는 안드로이드 전용이다. 아이폰·PC 에서는 평범한 https 주소를 쓴다.
+        (이 앱은 안드로이드만 있지만, 잘못 들어온 사람에게도 화면은 멀쩡해야 한다)
+     ═══════════════════════════════════════════════════════════════ -->
+<style>
+ :root{--bg:#f4f6f8;--sf:#fff;--bd:#dde3e9;--tx:#1c2429;--mu:#68727e;--ac:#2a78d6;}
+ @media (prefers-color-scheme: dark){
+   :root{--bg:#14181c;--sf:#1c2227;--bd:#2c343b;--tx:#e8edf2;--mu:#9aa6b2;--ac:#63a4ea;}
+ }
+ *{box-sizing:border-box;}
+ body{margin:0;background:var(--bg);color:var(--tx);
+   font:16px/1.65 -apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+   display:flex;justify-content:center;padding:28px 16px 48px;}
+ .wrap{width:100%;max-width:420px;}
+ .card{background:var(--sf);border:1px solid var(--bd);border-radius:18px;padding:26px 22px;}
+ h1{margin:0 0 6px;font-size:23px;line-height:1.35;letter-spacing:-.3px;}
+ .sub{margin:0 0 20px;color:var(--mu);font-size:14.5px;}
+ .go{display:block;width:100%;text-align:center;text-decoration:none;
+   background:var(--ac);color:#fff;font-size:17px;font-weight:800;
+   padding:17px 16px;border-radius:13px;margin:4px 0 12px;}
+ .go:active{opacity:.85;}
+ .alt{display:block;text-align:center;color:var(--mu);font-size:13.5px;text-decoration:underline;}
+ ul{margin:22px 0 0;padding-left:19px;color:var(--tx);font-size:14.5px;}
+ li{margin:7px 0;}
+ .tip{margin-top:22px;padding:13px 14px;border-radius:11px;
+   background:rgba(42,120,214,.09);color:var(--tx);font-size:13.5px;line-height:1.6;}
+ .tip b{color:var(--ac);}
+ .foot{margin-top:18px;text-align:center;color:var(--mu);font-size:12.5px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>현장매니저</h1>
+    <p class="sub">사진만 찍으면 보고서가 끝납니다.<br>현직 에어컨 청소기사가 직접 만들었습니다.</p>
+
+    <a class="go" id="go" href="https://play.google.com/store/apps/details?id=com.baesungchul.workreport">
+      Play 스토어에서 받기
+    </a>
+    <a class="alt" id="web" href="https://play.google.com/store/apps/details?id=com.baesungchul.workreport">
+      안 열리면 여기를 누르세요
+    </a>
+
+    <ul>
+      <li>작업 전·후 사진 → PDF·JPG 보고서 자동 (표지에 업체정보까지)</li>
+      <li>배정 문자 붙여넣기 → 동·호수·주소·금액을 AI가 읽어 일정 등록</li>
+      <li>그날 동선을 지도에 순서대로, 카카오내비 추천경로로 거리·시간</li>
+      <li>견적서·거래명세서 엑셀, 블로그 글 AI 작성</li>
+      <li>팀원과 일정·사진 실시간 공유</li>
+    </ul>
+
+    <div class="tip" id="tip">
+      스토어가 안 열리면 오른쪽 위 <b>⋮</b> 를 눌러
+      <b>다른 브라우저로 열기</b>(또는 Chrome으로 열기)를 골라 주세요.
+      Play 스토어에서 <b>현장매니저</b> 로 검색해도 나옵니다.
+    </div>
+
+    <div class="foot">평택에어컨1004</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var PKG  = 'com.baesungchul.workreport';
+  var WEB  = 'https://play.google.com/store/apps/details?id=' + PKG;
+
+  /* 안드로이드에서 Play 스토어 **앱**을 여는 주소.
+     browser_fallback_url 을 달아 두면, 스토어 앱이 없을 때 브라우저가
+     알아서 웹 주소로 되돌려 준다(크롬 계열이 지원한다). */
+  var INTENT = 'intent://details?id=' + PKG +
+               '#Intent;scheme=market;package=com.android.vending;' +
+               'S.browser_fallback_url=' + encodeURIComponent(WEB) + ';end';
+
+  var isAndroid = /android/i.test(navigator.userAgent || '');
+  var go = document.getElementById('go');
+
+  if (!isAndroid) {
+    /* 아이폰·PC — intent:// 는 아무 일도 안 일어난다. 평범한 주소 그대로 둔다 */
+    document.getElementById('tip').textContent =
+      '이 앱은 안드로이드용입니다. 안드로이드 휴대폰에서 열어 주세요.';
+    return;
+  }
+
+  go.setAttribute('href', INTENT);
+
+  /* ⚠️ 거들기 한 번만. 인앱 브라우저 상당수는 **사용자가 누른 경우에만**
+        바깥 앱을 열어 주므로, 이게 막혀도 아래 버튼이 남아 있어야 한다.
+        그래서 화면을 가리거나 다른 곳으로 옮기지 않는다. */
+  setTimeout(function () {
+    try { window.location.href = INTENT; } catch (e) {}
+  }, 350);
+})();
+</script>
+</body>
+</html>

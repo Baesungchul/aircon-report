@@ -302,6 +302,9 @@
     if (failed)  msg += ' · 실패 ' + failed + '개';
     if (typeof showToast === 'function') showToast(msg, added ? 'ok' : 'err');
     else alert(msg);
+
+    /* 가져온 일정에도 알람을 걸어 준다 — 안 부르면 앱을 껐다 켤 때까지 조용하다 */
+    try { if (window.Notify && Notify.refresh) setTimeout(function () { Notify.refresh(); }, 1500); } catch (e) {}
   }
 
   /* ══════════════════════════════════════════

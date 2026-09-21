@@ -3372,6 +3372,11 @@
             if (ie) scheduleIndexUpdate(ie);
           }
         } catch (e) {}
+        /* ☠️ 2026-09-21 여기서 알람을 다시 걸지 않아 '시간을 바꿔도 옛 시간에 울린다' 가 났다.
+             Notify.refresh 는 앱이 앞으로 돌아올 때(visibilitychange)만 돌았는데,
+             시간을 고치고 앱에 계속 머무르면 그 순간이 오지 않는다.
+             인덱스 파일 쓰기가 잠깐 미뤄지므로(디바운스) 조금 뒤에 부른다. */
+        try { if (window.Notify && Notify.refresh) setTimeout(function () { Notify.refresh(); }, 1200); } catch (e) {}
         close();
         _monthCache = {};
         if (typeof invalidateRecordsCache === 'function') invalidateRecordsCache();
@@ -3831,6 +3836,8 @@
             if (ie) scheduleIndexUpdate(ie);
           }
         } catch (e) {}
+        /* 새 일정도 곧바로 알람에 반영한다 (위 '시간 바꾸기' 와 같은 이유) */
+        try { if (window.Notify && Notify.refresh) setTimeout(function () { Notify.refresh(); }, 1200); } catch (e) {}
         try { if (typeof invalidateRecordsCache === 'function') invalidateRecordsCache(); } catch (e) {}
         try { if (typeof invalidateCustomersCache === 'function') invalidateCustomersCache(); } catch (e) {}
         try { if (typeof invalidateCustomersV2 === 'function') invalidateCustomersV2(); } catch (e) {}

@@ -41,6 +41,19 @@ const IMG_DIR = path.join(WWW, 'assets', 'manual');
 const PREVIEW = path.join(ROOT, 'manual-preview.html');
 const PORT = Number(process.env.MANUAL_PORT || 8787);
 
+/* ── 사진 바구니 ────────────────────────────────────────────────
+   ☠️ 왜 만들었나 (2026-09-20 사용자)
+      폰에서 한 자리 채울 때마다 갤러리를 여는데, 그 창이 한참 걸려서 뜬다.
+      자리가 일흔다섯 개니까 그 기다림을 일흔다섯 번 하는 셈이다.
+      → 갤러리를 **한 번만** 열어 여러 장을 한꺼번에 담아 두고,
+        그다음부터는 담긴 사진을 톡 눌러 자리에 넣는다. 갤러리는 안 열린다.
+
+   ⚠️ 바구니는 **연결된 폴더가 아니라 윈도 임시 폴더**에 둔다.
+      · 프로젝트에 찌꺼기를 안 남긴다 (깃에도 안 걸린다)
+      · 앱에 실려 나갈 일이 없다 (www 밖이다)
+      자리에 넣는 순간에야 www/assets/manual/ 로 복사된다. */
+const TRAY = path.join(os.tmpdir(), 'manual-tray');
+
 /* ══════════════════════════════════════════════════════════════════
    1. 글 파일 읽기 / 쓰기
    ══════════════════════════════════════════════════════════════════ */
@@ -266,6 +279,23 @@ function freeName(d, q, ext) {
 /* ══════════════════════════════════════════════════════════════════
    3. 서버
    ══════════════════════════════════════════════════════════════════ */
+/* 바구니 목록 — 새로 담은 것이 앞에 온다. 쓴 사진은 표시만 하고 지우지 않는다
+   (같은 화면을 두 자리에 넣는 일이 흔하다) */
+function trayUsedSet() {
+  try { return new Set(JSON.parse(fs.readFileSync(path.join(TRAY, 'used.json'), 'utf8'))); }
+  catch (e) { return new Set(); }
+}
+function trayUsed(name) {
+  const s = trayUsedSet(); s.add(name);
+  try { fs.writeFileSync(path.join(TRAY, 'used.json'), JSON.stringify([...s])); } catch (e) {}
+}
+function trayList() {
+  let f = [];
+  try { f = fs.readdirSync(TRAY).filter((n) => /\.jpg$/i.test(n)); } catch (e) { return []; }
+  const used = trayUsedSet();
+  return f.sort().reverse().map((n) => ({ n, used: used.has(n) }));
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -346,6 +376,49 @@ const srv = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true, name, kb: Math.round(buf.length / 1024) });
     }
 
+    /* 바구니에 여러 장 담기 — 갤러리를 한 번만 열게 하는 자리 */
+    if (p === '/api/tray' && req.method === 'POST') {
+      const q = await body(req);
+      fs.mkdirSync(TRAY, { recursive: true });
+      const names = [];
+      (q.items || []).forEach((it, i) => {
+        const buf = Buffer.from(String(it.b64 || ''), 'base64');
+        if (!buf.length) return;
+        const n = 't' + Date.now() + '-' + i + '.jpg';
+        fs.writeFileSync(path.join(TRAY, n), buf);
+        names.push(n);
+      });
+      return sendJSON(res, 200, { ok: true, names, all: trayList() });
+    }
+
+    if (p === '/api/tray') return sendJSON(res, 200, { ok: true, all: trayList() });
+
+    /* 바구니의 사진을 자리에 넣는다 — 갤러리를 안 연다 */
+    if (p === '/api/trayuse' && req.method === 'POST') {
+      const q = await body(req);
+      const from = path.join(TRAY, path.basename(String(q.name || '')));
+      if (!fs.existsSync(from)) throw new Error('바구니에 없는 사진입니다');
+      const buf = fs.readFileSync(from);
+      fs.mkdirSync(IMG_DIR, { recursive: true });
+      const name = await mutate((d) => {
+        const n = freeName(d, q, 'jpg');
+        fs.writeFileSync(path.join(IMG_DIR, n), buf);
+        at(d, q).im.src = n;
+        return n;
+      });
+      trayUsed(path.basename(String(q.name)));
+      return sendJSON(res, 200, { ok: true, name, kb: Math.round(buf.length / 1024) });
+    }
+
+    if (p.startsWith('/tray/')) {
+      const f = path.join(TRAY, path.basename(p.slice(6)));
+      return fs.readFile(f, (e, b) => {
+        if (e) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'max-age=3600' });
+        res.end(b);
+      });
+    }
+
     if (p === '/api/imgclear' && req.method === 'POST') {
       const q = await body(req);
       /* 파일은 지우지 않는다(지우기 권한이 없을 수 있다). 안 쓰는 파일은
@@ -419,6 +492,22 @@ const PAGE = `<!doctype html><html lang="ko"><head>
  .shot button.del{color:var(--no);}
  .tag{font-size:11.5px;color:var(--mu);}
  .empty{color:var(--mu);font-size:14px;padding:20px 0;text-align:center;}
+ /* 사진 바구니 — 갤러리를 한 번만 열게 하는 줄 */
+ #trayBar{position:sticky;top:0;z-index:9;background:var(--sf);border-bottom:1px solid var(--bd);
+   padding:8px 10px;display:none;}
+ #trayBar.on{display:block;}
+ #trayHint{font-size:12.5px;color:var(--mu);margin:0 4px 6px;}
+ #trayHint b{color:var(--ac);}
+ #trayRow{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
+ .tchip{position:relative;flex:0 0 auto;width:62px;height:62px;border-radius:10px;overflow:hidden;
+   border:2px solid var(--bd);background:#fff;cursor:pointer;}
+ .tchip img{width:100%;height:100%;object-fit:cover;display:block;}
+ .tchip.sel{border-color:var(--ac);box-shadow:0 0 0 3px #d7e7fb;}
+ .tchip.used::after{content:'✓';position:absolute;right:2px;bottom:0;color:#fff;font-size:13px;
+   font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.8);}
+ .drop.aim{border-color:var(--ac);background:#eef4fb;}
+ #addTray{background:#eef4fb;color:var(--ac);border:1px solid #cfe1f7;border-radius:8px;
+   padding:8px 12px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;}
 </style></head><body>
 
 <header>
@@ -434,14 +523,26 @@ const PAGE = `<!doctype html><html lang="ko"><head>
   <button type="button" id="next" title="다음 칸">›</button>
 </nav>
 
+<div style="background:var(--sf);border-bottom:1px solid var(--bd);padding:8px 14px;">
+  <button type="button" id="addTray">📥 사진 여러 장 담아두기</button>
+  <span class="tag" style="margin-left:8px">갤러리를 한 번만 엽니다</span>
+</div>
+
+<div id="trayBar">
+  <div id="trayHint"></div>
+  <div id="trayRow"></div>
+</div>
+
 <main id="main"><div class="empty">불러오는 중…</div></main>
 
 <input type="file" id="pick" accept="image/*" style="display:none">
+<input type="file" id="pickMany" accept="image/*" multiple style="display:none">
 
 <script>
 (function () {
   'use strict';
   var D = null, cur = 0, flat = [], lastDrop = null;
+  var tray = [], picked = null;   /* 바구니에 담은 사진 / 지금 고른 사진 */
 
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) {
@@ -488,7 +589,49 @@ const PAGE = `<!doctype html><html lang="ko"><head>
       cur = (keep >= 0 && keep < flat.length) ? keep : 0;
       sel.value = cur;
       draw();
+      loadTray();
     });
+  }
+
+  /* ── 사진 바구니 ─────────────────────────────────────────
+     폰에서 갤러리 창이 한참 걸려 뜨는 게 제일 큰 불편이었다.
+     그래서 갤러리는 **한 번만** 열어 여러 장을 담고, 그다음부터는
+     담긴 사진을 눌러 고르고 넣을 자리를 눌러 넣는다. */
+  function loadTray() {
+    fetch('/api/tray').then(function (r) { return r.json(); })
+      .then(function (j) { tray = j.all || []; drawTray(); })
+      .catch(function () {});
+  }
+
+  function drawTray() {
+    var bar = $('trayBar'), row = $('trayRow');
+    if (!tray.length) { bar.classList.remove('on'); row.innerHTML = ''; return; }
+    bar.classList.add('on');
+    row.innerHTML = tray.map(function (t) {
+      return '<div class="tchip' + (t.used ? ' used' : '') + (t.n === picked ? ' sel' : '') +
+             '" data-n="' + esc(t.n) + '"><img src="/tray/' + esc(t.n) + '" alt=""></div>';
+    }).join('');
+    row.querySelectorAll('.tchip').forEach(function (c) {
+      c.addEventListener('click', function () {
+        var n = c.getAttribute('data-n');
+        picked = (picked === n) ? null : n;      /* 다시 누르면 고르기 해제 */
+        row.querySelectorAll('.tchip').forEach(function (x) { x.classList.remove('sel'); });
+        if (picked) c.classList.add('sel');
+        hintTray(); aimSlots();
+      });
+    });
+    hintTray();
+  }
+
+  function hintTray() {
+    $('trayHint').innerHTML = picked
+      ? '고른 사진을 <b>넣을 자리를 누르세요</b> · 다시 누르면 고르기 해제'
+      : '담아둔 사진 ' + tray.length + '장 — <b>사진을 하나 누르고</b>, 넣을 자리를 누르세요';
+  }
+
+  /* 고른 사진이 있으면 빈 자리를 파랗게 물들여 "여기 누르면 들어간다"를 보여 준다 */
+  function aimSlots() {
+    $('main').querySelectorAll('.drop').forEach(function (z) { z.classList.toggle('aim', !!picked); });
   }
 
   function prog() {
@@ -518,7 +661,7 @@ const PAGE = `<!doctype html><html lang="ko"><head>
       h += '<label>설명 &nbsp;<span class="tag">**굵게** 로 감싸면 굵은 글씨가 됩니다</span></label>';
       h += '<textarea data-f="d">' + esc(t.d || '') + '</textarea>';
       (t.img || []).forEach(function (im, ii) {
-        h += slotHTML(f, ti, ii, im);
+        h += slotHTML({ pi: f.pi, si: f.si, ti: ti, ii: ii }, im);
       });
       h += '</div>';
     });
@@ -530,7 +673,8 @@ const PAGE = `<!doctype html><html lang="ko"><head>
 
     $('main').innerHTML = h;
     $('main').querySelectorAll('textarea').forEach(grow);
-    wire(f, s);
+    wire();
+    aimSlots();
     prog();
     window.scrollTo(0, 0);
   }
@@ -538,11 +682,13 @@ const PAGE = `<!doctype html><html lang="ko"><head>
   /* 글이 길면 칸도 같이 길어진다 — 잘려 보이면 고칠 마음이 안 난다 */
   function grow(el) { el.style.height = 'auto'; el.style.height = (el.scrollHeight + 4) + 'px'; }
 
-  function slotHTML(f, ti, ii, im) {
-    var key = 'data-pi="' + f.pi + '" data-si="' + f.si + '" data-ti="' + ti + '" data-ii="' + ii + '"';
+  function slotHTML(k, im) {
+    var key = 'data-pi="' + k.pi + '" data-si="' + k.si + '" data-ti="' + k.ti + '" data-ii="' + k.ii + '"';
     if (im.src) {
+      /* ?v= 는 **방금 바꾼 사진에만** 붙인다. 늘 붙이면 화면을 그릴 때마다
+         모든 사진을 새로 내려받아 폰에서 눈에 띄게 느려진다. */
       return '<div class="shot" ' + key + '>' +
-        '<img src="/www/assets/manual/' + esc(im.src) + '?t=' + Date.now() + '" alt="">' +
+        '<img src="/www/assets/manual/' + esc(im.src) + (im._v ? '?v=' + im._v : '') + '" alt="">' +
         '<div class="side">' +
           '<label style="margin-top:0">그림 설명</label>' +
           '<input type="text" data-f="cap" value="' + esc(im.cap || '') + '">' +
@@ -562,61 +708,92 @@ const PAGE = `<!doctype html><html lang="ko"><head>
   }
 
   /* ── 손대면 저장 ────────────────────────────────────── */
-  function wire(f, s) {
-    var tmr = {};
+  var tmr = {};
+
+  function wireField(el) {
+    el.addEventListener('input', function () {
+      if (el.tagName === 'TEXTAREA') grow(el);
+      var f = flat[cur], s = D.parts[f.pi].secs[f.si];
+      var fld = el.getAttribute('data-f');
+      var box = el.closest('.shot');
+      var card = el.closest('.card');
+      var ti = card && card.getAttribute('data-ti');
+      var q = { pi: f.pi, si: f.si, field: fld, value: el.value };
+      if (fld === 'h' || fld === 'd') q.ti = Number(ti);
+      if (fld === 'cap' && box) {
+        q.ti = Number(box.getAttribute('data-ti'));
+        q.ii = Number(box.getAttribute('data-ii'));
+      }
+      var key = fld + (q.ti || 0) + (q.ii || 0);
+      clearTimeout(tmr[key]);
+      tmr[key] = setTimeout(function () {
+        post('/api/text', q).then(function () {
+          /* 화면에 들고 있는 값도 맞춰 둔다 (다시 그릴 때 옛 값이 안 나오게) */
+          if (fld === 't') { s.t = el.value; flat[cur].t = el.value; $('sel').options[cur].textContent = (cur + 1) + '. ' + el.value; }
+          else if (fld === 's') s.s = el.value;
+          else if (fld === 'tip') s.tip = el.value;
+          else if (fld === 'h') s.steps[q.ti].h = el.value;
+          else if (fld === 'd') s.steps[q.ti].d = el.value;
+          else if (fld === 'cap') s.steps[q.ti].img[q.ii].cap = el.value;
+        });
+      }, 500);
+    });
+  }
+
+  /* 사진 자리 하나를 연결한다. 자리를 갈아 끼운 뒤에도 이것만 다시 부르면 된다 */
+  function wireSlot(el) {
+    el.querySelectorAll('input[data-f]').forEach(wireField);
+    var drop = el.classList.contains('drop');
+
+    el.addEventListener('click', function () { lastDrop = el; });
+    el.addEventListener('dragover', function (e) { e.preventDefault(); if (drop) el.classList.add('over'); });
+    el.addEventListener('dragleave', function () { el.classList.remove('over'); });
+    el.addEventListener('drop', function (e) {
+      e.preventDefault(); el.classList.remove('over');
+      var fl = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (fl) send(el, fl);
+    });
+
+    if (drop) {
+      /* 바구니에서 고른 사진이 있으면 갤러리를 **안 연다** — 바로 넣는다 */
+      el.addEventListener('click', function () { if (picked) useTray(el); else $('pick').click(); });
+      el.addEventListener('focus', function () { lastDrop = el; });
+      return;
+    }
+    el.querySelector('.chg').addEventListener('click', function (e) {
+      e.stopPropagation(); lastDrop = el;
+      if (picked) useTray(el); else $('pick').click();
+    });
+    el.querySelector('.del').addEventListener('click', function (e) {
+      e.stopPropagation();
+      var q = keyOf(el);
+      post('/api/imgclear', q).then(function () {
+        var f = flat[cur], s = D.parts[f.pi].secs[f.si];
+        s.steps[q.ti].img[q.ii].src = '';
+        putBack(q, s.steps[q.ti].img[q.ii]);
+      });
+    });
+  }
+
+  /* 사진을 뺐을 때도 그 자리만 되돌린다 */
+  function putBack(q, im) {
+    var old = $('main').querySelector('[data-pi="' + q.pi + '"][data-si="' + q.si +
+              '"][data-ti="' + q.ti + '"][data-ii="' + q.ii + '"]');
+    if (!old) { reload(); return; }
+    var box = document.createElement('div');
+    box.innerHTML = slotHTML(q, im);
+    var neo = box.firstChild;
+    old.parentNode.replaceChild(neo, old);
+    wireSlot(neo);
+    prog();
+  }
+
+  function wire() {
     $('main').querySelectorAll('input[data-f],textarea[data-f]').forEach(function (el) {
-      el.addEventListener('input', function () {
-        if (el.tagName === 'TEXTAREA') grow(el);
-        var fld = el.getAttribute('data-f');
-        var box = el.closest('.shot');
-        var card = el.closest('.card');
-        var ti = card && card.getAttribute('data-ti');
-        var q = { pi: f.pi, si: f.si, field: fld, value: el.value };
-        if (fld === 'h' || fld === 'd') q.ti = Number(ti);
-        if (fld === 'cap' && box) {
-          q.ti = Number(box.getAttribute('data-ti'));
-          q.ii = Number(box.getAttribute('data-ii'));
-        }
-        clearTimeout(tmr[fld + (q.ti || 0) + (q.ii || 0)]);
-        tmr[fld + (q.ti || 0) + (q.ii || 0)] = setTimeout(function () {
-          post('/api/text', q).then(function () {
-            /* 화면에 들고 있는 값도 맞춰 둔다 (다시 그릴 때 옛 값이 안 나오게) */
-            if (fld === 't') { s.t = el.value; flat[cur].t = el.value; $('sel').options[cur].textContent = (cur + 1) + '. ' + el.value; }
-            else if (fld === 's') s.s = el.value;
-            else if (fld === 'tip') s.tip = el.value;
-            else if (fld === 'h') s.steps[q.ti].h = el.value;
-            else if (fld === 'd') s.steps[q.ti].d = el.value;
-            else if (fld === 'cap') s.steps[q.ti].img[q.ii].cap = el.value;
-          });
-        }, 500);
-      });
+      if (el.closest('.shot')) return;   /* 사진 자리 안의 칸은 wireSlot 이 맡는다 */
+      wireField(el);
     });
-
-    $('main').querySelectorAll('.drop').forEach(function (z) {
-      z.addEventListener('click', function () { lastDrop = z; $('pick').click(); });
-      z.addEventListener('focus', function () { lastDrop = z; });
-      z.addEventListener('dragover', function (e) { e.preventDefault(); z.classList.add('over'); });
-      z.addEventListener('dragleave', function () { z.classList.remove('over'); });
-      z.addEventListener('drop', function (e) {
-        e.preventDefault(); z.classList.remove('over');
-        var fl = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (fl) send(z, fl);
-      });
-    });
-
-    $('main').querySelectorAll('.shot').forEach(function (b) {
-      b.addEventListener('click', function () { lastDrop = b; });
-      b.querySelector('.chg').addEventListener('click', function () { lastDrop = b; $('pick').click(); });
-      b.querySelector('.del').addEventListener('click', function () {
-        post('/api/imgclear', keyOf(b)).then(function () { reload(); });
-      });
-      b.addEventListener('dragover', function (e) { e.preventDefault(); });
-      b.addEventListener('drop', function (e) {
-        e.preventDefault();
-        var fl = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (fl) send(b, fl);
-      });
-    });
+    $('main').querySelectorAll('.drop,.shot').forEach(wireSlot);
   }
 
   function keyOf(el) {
@@ -656,13 +833,68 @@ const PAGE = `<!doctype html><html lang="ko"><head>
     mark('사진 줄이는 중…');
     shrink(file, function (b64) {
       var q = keyOf(el); q.b64 = b64; q.type = 'image/jpeg';
-      post('/api/img', q).then(function (j) { mark('넣었습니다 (' + j.kb + 'KB)', 'on'); reload(); });
+      post('/api/img', q).then(function (j) {
+        mark('넣었습니다 (' + j.kb + 'KB)', 'on');
+        putSlot(q, j.name);
+      });
     });
+  }
+
+  /* 바구니에서 고른 사진을 이 자리에 넣는다 */
+  function useTray(el) {
+    if (!picked) return;
+    var q = keyOf(el); q.name = picked;
+    post('/api/trayuse', q).then(function (j) {
+      mark('넣었습니다', 'on');
+      putSlot(q, j.name);
+      var c = $('trayRow').querySelector('[data-n="' + picked + '"]');
+      if (c) c.classList.add('used');
+      /* 고른 사진은 그대로 둔다 — 같은 화면을 다음 자리에도 넣는 일이 많다 */
+    });
+  }
+
+  /* ☠️ 한 자리만 갈아 끼운다. 예전에는 화면을 통째로 다시 그렸는데,
+        그러면 그 칸의 사진을 전부 다시 내려받아서 폰에서 눈에 띄게 굼떴다. */
+  function putSlot(q, name) {
+    var f = flat[cur], s = D.parts[f.pi].secs[f.si];
+    var im = s.steps[q.ti].img[q.ii];
+    im.src = name; im._v = Date.now();
+    var old = $('main').querySelector('[data-pi="' + q.pi + '"][data-si="' + q.si +
+              '"][data-ti="' + q.ti + '"][data-ii="' + q.ii + '"]');
+    if (!old) { reload(); return; }
+    var box = document.createElement('div');
+    box.innerHTML = slotHTML(q, im);
+    var neo = box.firstChild;
+    old.parentNode.replaceChild(neo, old);
+    wireSlot(neo);
+    prog();
   }
 
   function reload() {
     fetch('/api/data').then(function (r) { return r.json(); }).then(function (d) { D = d; draw(); });
   }
+
+  $('addTray').addEventListener('click', function () { $('pickMany').click(); });
+
+  $('pickMany').addEventListener('change', function () {
+    var fl = Array.prototype.slice.call(this.files || []);
+    this.value = '';
+    fl = fl.filter(function (f) { return String(f.type || '').indexOf('image/') === 0; });
+    if (!fl.length) return;
+    var done = [], n = fl.length;
+    mark('사진 ' + n + '장 줄이는 중…');
+    fl.forEach(function (f) {
+      shrink(f, function (b64) {
+        done.push({ b64: b64 });
+        if (done.length === n) {
+          post('/api/tray', { items: done }).then(function (j) {
+            tray = j.all || []; picked = null; drawTray();
+            mark(n + '장 담았습니다', 'on');
+          });
+        }
+      });
+    });
+  });
 
   $('pick').addEventListener('change', function () {
     var fl = this.files && this.files[0];

@@ -40,13 +40,46 @@
     return isNaN(d.getTime()) ? null : d;
   }
 
-  // 한 작업의 대표 시작시간(가장 이른 것)
+  /* ── 한 작업의 대표 시작시간(가장 이른 것) ────────────────────
+     ☠️ 2026-09-21 '작업시간을 바꿨는데 옛 시간에 알림이 온다' 의 원인 두 가지를 여기서 고쳤다.
+
+     ① **공유 일정의 고친 시간을 안 봤다.**
+        달력은 _workStart() 에서 CloudShare 오버라이드를 **맨 먼저** 본다(calendar.js).
+        여기만 그걸 빼먹어서, 공유로 주고받는 일정의 시간을 고치면
+        화면은 새 시간인데 알람은 units 의 옛 시간에 그대로 걸렸다.
+        → 달력과 **같은 순서**로 본다. 화면과 알람이 어긋나면 안 된다.
+
+     ② **시간을 글자 그대로 정렬했다.**
+        '9:00' 과 '13:00' 을 글자로 견주면 '13:00' 이 앞선다(1 < 9).
+        0 을 안 채운 값이 하나라도 섞이면 가장 이른 시간을 엉뚱하게 골랐다.
+        → 견주기 전에 'HH:MM' 으로 맞춘다.
+
+     ⚠️ 여기서 고른 시간이 곧 알람 시각이다. 달력이 보여 주는 시간과 **반드시** 같아야 한다. */
+  function hhmm(s) {
+    var m = /^(\d{1,2}):(\d{1,2})/.exec(String(s == null ? '' : s));
+    return m ? (('0' + m[1]).slice(-2) + ':' + ('0' + m[2]).slice(-2)) : '';
+  }
+
+  function overrideOf(w) {
+    try {
+      if (!(window.CloudShare && CloudShare.getOverride)) return null;
+      return CloudShare.getOverride(w && (w.folderName || w.workId)) || null;
+    } catch (e) { return null; }
+  }
+
   function startTimeOf(w) {
     if (!w) return '';
-    if (w.workType === 'facility' && w.facilityCustomer && w.facilityCustomer.startTime) return w.facilityCustomer.startTime;
-    var times = (w.units || []).map(function (u) { return u && u.customer && u.customer.startTime; }).filter(Boolean).sort();
+    var ov = overrideOf(w);
+    if (ov && ov.startTime) return hhmm(ov.startTime);
+    if (w.workType === 'facility' && w.facilityCustomer && w.facilityCustomer.startTime)
+      return hhmm(w.facilityCustomer.startTime);
+    var times = (w.units || [])
+      .map(function (u) { return hhmm(u && u.customer && u.customer.startTime); })
+      .filter(Boolean).sort();
     return times[0] || '';
   }
+  Notify._startTimeOf = startTimeOf;   /* 시험용 */
+  Notify._hhmm = hhmm;
 
   Notify.ensurePermission = async function () {
     var ln = LN(); if (!ln) return false;

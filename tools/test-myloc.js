@@ -290,8 +290,10 @@ const P = [{ lat: 37.1, lng: 127.0 }, { lat: 37.2, lng: 127.1 }];
     must(at > 0, 'drawLines 를 못 찾았습니다');
     const end = s.indexOf('\n  /* ── 카드 아래 거리 줄', at);
     const b = s.slice(at, end > at ? end : s.length);
-    must(/strokeStyle: 'shortdash'/.test(b), '직선을 점선으로 안 그립니다');
-    must(/strokeStyle: 'solid'/.test(b), '실제 경로를 실선으로 안 그립니다');
+    /* ⚠️ 2026-09-21 무늬를 styleOf 가 고르게 바뀌었다(겹치는 토막만 다른 무늬).
+          바탕 무늬는 여전히 여기서 정한다 — 점선(직선) / 실선(실제 경로). */
+    must(/styleOf\('shortdash'/.test(b), '직선을 점선으로 안 그립니다');
+    must(/styleOf\('solid'/.test(b), '실제 경로를 실선으로 안 그립니다');
     must(b.indexOf('setMap(null)') < 0,
          '경로가 오면 점선을 지웁니다 — 직선과 주행을 나란히 볼 수 없습니다');
     must(/setOptions\(\{ strokeWeight: 2, strokeOpacity: 0\.28/.test(b),

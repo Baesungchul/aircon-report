@@ -153,125 +153,84 @@
   var SEG_OVER = '#8b95a1';
   function segOf(i) { return (i >= 0 && i < SEG.length) ? SEG[i] : SEG_OVER; }
 
-  /* ══ 겹치는 구간을 나란히 두 줄로 ══════════════════════════ 2026-09-20
-     ☠️ 왔던 길을 그대로 되짚는 날이 흔하다(들어갔다 나오는 막다른 길, 같은 도로 왕복).
-        그때 두 구간이 **정확히 같은 자리**에 겹쳐 그려져 한 줄로 보인다.
-        나중에 그린 쪽 색만 남으니 "갔다가 돌아왔다" 가 지도에서 사라진다.
-     → 같은 길을 쓰는 구간들을 찾아 서로 반대쪽으로 조금씩 밀어 둔다.
-        겹치는 곳만 밀고, 혼자 쓰는 곳은 그대로 둔다.
+  /* ══ 겹치는 길을 한 선에 두 색으로 ══════════════════════════ 2026-09-21
+     ☠️ 왔던 길을 그대로 되짚는 날이 흔하다(막다른 골목, 같은 도로 왕복).
+        그러면 두 구간이 **정확히 같은 자리**에 그려져 나중에 그린 색만 남는다.
+        "갔다가 돌아왔다" 가 지도에서 통째로 사라진다.
 
-     ⚠️ 방향을 맞추는 게 핵심이다. A→B 와 B→A 는 같은 길이지만 진행 방향이 반대라
-        각자의 '왼쪽'도 반대다. 그대로 밀면 **둘 다 같은 쪽으로** 가서 여전히 겹친다.
-        → 두 끝점을 정렬한 기준 방향을 정해 두고, 거꾸로 가는 쪽은 부호를 뒤집는다.
-     ⚠️ 간격은 화면 기준(px)이어야 한다. 미터로 고정하면 넓게 보면 두 줄이 붙고
-        확대하면 딴 길처럼 벌어진다. → 지도 배율에서 m/px 를 구해 그때그때 환산하고,
-        배율이 바뀌면 다시 계산한다.
+     2026-09-20 에는 이걸 **두 줄로 갈라서** 풀었다. 겹치는 곳만 좌우로 몇 px 씩 밀어
+     나란히 놓는 방식이다. 왕복은 보였지만 선이 실제 도로에서 비껴 나가고, 겹침이
+     시작·끝나는 자리마다 비스듬히 꺾여 지도가 지저분해졌다(2026-09-21 사용자 지적).
+     → 되돌린다. 선은 **언제나 실제 길 위에 한 줄**이다. 겹침은 색으로만 말한다.
+
+     ── 겹침을 색으로 말하는 법 ──
+     같은 길을 두 번째로 쓰는 구간은 첫 구간 선 **위에 점선으로** 얹는다.
+     점선의 빈틈으로 아래 색이 비쳐, 한 줄이 두 색 줄무늬로 보인다.
+     세 번째는 점, 네 번째는 쇄선 — 무늬가 서로 달라야 아래가 비친다.
+
+     ⚠️ 색을 섞지(혼색) 않는다. 파랑과 주황을 섞으면 어느 카드 색도 아닌 색이 나온다.
+        선 색의 본래 일은 '몇 번째 카드 구간인가' 를 잇는 것인데 혼색은 그 일을 망친다.
+        겹침을 알리려다 더 중요한 것을 잃는다.
+     ⚠️ 굵기를 더하지도 않는다. 굵은 선은 '큰 길' 로 읽힌다. 겹침과 도로 폭을
+        같은 신호로 쓰면 안 된다.
+
      ⚠️ 좌표를 그대로 비교하면 왕복 경로의 점이 몇 미터씩 어긋나 '다른 길'이 된다.
         SNAP 으로 끊어서 본다. 촘촘하면 못 잡고 성기면 옆 도로까지 같은 길로 본다 —
-        1e4(약 11m)가 이 둘 사이에서 실제로 잘 맞았다. */
-  var GAP_PX = 6;      // 두 줄 사이 간격(화면 px)
+        1e4(약 11m)가 이 둘 사이에서 실제로 잘 맞았다.
+     ⚠️ A→B 와 B→A 는 같은 길이다. 두 끝점을 정렬해 같은 이름을 갖게 한다. */
   var SNAP = 1e4;      // 좌표를 이 단위로 끊어 같은 길인지 본다 (약 11m)
-  var M_DEG = 111320;  // 위도 1도 ≈ 111.32km
 
   function qk(p) { return Math.round(p.lat * SNAP) + ',' + Math.round(p.lng * SNAP); }
-  /* 두 끝점을 정렬해 만든 키. A→B 와 B→A 가 같은 키를 갖는다.
-     rev = 이 진행 방향이 기준(정렬된) 방향과 반대인가 */
   function edgeKey(a, b) {
     var x = qk(a), y = qk(b);
-    return (x < y) ? { k: x + '|' + y, rev: false } : { k: y + '|' + x, rev: true };
+    return (x < y) ? (x + '|' + y) : (y + '|' + x);
   }
 
-  /* 여러 선의 점 목록을 받아, 각 선의 '변(edge)마다 얼마나 밀지' 배수를 돌려준다.
-     겹치지 않는 변은 0. 두 개가 겹치면 -0.5 / +0.5, 셋이면 -1 / 0 / +1 …
-     (가운데를 기준으로 좌우로 퍼진다 — 한쪽으로만 밀면 원래 길에서 통째로 벗어난다) */
-  function offsetMuls(paths) {
-    var use = {};
-    paths.forEach(function (pts, p) {
+  /* 선 여러 개를 받아, 각 선의 **변마다** '이 길을 몇 번째로 쓰는가' 를 매긴다.
+     0 = 처음 쓴다(바탕) · 1 = 두 번째(덧줄) · 2 = 세 번째 …
+     ⚠️ 그리는 차례대로 세야 한다. 바탕이 먼저 깔리고 덧줄이 그 위에 와야 비친다. */
+  function overRanks(paths) {
+    var seen = {};
+    return (paths || []).map(function (pts) {
+      var out = [];
       for (var i = 0; i + 1 < (pts || []).length; i++) {
-        var e = edgeKey(pts[i], pts[i + 1]);
-        (use[e.k] = use[e.k] || []).push({ p: p, i: i, rev: e.rev });
+        var k = edgeKey(pts[i], pts[i + 1]);
+        seen[k] = (seen[k] == null) ? 0 : seen[k] + 1;
+        out.push(seen[k]);
       }
-    });
-    var muls = paths.map(function (pts) {
-      var n = Math.max(0, (pts || []).length - 1), a = [];
-      for (var i = 0; i < n; i++) a.push(0);
-      return a;
-    });
-    Object.keys(use).forEach(function (k) {
-      var list = use[k];
-      /* 혼자 쓰는 길은 안 민다.
-         ⚠️ 이 줄은 **속도·읽기용이지 안전장치가 아니다** — 아래 셈이 하나뿐일 때
-            (0 - 0) * ±1 = 0 이라 지워도 결과가 같다(변형 시험에서 확인했다).
-            지웠다고 안심하지 말고, 미는 값이 0 인지는 검사가 따로 본다. */
-      if (list.length < 2) return;
-      var mid = (list.length - 1) / 2;
-      list.forEach(function (it, r) {
-        muls[it.p][it.i] = (r - mid) * (it.rev ? -1 : 1);
-      });
-    });
-    return muls;
-  }
-
-  /* a→b 의 왼쪽 단위 법선 (미터 공간) */
-  function perp(a, b) {
-    var latR = (a.lat + b.lat) / 2 * Math.PI / 180;
-    var dx = (b.lng - a.lng) * Math.cos(latR) * M_DEG;
-    var dy = (b.lat - a.lat) * M_DEG;
-    var L = Math.sqrt(dx * dx + dy * dy);
-    if (!L) return null;
-    return { x: dy / L, y: -dx / L };
-  }
-
-  /* 점마다 앞뒤 변의 배수·법선을 평균내어 민다.
-     ⚠️ 변 단위로 잘라 밀면 겹치는 구간이 시작·끝나는 자리에서 선이 뚝 끊긴다.
-        점 단위로 평균을 내면 그 자리에서 비스듬히 갈라져 이어진다. */
-  function offsetPath(pts, muls, d) {
-    if (!d || !pts || pts.length < 2) return pts;
-    var any = false;
-    for (var i = 0; i < muls.length; i++) if (muls[i]) { any = true; break; }
-    if (!any) return pts;
-    return pts.map(function (p, j) {
-      var ux = 0, uy = 0, m = 0, c = 0, e;
-      if (j > 0) { e = perp(pts[j - 1], pts[j]); if (e) { ux += e.x; uy += e.y; m += muls[j - 1]; c++; } }
-      if (j + 1 < pts.length) { e = perp(pts[j], pts[j + 1]); if (e) { ux += e.x; uy += e.y; m += muls[j]; c++; } }
-      if (!c) return p;
-      m /= c;
-      if (!m) return p;
-      var L = Math.sqrt(ux * ux + uy * uy);
-      if (!L) return p;
-      var cos = Math.cos(p.lat * Math.PI / 180) || 1e-6;
-      return {
-        lat: p.lat + (uy / L * m * d) / M_DEG,
-        lng: p.lng + (ux / L * m * d) / (M_DEG * cos)
-      };
+      return out;
     });
   }
 
-  /* 지금 배율에서 1픽셀이 몇 미터인가. 못 구하면 0 → 안 민다(원래대로 겹쳐 그린다) */
-  function mppOf(map, box) {
-    try {
-      var b = map.getBounds(), sw = b.getSouthWest(), ne = b.getNorthEast();
-      var w = (box && box.clientWidth) || 0;
-      if (!w) return 0;
-      var m = MyLoc.distance({ lat: sw.getLat(), lng: sw.getLng() },
-                             { lat: sw.getLat(), lng: ne.getLng() });
-      return m > 0 ? m / w : 0;
-    } catch (e) { return 0; }
+  /* 등수가 같은 이웃 변끼리 묶어 토막으로 자른다 — 겹치는 데만 무늬가 바뀌게.
+     ⚠️ 토막의 끝점은 다음 토막의 첫 점과 **같아야** 한다(i + 1 로 자르는 이유).
+        한 점이라도 빠뜨리면 경계에서 선이 뚝 끊겨 보인다. */
+  function runsOf(pts, ranks) {
+    if (!pts || pts.length < 2) return [];
+    if (!ranks || !ranks.length) return [{ rank: 0, pts: pts.slice() }];
+    var out = [], s = 0;
+    for (var i = 1; i <= ranks.length; i++) {
+      if (i === ranks.length || ranks[i] !== ranks[s]) {
+        out.push({ rank: ranks[s], pts: pts.slice(s, i + 1) });
+        s = i;
+      }
+    }
+    return out;
   }
 
-  /* 그려 둔 선들 — 배율이 바뀌면 같은 px 간격을 지키려고 다시 민다 */
+  /* 덧줄 무늬 — 바탕이 실선일 때와 점선일 때가 다르다.
+     ☠️ 바탕과 **같은 무늬**를 쓰면 안 된다. 빈틈이 같은 자리에 오므로 위가 아래를
+        고스란히 덮어, 겹쳤다는 사실이 그대로 사라진다 — 고치기 전과 같은 결과다. */
+  var OVER_ON_SOLID = ['shortdash', 'dot', 'shortdashdot'];
+  var OVER_ON_DASH = ['dot', 'shortdashdot', 'longdash'];
+  function styleOf(base, rank) {
+    if (!rank || rank < 0) return base;
+    var t = (base === 'solid') ? OVER_ON_SOLID : OVER_ON_DASH;
+    return t[(rank - 1) % t.length];
+  }
+
+  /* 그려 둔 선들 — 지도를 닫을 때 비운다 */
   var _polys = [];
-  function reoffset(map, box) {
-    if (!_polys.length) return;
-    var d = mppOf(map, box) * GAP_PX;
-    _polys.forEach(function (it) {
-      try {
-        it.poly.setPath(offsetPath(it.pts, it.muls, d).map(function (p) {
-          return new kakao.maps.LatLng(p.lat, p.lng);
-        }));
-      } catch (e) {}
-    });
-  }
 
   /* ── 선 두 가닥을 겹쳐 그린다 (2026-09-18 사용자 요청) ──
      ☠️ 예전엔 경로가 오면 점선을 **지웠다.** 같이 두기로 바꾼 이유는,
@@ -284,37 +243,39 @@
         실패)는 점선이 유일한 선이므로 원래 굵기를 지켜야 한다.
         → 그래서 처음엔 진하게 그리고, 실선이 붙는 순간에만 낮춘다.
      ⚠️ 경로 요청은 지도를 붙잡지 않는다. 점선을 먼저 그려 놓고 답이 오면 얹는다. */
-  function poly(map, pts, muls, d, opt) {
-    var o = { map: map, path: offsetPath(pts, muls, d).map(function (p) {
+  function poly(map, pts, opt) {
+    var o = { map: map, path: pts.map(function (p) {
       return new kakao.maps.LatLng(p.lat, p.lng);
     }) };
     for (var k in opt) if (Object.prototype.hasOwnProperty.call(opt, k)) o[k] = opt[k];
     var pl = new kakao.maps.Polyline(o);
-    _polys.push({ poly: pl, pts: pts, muls: muls });
+    _polys.push(pl);
     return pl;
   }
 
-  function drawLines(map, box, pts, head, onRoute) {
+  function drawLines(map, pts, head, onRoute) {
     if (!pts || pts.length < 2) return;
     _polys = [];
 
     /* 점선 — 구간마다 한 줄씩. 한 줄로 쭉 긋지 않는 이유가 색과 겹침 둘 다다 */
     var segs = [];
     for (var i = 0; i + 1 < pts.length; i++) segs.push([pts[i], pts[i + 1]]);
-    var muls = offsetMuls(segs);
-    var d = mppOf(map, box) * GAP_PX;
 
-    var dashed = segs.map(function (sp, i) {
-      return poly(map, sp, muls[i], d, {
-        strokeWeight: 3, strokeColor: segOf(i), strokeOpacity: 0.65, strokeStyle: 'shortdash',
-        zIndex: 1
+    /* ⚠️ 쌓는 순서는 **띠로 갈라 둔다.** 등수를 그냥 더하면 구간이 많은 날
+          점선 등수가 실선 층까지 올라와 점선이 실선을 덮는다(드물지만 실제로 가능하다).
+            직선(점선) 1층대 · 흰 테두리 50 · 실제 경로 100층대 */
+    var Z_DASH = 1, Z_CASE = 50, Z_ROUTE = 100;
+
+    var sRanks = overRanks(segs);
+    var dashed = [];
+    segs.forEach(function (sp, i) {
+      runsOf(sp, sRanks[i]).forEach(function (run) {
+        dashed.push(poly(map, run.pts, {
+          strokeWeight: 3, strokeColor: segOf(i), strokeOpacity: 0.65,
+          strokeStyle: styleOf('shortdash', run.rank), zIndex: Z_DASH + run.rank
+        }));
       });
     });
-
-    /* 배율이 바뀌면 간격을 다시 맞춘다 — 안 하면 확대할수록 두 줄이 딴 길처럼 벌어진다 */
-    try {
-      kakao.maps.event.addListener(map, 'zoom_changed', function () { reoffset(map, box); });
-    } catch (e) {}
 
     if (!window.Routing || !Routing.available()) return;
     Routing.route(pts).then(function (r) {
@@ -331,20 +292,30 @@
             return (pp || []).map(function (c) { return { lat: c[0], lng: c[1] }; });
           })
         : null;
+      var perSeg = !!list;
       if (!list) list = [r.path.map(function (c) { return { lat: c[0], lng: c[1] }; })];
 
-      var rMuls = offsetMuls(list);
-      var rd = mppOf(map, box) * GAP_PX;
+      /* ⚠️ 구간별로 안 왔으면 선 색이 하나뿐이다. 그때 겹침을 점선으로 얹어 봐야
+            같은 색이라 '끊어진 선' 으로만 보인다 — 그 경우엔 아예 안 나눈다. */
+      var rRanks = perSeg ? overRanks(list) : list.map(function () { return null; });
+
       list.forEach(function (pp, i) {
         if (pp.length < 2) return;
-        var col = (list.length === segs.length) ? segOf(i) : accent();
-        /* 흰 테두리를 깔고 그 위에 색을 얹는다 — 지도 글씨·도로 위에서 선이 묻히지 않게.
-           ⚠️ 테두리도 같이 밀어야 한다. 안 밀면 흰 줄만 제자리에 남아 두 줄 사이가 지저분해진다. */
-        poly(map, pp, rMuls[i], rd, {
-          strokeWeight: 8, strokeColor: '#ffffff', strokeOpacity: 0.9, strokeStyle: 'solid', zIndex: 2
-        });
-        poly(map, pp, rMuls[i], rd, {
-          strokeWeight: 5, strokeColor: col, strokeOpacity: 0.95, strokeStyle: 'solid', zIndex: 3
+        var col = perSeg ? segOf(i) : accent();
+        runsOf(pp, rRanks[i]).forEach(function (run) {
+          /* 흰 테두리를 깔고 그 위에 색을 얹는다 — 지도 글씨·도로 위에서 선이 묻히지 않게.
+             ⚠️ 테두리는 **바탕 토막에만** 깐다. 덧줄 밑에 또 깔면 그 흰 줄이 아래 색을
+                덮어 버려, 점선 빈틈으로 비칠 것이 없어진다. */
+          if (!run.rank) {
+            poly(map, run.pts, {
+              strokeWeight: 8, strokeColor: '#ffffff', strokeOpacity: 0.9,
+              strokeStyle: 'solid', zIndex: Z_CASE
+            });
+          }
+          poly(map, run.pts, {
+            strokeWeight: 5, strokeColor: col, strokeOpacity: 0.95,
+            strokeStyle: styleOf('solid', run.rank), zIndex: Z_ROUTE + run.rank
+          });
         });
       });
 
@@ -427,7 +398,7 @@
       setDist(L.i, MyLoc.distance(linePts[at - 1], linePts[at]), 0);   // 직선은 지금 바로
     });
 
-    drawLines(map, box, linePts, _ov && _ov.querySelector('#calMapHeadSub'), function (r) {
+    drawLines(map, linePts, _ov && _ov.querySelector('#calMapHeadSub'), function (r) {
       /* 주행 거리는 경로가 와야 안다. 구간별(legs)이 오면 카드마다 붙인다.
          ⚠️ legs 가 없거나 개수가 안 맞으면 **아무것도 안 붙인다.** 총거리를 나눠
             추정하면 그럴듯한 거짓 숫자가 된다 — 없는 편이 낫다. */
@@ -464,10 +435,6 @@
 
     if (located.length > 1 || me) map.setBounds(bounds, 40, 40, 40, 40);
     else map.setLevel(4);
-    /* ☠️ setBounds 로 배율이 바뀐 **뒤**에 간격을 다시 잰다.
-       처음 그릴 때의 m/px 는 아직 맞춰지기 전 값이라, 그대로 두면 두 줄 간격이
-       화면에서 엉뚱하게 좁거나 넓다. 'zoom_changed' 는 여기서 안 불릴 수도 있어 직접 부른다. */
-    reoffset(map, box);
 
     /* 카드를 넘기면 지도가 따라간다. 손이 멈춘 뒤에만 움직인다 —
        넘기는 도중에 매번 지도를 옮기면 화면이 출렁여 멀미가 난다. */
@@ -709,10 +676,10 @@
   }
 
   window.CalMap = { open: open, close: close, _redraw: redraw };
-  /* 검사용 — 겹침 계산은 눈으로 못 본다(지도 위 몇 픽셀 차이다).
-     tools/test-segsplit.js 가 이 함수들을 직접 돌려 좌우로 갈라지는지 잰다. */
+  /* 검사용 — 겹침을 무늬로 나누는 셈은 눈으로 못 본다(선 하나가 토막나는 자리다).
+     tools/test-segsplit.js 가 이 함수들을 직접 돌려 등수·토막·무늬를 잰다. */
   window.__calmapGeom = {
-    SEG: SEG, segOf: segOf, GAP_PX: GAP_PX,
-    edgeKey: edgeKey, offsetMuls: offsetMuls, offsetPath: offsetPath, perp: perp
+    SEG: SEG, segOf: segOf,
+    edgeKey: edgeKey, overRanks: overRanks, runsOf: runsOf, styleOf: styleOf
   };
 })();

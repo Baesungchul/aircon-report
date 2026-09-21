@@ -3377,3 +3377,9 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .mn-web{background:none;border:0;font-size:18px;line-height:1;padding:6px 8px;margin-right:2px;
   cursor:pointer;opacity:.75;}
 .mn-web:active{opacity:1;}
+
+/* 설정 맨 아래 앱 정보의 작은 메뉴 (2026-09-21) */
+.set-mini-menu{margin-top:9px;font-size:12.5px;line-height:1.9;}
+.set-mini-menu a{color:var(--ac);text-decoration:none;padding:4px 2px;}
+.set-mini-menu a:active{opacity:.6;}
+.set-mini-dot{color:var(--mu);margin:0 7px;}

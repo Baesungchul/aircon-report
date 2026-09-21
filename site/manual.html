@@ -3383,6 +3383,12 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .mn-web{background:none;border:0;font-size:18px;line-height:1;padding:6px 8px;margin-right:2px;
   cursor:pointer;opacity:.75;}
 .mn-web:active{opacity:1;}
+
+/* 설정 맨 아래 앱 정보의 작은 메뉴 (2026-09-21) */
+.set-mini-menu{margin-top:9px;font-size:12.5px;line-height:1.9;}
+.set-mini-menu a{color:var(--ac);text-decoration:none;padding:4px 2px;}
+.set-mini-menu a:active{opacity:.6;}
+.set-mini-dot{color:var(--mu);margin:0 7px;}
 </style>
 <style>
  html,body{margin:0;background:var(--bg);}
@@ -4682,16 +4688,7 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
        ⚠️ 앱 안 웹뷰가 아니라 **바깥 브라우저**로 열어야 뜻이 있다(주소를 복사·공유할 수 있다).
           legal.js 가 쓰는 것과 같은 길을 쓴다. */
     var _webBtn = ov.querySelector('#mnWeb');
-    if (_webBtn) _webBtn.onclick = function () {
-      var url = 'https://work-report-826ec.web.app/manual.html';
-      try {
-        if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser) {
-          Capacitor.Plugins.Browser.open({ url: url });
-          return;
-        }
-      } catch (e) {}
-      try { window.open(url, '_system'); } catch (e) { window.open(url, '_blank'); }
-    };
+    if (_webBtn) _webBtn.onclick = function () { openWeb(); };
 
     ov.querySelector('#mnClose').onclick = close;
 
@@ -4739,6 +4736,21 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
       };
     });
   }
+
+  /* 같은 설명서를 **바깥 브라우저**로 연다.
+     ⚠️ 앱 안 웹뷰로 열면 뜻이 없다 — 주소를 복사하거나 남에게 보내려고 여는 것이다.
+        legal.js 가 약관을 여는 것과 같은 길을 쓴다. */
+  var WEB_URL = 'https://work-report-826ec.web.app/manual.html';
+  function openWeb() {
+    try {
+      if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser) {
+        Capacitor.Plugins.Browser.open({ url: WEB_URL });
+        return;
+      }
+    } catch (e) {}
+    try { window.open(WEB_URL, '_system'); } catch (e) { window.open(WEB_URL, '_blank'); }
+  }
+  window.openManualWeb = openWeb;
 
   window.openManual = open;
   window.closeManual = close;

@@ -218,16 +218,7 @@
        ⚠️ 앱 안 웹뷰가 아니라 **바깥 브라우저**로 열어야 뜻이 있다(주소를 복사·공유할 수 있다).
           legal.js 가 쓰는 것과 같은 길을 쓴다. */
     var _webBtn = ov.querySelector('#mnWeb');
-    if (_webBtn) _webBtn.onclick = function () {
-      var url = 'https://work-report-826ec.web.app/manual.html';
-      try {
-        if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser) {
-          Capacitor.Plugins.Browser.open({ url: url });
-          return;
-        }
-      } catch (e) {}
-      try { window.open(url, '_system'); } catch (e) { window.open(url, '_blank'); }
-    };
+    if (_webBtn) _webBtn.onclick = function () { openWeb(); };
 
     ov.querySelector('#mnClose').onclick = close;
 
@@ -275,6 +266,21 @@
       };
     });
   }
+
+  /* 같은 설명서를 **바깥 브라우저**로 연다.
+     ⚠️ 앱 안 웹뷰로 열면 뜻이 없다 — 주소를 복사하거나 남에게 보내려고 여는 것이다.
+        legal.js 가 약관을 여는 것과 같은 길을 쓴다. */
+  var WEB_URL = 'https://work-report-826ec.web.app/manual.html';
+  function openWeb() {
+    try {
+      if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser) {
+        Capacitor.Plugins.Browser.open({ url: WEB_URL });
+        return;
+      }
+    } catch (e) {}
+    try { window.open(WEB_URL, '_system'); } catch (e) { window.open(WEB_URL, '_blank'); }
+  }
+  window.openManualWeb = openWeb;
 
   window.openManual = open;
   window.closeManual = close;

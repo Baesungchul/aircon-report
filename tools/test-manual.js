@@ -397,11 +397,26 @@ chk('manual_data.js 가 manual.js 보다 먼저 실린다', () => {
   must(tags[0] === 'data', '순서가 뒤집혔다 — 열면 내용을 못 읽는다');
 });
 
-chk('설정에 여는 버튼이 있다', () => {
-  must(/onclick="window\.openManual && window\.openManual\(\)"/.test(HTML), '설정에 여는 버튼이 없다');
-  const i = HTML.indexOf('openManual');
-  const sec = HTML.lastIndexOf('set-sec-title', i);
-  must(sec >= 0 && HTML.slice(sec, i).indexOf('소개') >= 0, '소개 칸 안에 있지 않다');
+chk('설정 맨 아래 앱 정보에 여는 자리가 있다', () => {
+  /* ★ 2026-09-21 자리를 옮겼다 — '소개' 칸의 큰 파란 버튼은 소개 글과 섞여
+       눈에 안 들어왔다(사용자). 지금은 로고·버전 아래 작은 메뉴다. */
+  must(/id="setManualIn"[^>]*onclick="window\.openManual && window\.openManual\(\)/.test(HTML),
+       '앱 정보에 사용설명서 링크가 없다');
+  must(/id="setManualWeb"[^>]*onclick="window\.openManualWeb && window\.openManualWeb\(\)/.test(HTML),
+       '브라우저에서 보기 링크가 없다');
+  const i = HTML.indexOf('id="setManualIn"');
+  const ver = HTML.indexOf('id="appVersion"');
+  must(ver > 0 && ver < i, '앱 정보(버전) 아래가 아니다');
+  must(HTML.indexOf('set-mini-menu') > 0, '작은 메뉴 모양이 아니다');
+});
+
+chk('브라우저로 여는 길은 한 곳에만 적는다', () => {
+  /* 주소가 두 군데 박히면 한쪽만 고쳐진다 — 설명서 머리줄 🌐 도 같은 함수를 쓴다 */
+  const MJS = read(path.join(JS, 'manual.js'));
+  const hits = (MJS.match(/work-report-826ec\.web\.app\/manual\.html/g) || []).length;
+  must(hits === 1, '주소가 ' + hits + '군데 적혀 있다 (한 곳이어야 한다)');
+  must(/window\.openManualWeb = openWeb;/.test(MJS), 'openManualWeb 이 없다');
+  must(/_webBtn\.onclick = function \(\) \{ openWeb\(\); \};/.test(MJS), '🌐 가 공용 함수를 안 쓴다');
 });
 
 chk('window.openManual 이 실제로 생긴다', () => {

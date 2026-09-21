@@ -21,6 +21,26 @@ function getReportResPreset() {
   return REPORT_RES_PRESETS[key] || REPORT_RES_PRESETS.normal;
 }
 
+/* ⭐ 2026-09-21 표지 맨 아래 한 줄 ──────────────────────────────
+   보고서는 만든 사람 손을 떠나 **업체와 고객에게 그대로 건너간다.** 그런데 지금까지
+   그 종이에 앱 흔적이 한 글자도 없어서, 매일 나가는 보고서가 전부 그냥 지나갔다.
+   표지 푸터의 왼쪽 칸이 원래 비어 있었으므로 거기에 한 줄만 넣는다.
+
+   ⚠️ 표지에만 넣는다. 쪽마다 넣으면 남의 서류에 광고를 도배하는 꼴이 된다.
+   ⚠️ 주소를 적지 않는다. work-report-826ec.web.app 은 종이에 적어 봐야 아무도 못 친다.
+      스토어에서 이름으로 찾게 하는 편이 실제로 닿는다(검색량도 같이 쌓인다).
+   ⚠️ 설정에서 끌 수 있어야 한다. 남의 서류에 강제로 남기는 것은 신뢰를 깎는다. */
+const REPORT_MADE_KEY = 'ac_report_made_v1';
+if (typeof window !== 'undefined') window.REPORT_MADE_KEY = REPORT_MADE_KEY;
+function reportMadeLine() {
+  var on = true;
+  try { on = (localStorage.getItem(REPORT_MADE_KEY) !== 'off'); } catch (e) {}
+  if (!on) return '';
+  return (getCurrentLang() === 'en')
+    ? 'Made with 현장매니저 (Hyeonjang Manager)'
+    : '현장매니저 앱으로 만든 보고서 · Play 스토어에서 「현장매니저」';
+}
+
 function getInfo(){
   const d=document.getElementById('workDate').value;
   let ds='';
@@ -319,9 +339,9 @@ function buildReportHTML(){
       <div class="rp-notes-body">${units.filter(u=>u.specials.length>0).map(u=>`${escH(u.name)} (${u.specials.length}${getCurrentLang()==='en'?'':'건'})`).join(' · ')}</div>
     </div>`:''}
 
-    <!-- 표지 푸터 (페이지 번호만) -->
+    <!-- 표지 푸터 (왼쪽 한 줄 + 페이지 번호) -->
     <div class="rp-cv-foot">
-      <div></div>
+      <div class="rp-made">${reportMadeLine()}</div>
       <div>— 1 / ${1+units.reduce((s,u)=>{
         const bc=chunk(u.before,3).length, ac=chunk(u.after,3).length;
         let pc=Math.max(bc,ac,1);

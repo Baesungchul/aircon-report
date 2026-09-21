@@ -602,6 +602,8 @@ body.overlay-active{overflow:hidden!important;}
 /* 표지 푸터 */
 .rp-cv-foot{padding:14px 48px;background:#f8fafc;border-top:1px solid rgba(10,22,40,.08);display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#64748b;flex-shrink:0;}
 .rp-cv-foot-brand{font-weight:700;color:#1e3a5f;}
+/* 표지 맨 아래 한 줄 — 눈에 걸리지 않을 만큼 작고 연하게. 서류가 주인공이다 */
+.rp-made{font-size:10.5px;color:#a3b0bf;letter-spacing:-.2px;white-space:nowrap;}
 
 /* ── 상세 페이지 (Detail) ── */
 .rp-det{height:1123px;display:flex;flex-direction:column;overflow:hidden;}

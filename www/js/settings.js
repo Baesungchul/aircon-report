@@ -220,8 +220,8 @@ function initSettingsAccordion() {
         subs: ['일정 알림', '공유 · 채팅 알림'] },
       { icon: '🎨', name: '화면 설정',   desc: '앱 테마 · 글자 크기',
         subs: ['앱 테마', '글자 크기'] },
-      { icon: '📄', name: '보고서 설정', desc: '보고서 테마 · 해상도',
-        subs: ['보고서 테마', '보고서 해상도'] },
+      { icon: '📄', name: '보고서 설정', desc: '보고서 테마 · 해상도 · 표지 문구',
+        subs: ['보고서 테마', '보고서 해상도', '표지 문구'] },
       { icon: '💾', name: '데이터',      desc: '백업/복원 · 고객 데이터 · 캘린더 가져오기',
         subs: ['데이터 백업', '고객 데이터', '네이버 캘린더'] },
       { icon: 'ℹ️', name: '앱 정보',    desc: '앱 소개 · 오픈채팅방 · 별점 · 약관 · 개인정보',
@@ -377,6 +377,10 @@ function loadSettings() {
   const camRes = localStorage.getItem(CAM_RES_KEY) || 'std';
   const camResSel = document.getElementById('camResSelect');
   if (camResSel) camResSel.value = camRes;
+  /* 표지 한 줄 복원 — 기본은 켬. 'off' 일 때만 끈다(값이 없는 기존 사용자는 켜진 상태) */
+  const madeChk = document.getElementById('reportMadeChk');
+  if (madeChk) madeChk.checked = (localStorage.getItem(REPORT_MADE_KEY) !== 'off');
+
   // 보고서 해상도 복원
   const reportRes = localStorage.getItem(REPORT_RES_KEY) || 'normal';
   const reportResSel = document.getElementById('reportResSelect');
@@ -650,6 +654,14 @@ function bindSettings() {
       if (window.Push && Push.setPref) Push.setPref(_shareNotifMap[id], el.checked);
     });
   });
+  /* 표지 한 줄 켜고 끄기 — report.js 가 보고서를 만들 때 이 값을 다시 읽는다 */
+  const madeChkEl = document.getElementById('reportMadeChk');
+  if (madeChkEl) madeChkEl.addEventListener('change', () => {
+    /* ⚠️ 토스트를 띄우지 않는다. 체크 표시가 바뀌는 것이 이미 답이고,
+       성공 토스트 수에는 상한이 있다(tools/test-popup-policy.js 가 센다). */
+    localStorage.setItem(REPORT_MADE_KEY, madeChkEl.checked ? 'on' : 'off');
+  });
+
   const reportResSel = document.getElementById('reportResSelect');
   if (reportResSel) reportResSel.addEventListener('change', () => {
     localStorage.setItem(REPORT_RES_KEY, reportResSel.value);

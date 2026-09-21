@@ -19,7 +19,7 @@
   var GUIDE_KEYS_SHARED = ['claude_write_guide_schedule'];
   var GUIDE_KEYS = GUIDE_KEYS_PER_PROFILE.concat(GUIDE_KEYS_SHARED);
   var LEARN_KEYS = ['ai_quote_corrections', 'ac_bizcert_corrections'];
-  var CO_KEYS = ['ac_co_v2', 'ac_co_icon_v1', 'ac_docs_pricebook'];
+  var CO_KEYS = ['ac_co_v2', 'ac_co_icon_v1', 'ac_co_stamp_v1', 'ac_docs_pricebook'];
   /* ★ 2026-08-16 — 업종(프로필)별로 갈리는 키까지 백업 대상에 넣는다.
        안 그러면 두 번째 업종부터 지침·가격표·견적학습이 서버 백업에서 통째로 빠져
        재설치 복구 때 조용히 사라진다.

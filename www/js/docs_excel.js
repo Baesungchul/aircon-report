@@ -48,7 +48,12 @@
     try { if (window.Profiles && Profiles.infoForCurrentWork) ci = Profiles.infoForCurrentWork(); } catch (e) {}
     if (!ci) { try { ci = JSON.parse(localStorage.getItem('ac_co_v2') || '{}'); } catch (e) { ci = {}; } }
     return { name: ci.coName || '', ceo: ci.coCeo || '', tel: ci.coTel || '', biz: ci.coBiz || '',
-             addr: ci.coAddr || '', email: ci.coEmail || '', bank: ci.coBank || '' };
+             addr: ci.coAddr || '', email: ci.coEmail || '', bank: ci.coBank || '',
+             stamp: (function () {
+               /* 직인은 업체정보와 함께 저장된다. 업종별로 사업자가 다르면 각자 다른 도장이 된다 */
+               try { return (typeof coStampData !== 'undefined' && coStampData)
+                 ? coStampData : (localStorage.getItem('ac_co_stamp_v1') || ''); } catch (e) { return ''; }
+             })() };
   }
 
   /* ── 열린 작업 ── */
@@ -99,7 +104,7 @@
     var m = ref.match(/^([A-Z]+)(\d+)$/);
     return m[1] + (parseInt(m[2], 10) + dRow);
   }
-  async function genFromTemplate(url, edits) {
+  async function genFromTemplate(url, edits, stampKind) {
     if (typeof JSZip === 'undefined') throw new Error('압축 모듈(JSZip) 로드 안 됨');
     var resp = await fetch(url);
     if (!resp.ok) throw new Error('템플릿을 불러올 수 없습니다 (' + resp.status + ')');
@@ -109,6 +114,15 @@
     var xml = await zip.file(path).async('string');
     edits.forEach(function (e) { xml = setCell(xml, e[0], e[1], e[2]); });
     zip.file(path, xml);
+
+    /* 직인(도장) — 넣어 둔 사람만. 실패해도 서류는 그대로 나가야 한다 */
+    try {
+      var st = getCompany().stamp;
+      if (st && window.DocsStamp && stampKind && DocsStamp.SPOTS[stampKind]) {
+        await DocsStamp.apply(zip, st, DocsStamp.SPOTS[stampKind]);
+      }
+    } catch (e) { console.warn('[직인] 찍기 실패(서류는 그대로 만듭니다):', e && e.message); }
+
     return await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
   }
 
@@ -479,7 +493,7 @@
         } else {
           var url = './assets/templates/' + (isQuote ? 'quote_template2.xlsx' : 'statement_template6.xlsx');
           var edits = isQuote ? quoteEdits(ctx) : statementEdits(ctx);
-          buf = await genFromTemplate(url, edits);
+          buf = await genFromTemplate(url, edits, kind);   /* kind = quote | statement → 직인 자리 */
         }
         await shareOrDownload(buf, fname(ctx), mode, isQuote ? '견적서' : '거래명세서');
       } catch (e) { console.error(e); toast('생성 실패: ' + (e.message || e), 'err'); }

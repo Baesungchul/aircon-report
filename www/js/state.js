@@ -46,6 +46,9 @@ const CO_KEY  = 'ac_co_v2';
 const CO_FIELDS = ['coName','coBrand','coTel','coBiz','coAddr','coEmail','coWeb','coDesc','coBank','coCeo','coReportTitle','coUnitLabel','coStageLabel','coIndustryMajor','coIndustryMinor'];
 let coIconData = '';
 const CO_ICON_KEY = 'ac_co_icon_v1';
+/* 직인(도장) — 견적서·거래명세서에 찍는다. 로고와 달리 **PNG 그대로** 둔다(투명 배경) */
+let coStampData = '';
+const CO_STAMP_KEY = 'ac_co_stamp_v1';
 
 // workId 생성 - W{YYYYMMDD}-{HHMM}-{rand4}
 function generateWorkId() {
@@ -154,6 +157,8 @@ async function init() {
   // 아이콘 로드
   try {
     coIconData = localStorage.getItem(CO_ICON_KEY) || '';
+    try { coStampData = localStorage.getItem(CO_STAMP_KEY) || ''; } catch (e) { coStampData = ''; }
+    applyCoStamp();
     applyCoIcon();
   } catch(e){}
 
@@ -195,6 +200,73 @@ async function init() {
     };
     reader.readAsDataURL(f);
     e.target.value = '';
+  });
+
+  /* ── 직인(도장) ──────────────────────────────────────────────
+     ☠️ 로고와 달리 JPEG 로 바꾸면 안 된다. 도장은 배경이 비어 있어야
+        글자·선 위에 겹쳐 찍히는데, JPEG 는 투명을 못 담는다. PNG 그대로 간다. */
+  function applyCoStamp() {
+    const box = document.getElementById('coStampBox');
+    const clr = document.getElementById('coStampClear');
+    if (!box) return;
+    if (coStampData) {
+      box.innerHTML = '<img src="' + coStampData + '" alt="직인">';
+      if (clr) clr.style.display = '';
+    } else {
+      box.innerHTML = '<span id="coStampEmpty">없음</span>';
+      if (clr) clr.style.display = 'none';
+    }
+  }
+  window.applyCoStamp = applyCoStamp;
+
+  document.getElementById('coStampPick')?.addEventListener('click', () => {
+    document.getElementById('coStampFile')?.click();
+  });
+
+  document.getElementById('coStampFile')?.addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (f.size > 3 * 1024 * 1024) { showToast('이미지가 너무 큽니다 (최대 3MB)', 'err'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        /* 정사각형으로 맞춰 300px. 도장은 원형이라 가운데를 기준으로 자른다 */
+        const size = 300;
+        const c = document.createElement('canvas');
+        c.width = size; c.height = size;
+        const cx = c.getContext('2d');
+        const min = Math.min(img.width, img.height);
+        cx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, size, size);
+
+        /* 흰 배경이면 지운다 — 스캔한 도장은 대부분 흰 종이째로 들어온다.
+           ⚠️ 이미 투명한 그림은 건드리지 않는다(멀쩡한 걸 파먹을 수 있다). */
+        try {
+          const d = cx.getImageData(0, 0, size, size);
+          let clear = 0;
+          for (let i = 3; i < d.data.length; i += 4) if (d.data[i] < 250) clear++;
+          if (clear < size * size * 0.02) {          /* 투명한 곳이 거의 없다 = 흰 배경 */
+            for (let i = 0; i < d.data.length; i += 4) {
+              if (d.data[i] > 240 && d.data[i + 1] > 240 && d.data[i + 2] > 240) d.data[i + 3] = 0;
+            }
+            cx.putImageData(d, 0, 0);
+          }
+        } catch (err) { /* 캔버스를 못 읽어도 그림은 그대로 쓴다 */ }
+
+        coStampData = c.toDataURL('image/png');
+        applyCoStamp();
+        showToast('직인을 넣었습니다. 저장을 눌러 주세요', 'ok');
+      };
+      img.onerror = () => showToast('이미지를 읽지 못했습니다', 'err');
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(f);
+  });
+
+  document.getElementById('coStampClear')?.addEventListener('click', () => {
+    coStampData = '';
+    applyCoStamp();
   });
 
   // 아이콘 초기화 버튼

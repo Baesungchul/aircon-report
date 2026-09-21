@@ -2262,6 +2262,10 @@ function saveCoInfo() {
     // 아이콘 저장 (이모지 또는 dataURL)
     if (coIconData) {
       localStorage.setItem(CO_ICON_KEY, coIconData);
+      try {
+        if (typeof coStampData !== 'undefined' && coStampData) localStorage.setItem(CO_STAMP_KEY, coStampData);
+        else localStorage.removeItem(CO_STAMP_KEY);
+      } catch (e) { console.warn('[직인] 저장 실패', e && e.message); }
     } else {
       localStorage.removeItem(CO_ICON_KEY);
     }

@@ -503,6 +503,22 @@
         </div>
       </div>
 
+      <!-- 직인(도장) — 견적서·거래명세서에 찍힌다 (2026-09-21) -->
+      <div class="co-field">
+        <label>직인 (도장) <span class="co-tag">견적/명세서</span></label>
+        <div class="co-stamp-row">
+          <div class="co-stamp-box" id="coStampBox"><span id="coStampEmpty">없음</span></div>
+          <div class="co-stamp-side">
+            <button class="btn b-ghost b-xs" id="coStampPick">도장 이미지 올리기</button>
+            <button class="btn b-ghost b-xs" id="coStampClear" style="display:none;">빼기</button>
+            <div style="font-size:10px;color:var(--mu);margin-top:5px;line-height:1.5;">
+              배경이 투명한 PNG 가 가장 깨끗합니다. 흰 배경이면 앱이 흰색을 지워 넣습니다.
+            </div>
+          </div>
+        </div>
+        <input type="file" id="coStampFile" accept="image/png,image/*" style="display:none;">
+      </div>
+
       <div class="co-field">
         <label>업체 소개 / 슬로건 <span class="co-tag">표지에 박스로 표시</span></label>
         <textarea class="co-textarea" id="coDesc" rows="4" placeholder="예시:&#10;에어컨 청소·설치·이전 전문&#10;평택·오산·수원·화성·안성 출장 서비스&#10;10년 이상 경력 전문가 직접 시공&#10;100% 만족 보장"></textarea>
@@ -768,6 +784,7 @@
 <script src="./js/preview.js"></script>
 <script src="./js/ai.js"></script>
 <script src="./js/docs_template.js"></script>
+<script src="./js/docs_stamp.js"></script>
 <script src="./js/docs_excel.js"></script>
 <script src="./js/worker_combo.js"></script>
 <script src="./js/link_actions.js"></script>

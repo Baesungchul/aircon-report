@@ -42,6 +42,7 @@
   var LABEL = {
     'ac_co_v2': '업체정보',
     'ac_co_icon_v1': '업체 로고',
+    'ac_co_stamp_v1': '직인(도장)',
     'claude_blog_guideline': 'AI 글쓰기 지침',
     'ai_schedule_corrections': '일정등록 학습기록',
     'ai_quote_corrections': '견적서 학습기록',

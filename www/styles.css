@@ -3383,3 +3383,12 @@ body[data-fs="5"] .cust-card-actions{gap:4px;}
 .set-mini-menu a{color:var(--ac);text-decoration:none;padding:4px 2px;}
 .set-mini-menu a:active{opacity:.6;}
 .set-mini-dot{color:var(--mu);margin:0 7px;}
+
+/* 업체정보의 직인(도장) 칸 (2026-09-21) */
+.co-stamp-row{display:flex;gap:12px;align-items:flex-start;margin-top:4px;}
+.co-stamp-box{width:76px;height:76px;flex:0 0 auto;border:1px dashed var(--bd);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;background:var(--sf2);overflow:hidden;}
+.co-stamp-box img{width:100%;height:100%;object-fit:contain;}
+.co-stamp-box span{font-size:11px;color:var(--mu);}
+.co-stamp-side{flex:1;min-width:0;}
+.co-stamp-side .btn{width:100%;justify-content:center;margin-bottom:5px;}

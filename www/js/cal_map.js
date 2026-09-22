@@ -229,6 +229,93 @@
     return t[(rank - 1) % t.length];
   }
 
+  /* ☠️ 2026-09-22 — 선이 한 색으로만 나오던 일
+       구간 색·겹침 점선은 **구간별 좌표(r.paths)가 와야** 그릴 수 있다.
+       그게 안 오면 예전 코드는 곧장 한 색(accent)으로 떨어졌다. 사용자 눈에는
+       "색으로 나누기로 했는데 그대로"로 보인다 — 앱이 아니라 서버 판이 낡았을 뿐인데
+       앱이 기능을 통째로 포기하고 있었다.
+     ⭐ 그래서 이어 붙은 경로 하나를 **앱에서 다시 구간으로 가른다.**
+        서버를 다시 올리면 r.paths 가 와서 이 길은 안 쓰인다(그게 제일 정확하다).
+        아래 둘은 그 다음 차례다: 구간 거리(legs) → 경유지 최근접. */
+
+  /* 두 점 사이 거리(m). 구간을 가르는 데만 쓰므로 이 정도 정밀도면 충분하다 */
+  function distM(a, b) {
+    var R = 6371000, t = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * t, dLng = (b.lng - a.lng) * t;
+    var la = a.lat * t, lb = b.lat * t;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(la) * Math.cos(lb) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  /* ㉮ 구간 거리(legs)로 가른다 — 서버가 구간마다 거리는 주고 좌표만 안 줄 때.
+       legs 합과 실제 선 길이가 조금 어긋나므로 **비율**로 맞춘다. */
+  function splitByLegs(path, legs, want) {
+    if (!Array.isArray(path) || path.length < 2) return null;
+    if (!Array.isArray(legs) || legs.length !== want || want < 1) return null;
+    if (path.length < want + 1) return null;          // 점이 구간 수보다 적으면 못 가른다
+    var total = 0, i;
+    for (i = 0; i < legs.length; i++) total += ((legs[i] && legs[i].distance) || 0);
+    if (!(total > 0)) return null;
+
+    var cum = [0];
+    for (i = 1; i < path.length; i++) cum.push(cum[i - 1] + distM(path[i - 1], path[i]));
+    var walked = cum[cum.length - 1];
+    if (!(walked > 0)) return null;
+
+    var out = [], from = 0, acc = 0;
+    for (var k = 0; k < want; k++) {
+      acc += ((legs[k] && legs[k].distance) || 0);
+      var idx;
+      if (k === want - 1) {
+        idx = path.length - 1;
+      } else {
+        var target = (acc / total) * walked;
+        idx = from;
+        while (idx + 1 < path.length && cum[idx] < target) idx++;
+        /* 뒤에 올 구간들이 쓸 점을 남겨 둔다 — 안 남기면 마지막 구간이 빈다 */
+        var room = path.length - 1 - (want - 1 - k);
+        if (idx > room) idx = room;
+        if (idx <= from) idx = from + 1;
+      }
+      out.push(path.slice(from, idx + 1));            // 끝점을 겹쳐 선이 끊기지 않게
+      from = idx;
+    }
+    return out.length === want ? out : null;
+  }
+
+  /* ㉯ 경유지에 들른 자리로 가른다 — legs 조차 없을 때.
+     ☠️ 「제일 가까운 점」을 그냥 고르면 안 된다. 왔던 길을 되짚는 날에는 같은 지점
+        옆을 두 번 지나는데, 돌아오는 길이 조금이라도 더 가까이 스치면 **그쪽이 뽑혀**
+        구간이 통째로 뒤엉킨다(가는 길 전체가 한 구간이 돼 버린다).
+     ⭐ 그래서 「제일 가까운 곳」이 아니라 「**처음 들른 곳**」을 찾는다.
+        NEAR_M 안으로 들어왔다가 다시 그 밖으로 나가면, 그 방문은 끝난 것이다.
+        거기까지의 최저점이 들른 자리다.
+     ⚠️ 한 번도 NEAR_M 안에 안 들어오면(경유지가 길에서 멀리 떨어진 경우)
+        그때는 구간 안에서 제일 가까운 점을 쓴다 — 그게 남은 최선이다. */
+  var NEAR_M = 200;            // 이 안에 들어오면 '들렀다'고 본다
+  function splitByWaypoints(path, pts) {
+    if (!Array.isArray(path) || path.length < 2) return null;
+    if (!Array.isArray(pts) || pts.length < 2) return null;
+    var want = pts.length - 1;
+    if (path.length < want + 1) return null;
+    var out = [], from = 0;
+    for (var k = 1; k < pts.length - 1; k++) {
+      var best = -1, bd = Infinity;
+      var room = path.length - 1 - (pts.length - 1 - k);   // 뒤 구간이 쓸 점은 남겨 둔다
+      for (var i = from + 1; i <= room; i++) {
+        var d = distM(path[i], pts[k]);
+        if (d < bd) { bd = d; best = i; }
+        if (bd <= NEAR_M && d > NEAR_M) break;             // 들렀다가 떠났다 — 여기서 끊는다
+      }
+      if (best < 0) return null;
+      out.push(path.slice(from, best + 1));
+      from = best;
+    }
+    out.push(path.slice(from));
+    return out.length === want ? out : null;
+  }
+
   /* 그려 둔 선들 — 지도를 닫을 때 비운다 */
   var _polys = [];
 
@@ -287,13 +374,21 @@
 
       /* 구간별 경로가 오면 구간마다, 안 오면 예전처럼 한 줄로.
          ⚠️ 개수가 안 맞으면 구간별로 그리지 않는다 — 엉뚱한 구간에 엉뚱한 색이 붙는다. */
+      var toLL = function (arr) {
+        return (arr || []).map(function (c) { return { lat: c[0], lng: c[1] }; });
+      };
       var list = (Array.isArray(r.paths) && r.paths.length === segs.length)
-        ? r.paths.map(function (pp) {
-            return (pp || []).map(function (c) { return { lat: c[0], lng: c[1] }; });
-          })
+        ? r.paths.map(toLL)
         : null;
+      /* ★ 2026-09-22 서버가 구간별 좌표를 안 주면 앱에서 갈라 쓴다.
+           여기서 포기하면 선이 통째로 한 색이 된다 — 그게 「색 구분이 안 된다」의 정체다. */
+      if (!list) {
+        var whole = toLL(r.path);
+        list = splitByLegs(whole, r.legs, segs.length) || splitByWaypoints(whole, pts);
+        if (list) console.log('[지도] 구간 좌표가 안 와서 앱에서 ' + list.length + '구간으로 갈랐습니다');
+      }
       var perSeg = !!list;
-      if (!list) list = [r.path.map(function (c) { return { lat: c[0], lng: c[1] }; })];
+      if (!list) list = [toLL(r.path)];
 
       /* ⚠️ 구간별로 안 왔으면 선 색이 하나뿐이다. 그때 겹침을 점선으로 얹어 봐야
             같은 색이라 '끊어진 선' 으로만 보인다 — 그 경우엔 아예 안 나눈다. */
@@ -680,6 +775,7 @@
      tools/test-segsplit.js 가 이 함수들을 직접 돌려 등수·토막·무늬를 잰다. */
   window.__calmapGeom = {
     SEG: SEG, segOf: segOf,
-    edgeKey: edgeKey, overRanks: overRanks, runsOf: runsOf, styleOf: styleOf
+    edgeKey: edgeKey, overRanks: overRanks, runsOf: runsOf, styleOf: styleOf,
+    distM: distM, splitByLegs: splitByLegs, splitByWaypoints: splitByWaypoints
   };
 })();

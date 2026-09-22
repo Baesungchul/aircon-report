@@ -135,6 +135,50 @@ async function stamped(file, kind) {
     return cm + 'cm';
   });
 
+  /* ═══ 도장이 앉는 자리 ═══════════════════════════════════════════
+     ☠️ 2026-09-22 사용자 신고 — 도장이 상호 「미래솔루션」과 등록번호 숫자를
+        덮어 둘 다 못 읽었다. 글자를 가리는 도장은 서류를 못 쓰게 만든다.
+     ⭐ 그래서 '보기에 예쁜가' 가 아니라 **글자와 테두리를 안 건드리는가** 를 잰다.
+        열 너비는 양식에서 직접 읽는다 — 양식을 고치면 이 시험이 먼저 깨진다. */
+  await chk('도장이 대표 이름 오른쪽, 표 안에 들어간다', async () => {
+    const zip = await JSZip.loadAsync(fs.readFileSync(path.join(TPL, 'quote_template2.xlsx')));
+    const sheet = await zip.file('xl/worksheets/sheet1.xml').async('string');
+
+    /* 엑셀 열 너비(글자 단위) → cm. 기본 글꼴 기준 픽셀 = 너비×9+5 (96dpi) */
+    const W = {};
+    const re = /<col min="(\d+)" max="(\d+)"[^>]*width="([\d.]+)"/g;
+    let m;
+    while ((m = re.exec(sheet))) {
+      for (let c = +m[1]; c <= +m[2] && c <= 40; c++) W[c] = +m[3];
+    }
+    const cmOf = (c) => (Math.round((W[c] || 8.88671875) * 9 + 5)) / 96 * 2.54;
+    const leftCm = (col0) => {            /* 0부터 센 열의 왼쪽 끝 */
+      let x = 0;
+      for (let c = 1; c <= col0; c++) x += cmOf(c);
+      return x;
+    };
+
+    const sp = S.SPOTS.quote[0];
+    const L = leftCm(sp.col) + sp.dx;     /* 도장 왼쪽 */
+    const R = L + sp.cm;                  /* 도장 오른쪽 */
+    const boxR = leftCm(13);              /* 표 오른쪽 테두리 = M열(0부터 12) 끝 */
+
+    must(R <= boxR, '도장이 표 오른쪽 테두리를 ' + (R - boxR).toFixed(2) + 'cm 넘습니다');
+    must(boxR - R < 0.6, '도장이 테두리에서 ' + (boxR - R).toFixed(2) + 'cm 나 떨어져 있습니다 — 오른쪽 끝에 붙여야 합니다');
+
+    /* 「등록번호 … / 대표 ○○○」 는 J4:M4 병합칸에 **가운데 정렬**이다.
+       그래서 글자는 가운데에서 양옆으로 자란다 — 도장은 그 한계선 밖에 있어야 한다. */
+    const mergedL = leftCm(9), ctr = (mergedL + boxR) / 2;
+    const room = (L - ctr) * 2;           /* 도장을 안 건드리고 글자가 쓸 수 있는 폭 */
+    must(room >= 9.5, '글자가 쓸 수 있는 폭이 ' + room.toFixed(2) + 'cm 뿐입니다 — 「등록번호 333-06-12345 / 대표 배성철」이 도장에 닿습니다');
+
+    /* 세로 — 그 줄(4행) 위에 걸쳐야 한다. 위 줄(상호)까지 올라가면 상호를 덮는다. */
+    must(sp.row === 3, '도장이 ' + (sp.row + 1) + '행에 있습니다 — 「대표」 줄은 4행입니다');
+    must(sp.dy > -0.6 && sp.dy < 0.3, '세로 치우침이 ' + sp.dy + 'cm 입니다 — 윗줄 상호를 덮습니다');
+
+    return '왼쪽 ' + L.toFixed(2) + 'cm · 오른쪽 ' + R.toFixed(2) + 'cm (테두리 ' + boxR.toFixed(2) + 'cm) · 글자 여유 ' + room.toFixed(2) + 'cm';
+  });
+
   console.log('');
   if (fails.length) { console.log('❌ ' + fails.length + '개 실패\n'); fails.forEach((f) => console.log('  · ' + f)); process.exit(1); }
   console.log('✅ 전부 통과 (' + pass + '개)\n');

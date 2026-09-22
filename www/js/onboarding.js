@@ -662,7 +662,7 @@ function renderSlideBackup(c) {
       <div style="font-size:12.5px;font-weight:800;color:var(--ac);margin-bottom:4px;">💬 사용자 오픈채팅방</div>
       <div style="font-size:11px;color:var(--mu);line-height:1.6;margin-bottom:9px;">
         같은 일 하는 기사님들이 모여 있습니다.<br>
-        쓰다가 막히는 것·불편한 것 남겨주시면 개발자가 직접 확인합니다.
+        쓰다가 막히는 것·불편한 것 남겨주시면 개발자가 확인하고 빠르게 답변드리겠습니다.
       </div>
       <button type="button" id="obOpenChat" class="btn b-ghost" style="width:100%;justify-content:center;font-size:12px;">카카오톡 오픈채팅방 들어가기</button>
       <div style="font-size:10px;color:var(--mu);text-align:center;margin-top:6px;">나중에 ⚙️설정 → 앱 정보에서도 들어갈 수 있습니다</div>

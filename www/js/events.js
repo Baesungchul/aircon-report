@@ -907,6 +907,22 @@ function bindAll() {
     // 사진 크게 보기 (좌우 슬라이드 지원)
     if (t.tagName==='IMG' && t.closest('.th-wrap')) {
       if (window.__riJustDragged && (Date.now() - window.__riJustDragged) < 450) return;  // 방금 순서 드래그한 경우 열지 않음
+      /* ★ 2026-09-22 아직 못 읽은 사진(회색 칸)을 누르면 크게 보기 대신 다시 읽는다.
+           자동 재시도가 끝난 뒤에도 손으로 한 번 더 해 볼 길을 남겨 두는 것이다.
+           읽을 게 없는 칸을 크게 열어 봐야 빈 화면만 나온다. */
+      try {
+        var _pid = t.dataset && t.dataset.photoId;
+        var _ph = (_pid && typeof findPhotoById === 'function') ? findPhotoById(_pid) : null;
+        if (_ph && _ph.lazy && !_ph.dataUrl && typeof window.retryLazyPhoto === 'function') {
+          if (window.retryLazyPhoto(_ph)) {
+            /* 토스트를 쓰지 않는다 — 누른 칸 자리에서 바로 바뀌는 편이 알아보기 쉽고,
+               성공 토스트 총량(tools/test-popup-policy.js)을 늘리지 않는다. */
+            var _w = t.closest('.th-wrap');
+            if (_w) { _w.classList.add('th-fail'); _w.classList.add('th-busy'); }
+            return;
+          }
+        }
+      } catch (e) {}
       if (typeof window._pvOpenFromThumb === 'function') window._pvOpenFromThumb(t);
       return;
     }
@@ -1062,38 +1078,114 @@ function photoUrlFull(p) {
   return PHOTO_PLACEHOLDER;
 }
 
+/* ☆ 2026-09-22 사진 한 장이 안 보이던 증상
+   ----------------------------------------------------------------
+   증상: 작업을 불러오면 가끔 사진 한 장만 회색 칸으로 남아 있다.
+         다른 작업을 열었다가 다시 열면 그 사진이 보인다.
+   원인: 세 가지가 겹쳐 있었다.
+     ① 실패해도 다시 읽지 않았다. 예전 catch 는 _loading 만 내리고 lazy 는
+        true 로 남겨 두었다. 화면을 다시 그릴 일이 없으니 그 칸은 그대로 굳는다.
+     ② 한꺼번에 너무 많이 읽었다. 불러온 호수는 전부 펼쳐진 상태(open:true)라
+        render.js 가 사진 수십 장의 읽기를 동시에 건다. 안드로이드에서는 파일
+        하나를 읽을 때마다 base64 문자열이 네이티브에서 WebView 로 통째로 넘어오므로
+        (native-fs.js NFile.getFile), 동시에 몰리면 그중 하나가 떨어져 나간다.
+     ③ 떨어진 것을 아무도 모른다. 실패는 console.warn 한 줄로 끝난다.
+   대책: 동시에 4장까지만 읽고, 실패하면 시간을 두고 3번까지 다시 읽고,
+        그래도 안 되면 lazy 를 살려 둔 채 다시 그리기를 예약한다.
+   ⚠️ LAZY_MAX 를 늘리지 말 것 — 이 숫자가 ② 의 대책 그 자체다. */
+const LAZY_MAX = 4;        // 동시에 읽는 사진 수
+const LAZY_TRY = 3;        // 한 번 불러올 때 재시도 횟수
+const LAZY_ROUNDS = 3;     // 화면을 다시 그리며 다시 해 보는 묶음 수 (무한 반복 방지)
+let _lazyRunning = 0;
+const _lazyWait = [];
+function _lazyGate() {
+  if (_lazyRunning < LAZY_MAX) { _lazyRunning++; return Promise.resolve(); }
+  return new Promise(go => { _lazyWait.push(go); });
+}
+function _lazyRelease() {
+  const next = _lazyWait.shift();
+  if (next) next();          // 자리를 넘겨준다 — 카운터는 그대로
+  else _lazyRunning--;
+}
+const _sleep = ms => new Promise(r => setTimeout(r, ms));
+
 // 백그라운드에서 lazy 사진 로딩 + DOM 갱신
 async function loadLazyPhoto(p) {
+  if (!p || typeof p !== 'object') return;
+  if (p._loading) return;
+  /* 다 써 본 사진은 화면을 다시 그릴 때마다 또 읽지 않는다.
+     사용자가 그 칸을 누르면 _forceRetry 가 붙고 다시 한번 도전한다. */
+  if ((p._failRounds || 0) >= LAZY_ROUNDS && !p._forceRetry) return;
+  p._forceRetry = false;
+  p._loading = true;
+  await _lazyGate();
+  let lastErr = null;
   try {
-    // ★ fileHandle 확보 (이미 있으면 그대로, 없으면 _workDir에서)
-    let fh = p.fileHandle;
-    if (!fh && p._workDir && p.fileName) {
-      fh = await p._workDir.getFileHandle(p.fileName);
-      p.fileHandle = fh;  // 캐싱
+    for (let attempt = 0; attempt < LAZY_TRY; attempt++) {
+      /* 처음은 바로, 그다음부터는 시간을 둔다 — 몰려서 실패한 것이라면
+         잠깐 비켜 주는 것만으로 다음 번엔 읽힌다. */
+      if (attempt > 0) await _sleep(250 * attempt * attempt);
+      try {
+        // ★ fileHandle 확보 (이미 있으면 그대로, 없으면 _workDir에서)
+        let fh = p.fileHandle;
+        if (!fh && p._workDir && p.fileName) {
+          fh = await p._workDir.getFileHandle(p.fileName);
+          p.fileHandle = fh;  // 캐싱
+        }
+        if (!fh) return;      // 읽을 파일 자체가 없다 — 다시 해도 같다
+        const file = await fh.getFile();
+        const dataUrl = await blobToDataURL(file);
+        p.dataUrl = dataUrl;
+        p.lazy = false;
+        p._failed = false;
+        p._failRounds = 0;
+        // 해당 사진을 보여주는 img 태그 갱신
+        let _updated = 0;
+        if (p.id) {
+          document.querySelectorAll(`img[data-photo-id="${p.id}"]`).forEach(img => {
+            img.src = dataUrl;
+            try { img.closest('.th-wrap')?.classList.remove('th-fail', 'th-busy'); } catch (e) {}
+            _updated++;
+          });
+        }
+        // ★ id 매칭 실패(사진에 id 없음) 시에도 확실히 반영되도록 전체 재렌더 예약
+        if (_updated === 0 && typeof scheduleLazyRerender === 'function') scheduleLazyRerender();
+        return;
+      } catch (e) { lastErr = e; }
     }
-    if (!fh) {
-      p._loading = false;
-      return;
-    }
-    const file = await fh.getFile();
-    const dataUrl = await blobToDataURL(file);
-    p.dataUrl = dataUrl;
-    p.lazy = false;
-    p._loading = false;
-    // 해당 사진을 보여주는 img 태그 갱신
-    let _updated = 0;
+    /* 여기까지 왔으면 LAZY_TRY 번을 다 실패했다.
+       lazy 는 true 로 남겨 둔다 — 다음에 화면을 다시 그릴 때 한 번 더 해 보라는 표시다.
+       그리고 그 '다음' 을 여기서 만들어 준다. 이게 없으면 영영 회색 칸이다. */
+    p._failed = true;
+    p._failRounds = (p._failRounds || 0) + 1;
+    console.warn('[photo lazy load] ' + LAZY_TRY + '회 실패:',
+      p.fileName || p.id || '', (lastErr && lastErr.message) || '');
     if (p.id) {
-      document.querySelectorAll(`img[data-photo-id="${p.id}"]`).forEach(img => {
-        img.src = dataUrl; _updated++;
-      });
+      try {
+        document.querySelectorAll(`img[data-photo-id="${p.id}"]`).forEach(img => {
+          const w = img.closest('.th-wrap');
+          if (w) { w.classList.add('th-fail'); w.classList.remove('th-busy'); }
+        });
+      } catch (e) {}
     }
-    // ★ id 매칭 실패(사진에 id 없음) 시에도 확실히 반영되도록 전체 재렌더 예약
-    if (_updated === 0 && typeof scheduleLazyRerender === 'function') scheduleLazyRerender();
-  } catch(e) {
+    if (p._failRounds < LAZY_ROUNDS && typeof scheduleLazyRerender === 'function') {
+      setTimeout(() => { try { scheduleLazyRerender(); } catch (e) {} }, 900 * p._failRounds);
+    }
+  } finally {
     p._loading = false;
-    console.warn('[photo lazy load] 실패:', e.message);
+    _lazyRelease();
   }
 }
+
+/* 사용자가 회색 칸을 눌렀을 때 다시 읽는다.
+   자동 재시도가 끝난 뒤에도 손으로 한 번 더 해 볼 길을 남겨 둔다. */
+window.retryLazyPhoto = function (p) {
+  if (!p || typeof p !== 'object' || !p.lazy) return false;
+  p._forceRetry = true;
+  p._failRounds = 0;
+  loadLazyPhoto(p);
+  return true;
+};
 
 // ★ 모든 사진의 원본 로드 (보고서/PDF/JPG 생성 전)
 async function ensureAllPhotosLoaded() {

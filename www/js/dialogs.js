@@ -1930,6 +1930,16 @@ async function _restoreFromDataInner(data, dateDir) {
         if (totalRestored !== totalExpected) {
           console.log(`📷 ${u.name}: 기대 ${totalExpected}장, 복원 ${totalRestored}장`);
         }
+        /* ☆ 2026-09-22 있어야 할 사진을 한 장도 못 읽었으면 그냥 넘어가지 않는다.
+             폴더 목록 읽기가 실패하면 native-fs 는 빈 목록을 돌려준다(예외가 아니다).
+             그대로 두면 이 호수는 '사진 0장' 인 채로 열리고, _photosOnDisk 가 안 붙어
+             다음 저장 때 폴더의 사진이 지워질 수 있다.
+             여기서 던지면 아래 catch 가 skipPhotoSync 를 붙여 폴더를 건드리지 않는다.
+           ⚠️ 일부만 읽힌 경우는 여기 해당하지 않는다 — 사용자가 밖에서 사진을
+              지운 정상적인 경우와 구분할 수 없기 때문이다. */
+        if (totalExpected > 0 && totalRestored === 0) {
+          throw new Error('폴더에서 사진을 한 장도 읽지 못했습니다 (' + totalExpected + '장 있어야 함)');
+        }
 
         // ★ workNum 정보 newUnit에 보존 (저장 시 같은 폴더에 쓰도록)
         newUnit._workNum = u.workNum || (ui+1);

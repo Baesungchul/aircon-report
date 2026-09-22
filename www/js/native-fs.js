@@ -174,13 +174,27 @@
 
     // 디렉토리 순회 (작업기록 읽기 등에서 사용)
     async *entries() {
+      /* ☆ 2026-09-22 목록 읽기는 한 번 실패해도 다시 해 본다.
+           readdir 은 네이티브로 건너가는 호출이라 기기가 바쁜 순간에 떨어질 수 있다.
+           여기서 빈 목록을 돌려주면 부르는 쪽은 '폴더가 비었다' 고 받아들인다 —
+           사진이 있는데도 없다고 보게 되는 경로다. 세 번까지 해 본다.
+         ⚠️ 그래도 안 되면 예전처럼 빈 목록을 돌려준다(부르는 곳이 여러 군데라
+            여기서 던지면 엉뚱한 데가 깨진다). 대신 경고를 남긴다. */
       let files = [];
-      try {
-        const r = await FS().readdir({ path: this._path, directory: DIR });
-        files = (r && r.files) || [];
-      } catch (e) {
-        files = [];
+      let _rdErr = null;
+      for (let _t = 0; _t < 3; _t++) {
+        try {
+          const r = await FS().readdir({ path: this._path, directory: DIR });
+          files = (r && r.files) || [];
+          _rdErr = null;
+          break;
+        } catch (e) {
+          _rdErr = e;
+          files = [];
+          if (_t < 2) await new Promise(function (rs) { setTimeout(rs, 120 * (_t + 1)); });
+        }
       }
+      if (_rdErr) console.warn('[NativeFS] 목록 읽기 3회 실패:', this._path, _rdErr && _rdErr.message);
 
       // 1) 이름 + (있으면) 타입 추출
       //    Capacitor 버전에 따라 readdir 반환 형식이 다름:

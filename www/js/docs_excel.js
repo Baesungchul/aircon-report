@@ -307,7 +307,10 @@
           '<div style="font-size:11px;color:var(--mu);margin-top:10px;text-align:center;line-height:1.7;"><label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;margin-right:8px;"><input type="checkbox" id="dxLearnToggle"> \uD83E\uDDE0 사업자등록증 분석 학습</label><a href="#" id="dxLearnReset" style="color:var(--mu);">학습 초기화</a></div>' +
         '</div>' +
         // 푸터
-        '<div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--bd);background:var(--sf2);">' +
+        '<div style="border-top:1px solid var(--bd);background:var(--sf2);">' +
+          '<div id="dxQuota" style="font-size:11px;color:var(--mu);padding:10px 16px 0;text-align:center;line-height:1.6;"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;padding:12px 16px;background:var(--sf2);">' +
           '<button class="btn b-blue" id="dxDownload" style="flex:1;justify-content:center;">\uD83D\uDCE5 다운로드</button>' +
           '<button class="btn b-green" id="dxShare" style="flex:1;justify-content:center;">\uD83D\uDCE4 공유</button>' +
         '</div>' +
@@ -477,8 +480,38 @@
         ClaudeAI.saveBizCorr(JSON.stringify(_ocrRaw), confirmed);
       }
     }
+    /* ★ 2026-09-22 엑셀 견적서·거래명세서도 AI 글작성 횟수를 1건에 1회 씁니다.
+         그 전에는 아무 확인이 없어 무료로 계속 만들 수 있었습니다.
+       ⚠️ 세는 단위는 '문서 1건' 입니다. 같은 내용을 다운로드하고 또 공유하는 것은
+          한 건으로 봅니다(만든 내용의 지문을 _charged 에 남겨 둡니다).
+          품목·상호·날짜를 고치면 지문이 달라지므로 새 문서로 보고 1회를 더 씁니다.
+       ⚠️ 차감은 파일이 실제로 만들어진 뒤에 합니다. 생성이 실패하면 횟수가 줄지 않습니다. */
+    var DOC_KIND = 'blog';
+    var _charged = Object.create(null);
+    function ctxSig(ctx) {
+      try {
+        return JSON.stringify([kind, ctx.custName, ctx.bizNo, ctx.date, !!ctx.vat,
+          (ctx.items || []).map(function (it) { return [it.name, it.spec, it.qty, it.price]; })]);
+      } catch (e) { return 'x' + Date.now(); }   // 지문을 못 만들면 새 문서로 봅니다
+    }
+    function refreshQuota() {
+      var el = ov.querySelector('#dxQuota');
+      if (!el) return;
+      try {
+        if (!(window.Subs && Subs.quotaText)) { el.textContent = ''; return; }
+        if (Subs.isAdmin && Subs.isAdmin()) { el.textContent = '무제한 (관리자)'; return; }
+        el.textContent = '문서 1건에 AI 글작성 1회를 사용합니다 · ' + Subs.quotaText(DOC_KIND);
+      } catch (e) { el.textContent = ''; }
+    }
+    refreshQuota();
     async function run(mode) {
       var ctx = makeCtx();
+      var sig = ctxSig(ctx);
+      var needCharge = !_charged[sig];
+      /* 잔량 확인은 만들기 전에 합니다 — 다 만들어 놓고 못 드린다고 하면 안 됩니다.
+         로그인하고 나면 눌렀던 버튼을 다시 누릅니다(ai.js 와 같은 방식). */
+      if (needCharge && window.Subs && Subs.gateAI &&
+          !Subs.gateAI(DOC_KIND, (mode === 'share' ? 'dxShare' : 'dxDownload'))) return;
       try {
         toast('엑셀 생성 중…', 'ok');
         learnMaybe(ctx);
@@ -496,6 +529,11 @@
           buf = await genFromTemplate(url, edits, kind);   /* kind = quote | statement → 직인 자리 */
         }
         await shareOrDownload(buf, fname(ctx), mode, isQuote ? '견적서' : '거래명세서');
+        if (needCharge) {
+          _charged[sig] = true;
+          try { if (window.Subs) Subs.consumeAI(DOC_KIND); } catch (e) {}
+          refreshQuota();
+        }
       } catch (e) { console.error(e); toast('생성 실패: ' + (e.message || e), 'err'); }
     }
     ov.querySelector('#dxDownload').onclick = function () { run('download'); };

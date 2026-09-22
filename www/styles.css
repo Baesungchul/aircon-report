@@ -323,6 +323,10 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;}
 .th-saved{position:absolute;bottom:-5px;left:-5px;width:20px;height:20px;background:#16a34a;border:none;border-radius:50%;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:2;}
 /* ★ th-saved(저장됨)는 .th-wrap 모디파이어로만 쓰임 - 배지용 오프셋이 새서 사진이 왼쪽/아래로 밀리던 것 무효화 */
 .th-wrap.th-saved{ position:relative; left:auto; right:auto; top:auto; bottom:auto; }
+/* ★ 2026-09-22 못 읽은 사진 칸 — 눌러서 다시 읽으라는 표시 (events.js loadLazyPhoto) */
+.th-wrap.th-fail img{border-color:var(--dn,#e5484d);opacity:.55;}
+.th-wrap.th-fail.th-busy::after{content:'읽는 중…';}
+.th-wrap.th-fail::after{content:'다시 읽기';position:absolute;left:50%;bottom:6px;transform:translateX(-50%);background:rgba(17,24,32,.82);color:#fff;font-size:10px;padding:2px 7px;border-radius:9px;pointer-events:none;white-space:nowrap;}
 .sp-sec{margin-top:12px;border-top:1px solid var(--bd);padding-top:11px;}
 
 /* 휴지통 섹션 */

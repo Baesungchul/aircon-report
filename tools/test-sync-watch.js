@@ -79,11 +79,29 @@ chk('로그인이 풀려도 알린다', () => {
   return '뜸';
 });
 
-chk('폴더를 다 못 읽었을 때도 알린다', () => {
+chk('☠️ 폴더를 다 못 읽었다고 겁주지 않는다', () => {
+  /* ☠️ 2026-09-22 사용자 신고 — 화면 위에 빨간 띠가 계속 떴다.
+       "저장 폴더를 다 읽지 못해 일부 일정이 올라가지 않았습니다"
+     원인은 둘이었다.
+       ① cloud_sync 가 **세션 파일이 없는 평범한 폴더**를 '못 읽은 폴더'로 세고 있었다.
+          날짜 폴더에 _session.json 이 없는 건 흔한 일이다 → scanOk 가 영영 false.
+       ② 설령 진짜였어도 사용자가 **할 수 있는 일이 없는 경고**였다.
+     → 이 띠를 없앴다. 정말 안 올라가고 있으면 아래 '며칠째' 검사가 잡는다. */
   const env = load({ status: { okAt: Date.now(), blocked: 'partial', days: 0 } });
   env.SW.check();
-  must(shown(env), '절반만 올라간 상태인데 표시가 없습니다');
-  return '뜸';
+  must(!shown(env), '없앤 경고가 다시 뜹니다 — 사용자가 할 수 있는 일이 없는 경고입니다');
+  must(env.SW.reason() === null, 'partial 에 아직 문구가 달려 있습니다');
+  return '안 뜸';
+});
+
+chk('☠️ 그래도 정말 안 올라가면 며칠째인지는 말한다', () => {
+  /* 위 경고를 없앤 대신, 진짜 사고(한 달치가 조용히 안 올라감)는 이쪽이 잡아야 한다.
+     이 검사가 없으면 '시끄러워서 껐다'가 '아무도 모른다'가 된다. */
+  const env = load({ status: { okAt: Date.now() - 5 * DAY, blocked: 'partial', days: 5 } });
+  env.SW.check();
+  must(shown(env), '5일째 안 올라갔는데도 조용합니다');
+  must(/5일째/.test(env.SW.reason()), '며칠째인지 안 알려줍니다');
+  return '5일째';
 });
 
 chk('막힌 이유가 없어도 며칠째 안 올라갔으면 알린다', () => {
@@ -137,9 +155,38 @@ chk('막힌 이유를 남긴다', () => {
   const s = read('cloud_sync.js');
   must(/noteBlocked\('folder'\)/.test(s), '폴더가 없어 돌아갈 때 이유를 안 남깁니다');
   must(/noteBlocked\('login'\)/.test(s), '로그인이 없어 돌아갈 때 이유를 안 남깁니다');
-  must(/if \(scanOk\) noteOk\(\); else noteBlocked\('partial'\)/.test(s),
-       '부분 스캔을 성공으로 기록합니다 — 절반만 올라간 채로 경고가 안 뜹니다');
-  return 'folder · login · partial';
+  /* ⚠️ 2026-09-22 — partial 은 더 이상 막힌 이유로 남기지 않는다. 남기면 okAt 이 갱신되지
+     않아 '며칠째 안 올라갔습니다' 경고가 뒤따라 뜬다(올라가고 있는데도). */
+  must(!/noteBlocked\('partial'\)/.test(s),
+       'partial 을 막힌 이유로 남깁니다 — 올라가고 있는데 날짜가 쌓입니다');
+  return 'folder · login';
+});
+
+chk('☠️ 세션 파일이 없는 폴더를 「못 읽은 폴더」로 세지 않는다', () => {
+  /* 이번 오경보의 뿌리다. 한 덩어리 try 안에 getFileHandle 과 읽기가 같이 있어서,
+     파일이 없는 폴더도 failed++ 로 갔다.
+     ⚠️ 오류 이름(NotFoundError)으로 가르면 안 된다 — 네이티브 폴더는 Capacitor 오류를
+        그대로 던져 이름이 다르다. 구조로 갈라야 한다. */
+  /* ☠️ 주석을 걷어내고 본다 — 위 설명 주석에 'failed++' 라는 글자가 그대로 적혀 있어서,
+     주석째로 세면 제대로 고쳐 놓고도 2군데로 잡힌다(이 세션에서 세 번째 당했다). */
+  const s = read('cloud_sync.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const at = s.indexOf('async function scanLocalItems');
+  must(at > 0, 'scanLocalItems 를 못 찾았습니다');
+  const b = s.slice(at, at + 1600);
+  must(/try \{ sf = await entry\.getFileHandle\('_session\.json'\); \}[\s\S]{0,120}catch \(e\) \{ continue; \}/.test(b),
+       '세션 파일 찾기를 따로 떼어내지 않았습니다 — 없는 폴더가 실패로 셉니다');
+  const fails = (b.match(/failed\+\+/g) || []).length;
+  must(fails === 1, 'failed++ 가 ' + fails + '군데입니다 (읽기 실패 한 곳이어야 합니다)');
+  must(!/NotFoundError/.test(b), '오류 이름으로 가르고 있습니다 — 네이티브에서는 이름이 다릅니다');
+  return '따로 가름';
+});
+
+chk('부분 스캔이어도 기준선·정리는 여전히 건너뛴다', () => {
+  /* 경고를 없앴다고 안전장치까지 풀면, 반만 읽은 목록이 기준선이 되어 톱니가 생긴다 */
+  const s = read('cloud_sync.js');
+  must(/if \(scanOk\) setSyncedIds\(uid, currentIds\)/.test(s), '부분 스캔으로 기준선을 갱신합니다');
+  must(/if \(currentIds\.length > 0 && scanOk\)/.test(s), '부분 스캔으로 서버 대조를 돌립니다');
+  return '그대로';
 });
 
 chk('sync_watch 가 index.html 에 실리고 cloud_sync 뒤에 온다', () => {

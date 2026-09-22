@@ -55,9 +55,16 @@ function fakeDb(items) {
   return { store, db: { collection: () => ({ doc: () => ({ collection: colOf }) }) } };
 }
 
-/* ── 가짜 저장 폴더 ── names 의 폴더를 내주고, bad 에 든 이름은 읽다가 터진다 */
-function fakeFolder(names, bad, odd) {
-  bad = bad || []; odd = odd || {};
+/* ── 가짜 저장 폴더 ──
+   names  그 폴더들을 내준다
+   bad    _session.json 은 있는데 **읽다가 터진다** — 진짜 실패다
+   gone   _session.json 이 **아예 없다** — 아주 흔한 폴더다(사진만 넣어 둔 폴더 등)
+   ☠️ 2026-09-22 이전에는 이 가짜가 bad 를 getFileHandle 에서 터뜨렸다. 그런데 실제 앱에서
+      getFileHandle 이 터지는 가장 흔한 이유는 '파일이 없어서' 다. 가짜가 둘을 같은 모양으로
+      흉내 내는 바람에, 멀쩡한 폴더를 실패로 세는 버그를 검사가 못 잡았다(사용자 신고).
+      → 가짜도 둘을 갈라 놓는다. 가짜가 현실보다 뭉뚱그리면 그만큼 검사가 눈을 감는다. */
+function fakeFolder(names, bad, odd, gone) {
+  bad = bad || []; odd = odd || {}; gone = gone || [];
   return {
     values: function () {
       let i = 0;
@@ -70,15 +77,17 @@ function fakeFolder(names, bad, odd) {
             done: false,
             value: {
               kind: 'directory', name,
-              getFileHandle: () => bad.indexOf(name) >= 0
-                ? Promise.reject(new Error('읽기 실패'))
-                : Promise.resolve({ getFile: () => Promise.resolve({
-                    text: () => Promise.resolve(JSON.stringify({
-                      apt: name + ' 현장', date: odd[name] || name.slice(0, 10),
-                      units: [{ name: '101', beforeCount: 1, afterCount: 1, customer: {} }],
-                      savedAt: '2026-09-01T00:00:00.000Z'
-                    }))
-                  }) })
+              getFileHandle: () => gone.indexOf(name) >= 0
+                ? Promise.reject(new Error('파일 없음'))
+                : Promise.resolve({ getFile: () => bad.indexOf(name) >= 0
+                    ? Promise.reject(new Error('읽기 실패'))
+                    : Promise.resolve({
+                        text: () => Promise.resolve(JSON.stringify({
+                          apt: name + ' 현장', date: odd[name] || name.slice(0, 10),
+                          units: [{ name: '101', beforeCount: 1, afterCount: 1, customer: {} }],
+                          savedAt: '2026-09-01T00:00:00.000Z'
+                        }))
+                      }) })
             }
           });
         }
@@ -106,7 +115,7 @@ function load(opts) {
     localStorage: ls,
     document: { addEventListener() {} },
     showToast() {},
-    photoFolderHandle: fakeFolder(opts.folders || [], opts.badFolders, opts.oddDates),
+    photoFolderHandle: fakeFolder(opts.folders || [], opts.badFolders, opts.oddDates, opts.goneFolders),
     requestFolderPermissionSafe: () => Promise.resolve(true),
     firebase: { firestore: { FieldValue: { serverTimestamp: () => 'TS' } } },
     Cloud: { ready: true, user: { uid: 'me' }, db: f.db }
@@ -203,6 +212,37 @@ const WORK = (n) => '2026-09-0' + n;
     const base = JSON.parse(env.ls.getItem('cloudSyncedIds_me') || '[]');
     must(base.length === 5, '기준선이 ' + base.length + '개로 깎였습니다 — 다음번 안전장치가 헐거워집니다');
     return '정리 보류 · 기준선 유지';
+  });
+
+  await achk('☠️ 세션 파일이 없는 폴더는 실패로 세지 않는다', async () => {
+    /* ☠️ 2026-09-22 사용자 신고 — 화면 위 빨간 띠가 계속 떴다.
+         "저장 폴더를 다 읽지 못해 일부 일정이 올라가지 않았습니다"
+       날짜 폴더에 _session.json 이 없는 건 아주 흔한데(사진만 넣어 둔 폴더, 만들다 만 폴더),
+       그걸 '못 읽은 폴더'로 세는 바람에 scanOk 가 영영 false 였다.
+       그러면 기준선도 영영 안 갱신되고 R1 자가복구도 영영 안 돈다 — 띠보다 이쪽이 더 나쁘다. */
+    const env = load({
+      folders: [WORK(1), WORK(2), WORK(3), WORK(4), WORK(5)],
+      goneFolders: [WORK(3)],                              // 세션 파일이 없는 평범한 폴더
+      ls: { 'cloudSyncedIds_me': JSON.stringify([WORK(1), WORK(2), WORK(4), WORK(5)]) }
+    });
+    await runSync(env);
+    const base = JSON.parse(env.ls.getItem('cloudSyncedIds_me') || '[]');
+    must(base.length === 4, '기준선이 갱신되지 않았습니다 — 없는 파일을 실패로 셌습니다');
+    return '정상으로 봄';
+  });
+
+  await achk('☠️ 폴더가 통째로 비어 보이면(권한 풀림) 기준선을 지키다', async () => {
+    /* 권한이 도중에 풀리면 실패 수는 0 인데 건수만 뚝 떨어진다.
+       실패 수로만 판정하면 그 빈 목록이 기준선으로 굳어 안전장치가 스스로 헐거워진다. */
+    const env = load({
+      folders: [WORK(1), WORK(2), WORK(3), WORK(4), WORK(5)],
+      goneFolders: [WORK(1), WORK(2), WORK(3), WORK(4)],   // 넷이 비어 보인다
+      ls: { 'cloudSyncedIds_me': JSON.stringify([WORK(1), WORK(2), WORK(3), WORK(4), WORK(5)]) }
+    });
+    await runSync(env);
+    const base = JSON.parse(env.ls.getItem('cloudSyncedIds_me') || '[]');
+    must(base.length === 5, '기준선이 ' + base.length + '개로 깎였습니다 — 톱니가 생깁니다');
+    return '기준선 유지';
   });
 
   console.log('\n[3] R3 — 다른 기기 것을 지우지 않는가');

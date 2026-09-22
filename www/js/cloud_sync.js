@@ -293,8 +293,21 @@
     for await (var entry of photoFolderHandle.values()) {
       if (entry.kind !== 'directory') continue;
       if (!/^\d{4}-\d{2}-\d{2}/.test(entry.name)) continue;
+      /* ☠️ 2026-09-22 — 여기서 '세션 파일이 없는 폴더'를 **못 읽은 폴더로 세고 있었다.**
+           날짜 폴더에 _session.json 이 없는 경우는 아주 흔하다(사진만 넣어 둔 폴더,
+           만들다 만 폴더, 다른 기능이 만든 폴더). 그런데 getFileHandle 이 그때 throw 하니
+           한 덩어리 try 안에서 failed++ 가 돌았고, 그래서 scanOk 가 **영영 false** 였다.
+           그 결과가 화면 위 빨간 띠였다 — "저장 폴더를 다 읽지 못해 일부 일정이
+           올라가지 않았습니다". 실제로는 다 올라가고 있었다(사용자 신고 2026-09-22).
+         → 두 가지를 가른다.
+             · 파일이 없다      = 올릴 것이 없는 폴더다. 실패가 아니다. 그냥 넘어간다.
+             · 파일은 있는데 못 읽는다 = 진짜 실패다. 이것만 센다.
+           ⚠️ 오류 이름(NotFoundError)으로 가르지 않는다. 네이티브 폴더(native-fs)는
+              Capacitor 오류를 그대로 던져서 이름이 다르다. **구조로** 가른다. */
+      var sf = null;
+      try { sf = await entry.getFileHandle('_session.json'); }
+      catch (e) { continue; }                    // 세션 파일 없음 — 올릴 것이 없다
       try {
-        var sf = await entry.getFileHandle('_session.json');
         var file = await sf.getFile();
         var data = JSON.parse(await file.text());
         if (!data.units || !data.units.length) continue;
@@ -304,7 +317,7 @@
           totalPhotos: data.units.reduce(function(s,u){return s+(u.beforeCount||0)+(u.afterCount||0);},0),
           session: data
         }});
-      } catch(e) { failed++; }
+      } catch(e) { failed++; }                   // 파일은 있는데 못 읽거나 깨졌다 — 진짜 실패
     }
     items.scanFailed = failed;   // 배열에 얹는다 — 호출부를 바꾸지 않으면서 사실을 같이 넘긴다
     return items;
@@ -446,6 +459,21 @@
       //       ① R1 자가복구 — 로컬엔 있는데 서버엔 없는 작업을 찾아 다시 올린다
       //       ② 유령 문서 개수 세기(로그·진단용)
       //    지우는 일은 사용자가 작업을 삭제할 때 trashWorkItem 이 한다 — 사람이 시킨 것만.
+      /* ★ 2026-09-22 R2 보강 — '못 읽은 폴더 수'만 믿지 않는다.
+         ☠️ 폴더 권한이 도중에 풀리면 폴더가 **전부 비어 보인다.** 그러면 실패 수는 0 인데
+            건수만 뚝 떨어진다. 실패 수로만 판정하면 그 빈 목록이 기준선으로 굳어
+            다음번 안전장치가 그 깎인 숫자와 비교하게 된다(스스로 헐거워지는 톱니).
+         → 지난번 기준선보다 절반 아래로 떨어졌으면 그것도 부분 스캔으로 본다.
+         ⚠️ 4건 미만에서는 보지 않는다 — 실제로 지우고 줄어든 경우와 구분이 안 된다. */
+      try {
+        var _prev = getSyncedIds(uid);
+        if (_prev.length >= 4 && currentIds.length < _prev.length * 0.5) {
+          console.warn('[CloudSync] 부분 스캔 의심(로컬 ' + currentIds.length +
+                       ' < 지난번 ' + _prev.length + ') → 정리·기준선 갱신 건너뜀');
+          scanOk = false;
+        }
+      } catch (e) {}
+
       var curSet = {}; currentIds.forEach(function(i){ curSet[i]=1; });
       var repaired = 0, ghosts = 0;
       var diverged = 0, stuck = 0;   // ★ R4 — 내용이 다른 것 / 상대 수정을 못 받은 것
@@ -644,9 +672,14 @@
          비교하게 된다(안전장치가 스스로 헐거워지는 톱니). 온전할 때만 갱신한다. */
       if (scanOk) setSyncedIds(uid, currentIds);
       if (badDates) console.warn('[CloudSync] 날짜 형식이 어긋난 작업 ' + badDates + '건 — 팀원에게 안 보입니다');
-      /* ⚠️ '스캔이 온전했을 때만' 성공으로 친다. 폴더를 반만 읽고 성공으로 기록하면
-           경고가 안 뜨는 채로 절반만 올라가는 상태가 굳는다. */
-      if (scanOk) noteOk(); else noteBlocked('partial');
+      /* ⚠️ 2026-09-22 — 부분 스캔이어도 **올림 자체는 된 것**으로 친다.
+           못 읽은 폴더가 하나 있다고 해서 올라간 것까지 없던 일이 되지는 않는다.
+           예전에는 여기서 blocked 로 남겨 두는 바람에 '며칠째 안 올라갔습니다' 경고까지
+           뒤따라 떴다(okAt 이 갱신되지 않으니 날짜가 계속 쌓였다).
+         ⚠️ 다만 기준선 갱신과 파괴적 정리는 그대로 건너뛴다(위 R2). 그게 원래 목적이었다.
+         ⚠️ 못 읽은 폴더 수는 _lastRun.scanFailed 로 남아 '다시 맞추기' 결과에 나온다.
+            화면 위에 띠를 띄우지는 않는다 — 사용자가 할 수 있는 일이 없는 경고다. */
+      noteOk();
       _lastRun = { scanned: items.length, changed: writes, repaired: repaired,
                    scanFailed: scanFailed, badDates: badDates, ghosts: ghosts,
                    diverged: diverged, stuck: stuck };

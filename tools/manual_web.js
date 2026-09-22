@@ -49,7 +49,7 @@ const html = `<!doctype html><html lang="ko" data-mode="light"><head>
 <title>현장매니저 사용설명서</title>
 <meta name="description" content="현장매니저 사용설명서 — 처음 쓰는 순서대로.">
 <meta property="og:title" content="현장매니저 사용설명서">
-<meta property="og:description" content="사진만 찍으면 보고서가 끝납니다. 처음 쓰는 순서대로 따라 하세요.">
+<meta property="og:description" content="사진만 찍으면 보고서가 완성됩니다. 처음 쓰는 순서대로 따라 하세요.">
 <style>${css}</style>
 <style>
  html,body{margin:0;background:var(--bg);}

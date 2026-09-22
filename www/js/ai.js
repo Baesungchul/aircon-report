@@ -339,10 +339,16 @@
       '입력이 이미지(캡처)일 때는 _src 키를 추가로 넣으세요: 스크린샷에서 읽은 고객 요청 핵심을 한 줄 텍스트로 옮겨 담습니다(예: "내일 2시 행복아파트 101동 502호 벽걸이 2대 청소 010-1234-5678"). 이는 학습용이며 일정 필드가 아닙니다. 텍스트로 입력된 경우엔 _src를 생략하세요.\n' +
       '코드펜스나 설명 없이 순수 JSON만 출력하세요.';
 
-    // 사용자 지침 (일정 분석 전용 — 설정/분석창에서 편집)
-    try { var _schedGuide = getChGuide('schedule'); if (_schedGuide) sys += '\n\n[사용자 지침 — 반드시 반영]\n' + _schedGuide; } catch (e) {}
-
     sys += buildFewShot();
+
+    /* 사용자 지침 (일정 분석 전용 — 설정/분석창에서 편집)
+       ☠️ 과거 교정 예시(buildFewShot) **뒤**에 붙인다. 예시가 정답처럼 보여서
+          앞에 두면 지침이 예시에 밀린다. 위 본문에 '[전화번호 규칙 — 최우선]' 처럼
+          최우선이라고 적힌 대목도 있어, 자리와 머리말을 같이 고쳐야 이긴다. */
+    try {
+      var _schedGuide = getChGuide('schedule');
+      if (_schedGuide) sys += '\n\n' + userGuideHead([EX_JSON]) + '\n\n' + _schedGuide;
+    } catch (e) {}
 
     // OCR 우선: 캡처 이미지는 먼저 '글자만 정확히' 전사한 뒤, 그 텍스트로 일정을 구조화한다
     var fromImage = images.length > 0;
@@ -747,18 +753,34 @@
     '- [작업 정보]의 「현장/작업명」도 그대로 옮기지 말고 위 규칙에 맞게 다듬어 씁니다.'
   ].join('\n');
 
-  /* 사용자 지침 머리말 — 어긋날 때 **사용자 지침이 이긴다**고 못 박는다.
-     ☠️ 예전에는 "[반드시 반영할 지침]" 이라고만 적혀 있었다. 앞에 '최우선'이라고
-        적힌 규칙이 있으면 그쪽이 이긴다. 누가 이기는지를 글로 적어 두어야 한다.
-     ⚠️ 예외는 둘만 남긴다. 마커 형식(아래 markGuide 주석 참고)과, 지침으로도 풀 수 없는
-        개인정보(동·호수·이름·전화번호·상세주소). 나머지는 사용자 말이 맞다. */
-  var USER_GUIDE_HEAD = [
-    '[사용자 지침 — 위의 규칙보다 우선한다]',
-    '아래는 이 사용자가 직접 적은 규칙입니다. 위 내용과 어긋나면 **아래를 따르세요.**',
-    '예외는 둘뿐입니다.',
-    '  ① [사진 배치 규칙]의 마커 형식은 위에 적힌 그대로 지킵니다.',
-    '  ② 동·호수, 고객 이름, 전화번호, 상세 주소는 어떤 지침이 있어도 쓰지 않습니다.'
-  ].join('\n');
+  /* ★ 사용자 지침 머리말 — 어긋날 때 **사용자 지침이 이긴다**고 못 박는다.
+     ☠️ 2026-09-22 사용자 신고: "지침에 넣었는데 반영이 안 된다."
+        세 군데(블로그·견적서·일정 분석) 모두 같은 모양으로 잘못돼 있었다.
+          · 머리말이 "[반드시 반영할 지침]" 뿐이었다. 앞뒤에 '최우선'·'반드시 이 패턴에
+            맞춰라' 라고 적힌 규칙이 있으면 그쪽이 이긴다. 누가 이기는지를 글로 적어야 한다.
+          · 사용자 지침을 붙인 **뒤에** 다른 규칙을 더 붙이고 있었다.
+            (블로그=사진 규칙, 견적서·일정=과거 교정 예시) 나중에 온 말이 유리하다.
+        → 세 군데 모두 **맨 마지막**으로 옮기고, 이 머리말을 앞에 단다.
+     ⚠️ 예외는 기능마다 다르다. 지침으로 풀리면 기능 자체가 망가지는 것만 남긴다
+        (마커 형식·JSON 출력 형식·없는 가격 지어내기 금지·개인정보).
+        나머지는 전부 사용자 말이 맞다 — 예외를 늘리면 같은 신고가 또 들어온다. */
+  var EX_MARKER  = '[사진 배치 규칙]의 마커 형식은 위에 적힌 그대로 지킵니다.';
+  var EX_PRIVACY = '동·호수, 고객 이름, 전화번호, 상세 주소를 글에 드러내라는 지침은 따르지 않습니다.';
+  var EX_JSON    = '출력은 코드펜스·설명 없이 순수 JSON 하나여야 하고, 필드 이름도 위에 적힌 그대로여야 합니다.';
+  var EX_PRICE   = '지침(가격표)에 없는 항목의 가격은 지어내지 않고 "[가격 확인 후 안내]" 로 적습니다.';
+
+  function userGuideHead(exceptions) {
+    var L = [
+      '[사용자 지침 — 위의 모든 규칙보다 우선한다]',
+      '아래는 이 사용자가 직접 적은 규칙입니다. 위 내용과 어긋나면 **아래를 따르세요.**'
+    ];
+    var ex = exceptions || [];
+    if (ex.length) {
+      L.push(ex.length === 1 ? '예외는 하나뿐입니다.' : '예외는 아래 ' + ex.length + '가지뿐입니다.');
+      ex.forEach(function (t, i) { L.push('  ' + '①②③④⑤'.charAt(i) + ' ' + t); });
+    }
+    return L.join('\n');
+  }
 
   var CHANNELS = {
     naver: {
@@ -956,7 +978,7 @@
     if (markGuide) sys += '\n\n' + markGuide;
     /* ☠️ 사용자 지침은 **맨 마지막**이다. 앞에 붙는 규칙에 '최우선' 같은 말이 있으면
          뒤에 와도 밀린다 — 그래서 자리와 머리말을 같이 고쳤다(USER_GUIDE_HEAD 주석). */
-    if (guide) sys += '\n\n' + USER_GUIDE_HEAD + '\n\n' + guide;
+    if (guide) sys += '\n\n' + userGuideHead([EX_MARKER, EX_PRIVACY]) + '\n\n' + guide;
     var content = [];
     images.forEach(function (im) { content.push({ type: 'image', source: { type: 'base64', media_type: im.media_type, data: im.data } }); });
     var ask = '아래 작업 정보' + (memo ? '와 추가 메모' : '') + (images.length ? '와 전/후 사진' : '') + '를 바탕으로 ' + ch.label + ' 글을 작성해줘.\n\n[작업 정보]\n' + meta.text;
@@ -1025,8 +1047,10 @@
   async function generateQuote(request, useWork) {
     var guide = getChGuide('quote');
     var sys = indFill(CHANNELS.quote.sys);   // ★ 견적서도 지금 업종 기준
-    if (guide) sys += '\n\n[업체 정보·가격표 등 반드시 반영할 지침]\n' + guide;
     sys += buildQuoteFewShot();
+    /* ☠️ 사용자 지침은 과거 교정 예시 **뒤**에 온다. 예시 블록이 "반드시 이 정답 패턴에
+         맞춰라" 라고 말하고 있어서, 앞에 두면 지침(가격표·업체 정보)이 거기에 밀린다. */
+    if (guide) sys += '\n\n' + userGuideHead([EX_PRICE]) + '\n\n' + guide;
     var ask = '아래 고객 요청에 맞는 견적서를 작성해줘.\n\n[고객 요청]\n' + (request || '(요청 문자 없음 — 아래 작업 정보 기준)');
     if (useWork) {
       try { var meta = currentWorkMeta(); if (meta && meta.text) ask += '\n\n[참고: 열린 작업 정보]\n' + meta.text; } catch (e) {}

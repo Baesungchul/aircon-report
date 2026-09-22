@@ -44,12 +44,11 @@ function constOf(name) {
   must(end > at, name + ' 이 줄 배열 모양이 아닙니다');
   return SRC.slice(at, end);
 }
-/* generatePost 본문 */
-function postBody() {
-  const at = SRC.indexOf('async function generatePost(');
-  must(at > 0, 'generatePost 를 못 찾았습니다');
-  const end = SRC.indexOf('\n  }', SRC.indexOf('callClaude(', at));
-  return SRC.slice(at, end > at ? end : at + 3000);
+/* 이름으로 함수 본문 떼어 오기 */
+function fnBody(sig, span) {
+  const at = SRC.indexOf(sig);
+  must(at > 0, sig + ' 을 못 찾았습니다');
+  return SRC.slice(at, at + (span || 2500));
 }
 
 console.log('\n── 앱이 사용자 지침과 반대되는 말을 하지 않는가 ──');
@@ -95,20 +94,8 @@ chk('아파트 단지명은 계속 쓸 수 있다', () => {
 
 console.log('\n── 사용자 지침이 이기는가 ──');
 
-chk('☠️ 사용자 지침이 프롬프트의 맨 마지막에 붙는다', () => {
-  /* 앞에 '최우선'이라 적힌 규칙이 있으면 뒤에 와도 밀린다. 자리부터 맨 뒤여야 한다 */
-  const b = postBody();
-  const user = b.indexOf('USER_GUIDE_HEAD');
-  must(user > 0, '사용자 지침 머리말을 안 붙입니다');
-  ['COMMON_WRITE_GUIDE', 'PRIVACY_RULE', 'TITLE_BLOCK_GUIDE', 'markGuide'].forEach((k) => {
-    const at = b.lastIndexOf(k + ';');
-    if (at > 0) must(at < user, k + ' 가 사용자 지침보다 **뒤에** 붙습니다');
-  });
-  return '맨 뒤';
-});
-
 chk('☠️ 어긋나면 사용자 지침을 따르라고 글로 적혀 있다', () => {
-  const h = constOf('USER_GUIDE_HEAD');
+  const h = fnBody('function userGuideHead(', 900);
   must(/우선한다/.test(h), '누가 이기는지 안 적혀 있습니다');
   must(/아래를 따르세요/.test(h), '어긋날 때 어느 쪽을 따를지 안 적혀 있습니다');
   return '적힘';
@@ -121,19 +108,71 @@ chk('예전 머리말(반드시 반영할 지침)이 남아 있지 않다', () =
 });
 
 chk('☠️ 지침으로도 풀 수 없는 것이 명시돼 있다', () => {
-  /* 사용자 지침이 이긴다고만 하면 "고객 전화번호도 넣어줘" 가 통한다.
-     동·호수·이름·전화번호·상세주소는 어떤 지침으로도 못 푼다 */
-  const h = constOf('USER_GUIDE_HEAD');
-  must(/전화번호/.test(h) && /어떤 지침이 있어도/.test(h),
+  /* 사용자 지침이 이긴다고만 하면 "고객 전화번호도 넣어줘" 가 통한다 */
+  must(/var EX_PRIVACY\s*=[^;]*전화번호/.test(SRC), '개인정보 예외 문구가 없습니다');
+  must(/따르지 않습니다/.test(SRC.slice(SRC.indexOf('var EX_PRIVACY'), SRC.indexOf('var EX_JSON'))),
        '지침으로 개인정보까지 풀 수 있게 열려 있습니다');
   return '잠김';
 });
 
 chk('사진 마커 형식만은 예외로 남겨 둔다', () => {
   /* 2026-09-01 에 고친 것 — 옛 지침에 옛 마커 형식이 적혀 있어도 새 형식이 이겨야 한다 */
-  const h = constOf('USER_GUIDE_HEAD');
-  must(/사진 배치 규칙/.test(h), '마커 형식 예외가 빠졌습니다');
+  must(/var EX_MARKER\s*=[^;]*사진 배치 규칙/.test(SRC), '마커 형식 예외가 빠졌습니다');
   return '예외';
+});
+
+console.log('\n── 세 기능 모두 같은가 (블로그 · 견적서 · 일정 분석) ──');
+
+/* ☠️ 신고는 블로그에서 들어왔지만 세 군데가 전부 같은 모양으로 잘못돼 있었다.
+   한 군데만 고치면 나머지 둘에서 같은 신고가 다시 들어온다. */
+/* ⚠️ 기준점은 **sys 에 붙이는 그 줄**이어야 한다. 이름만 찾으면 아래쪽에서
+   같은 이름을 다시 쓰는 자리(예: 블로그의 normalizeMarkers 분기)에 걸려 헛다리를 짚는다. */
+const SPOTS = [
+  ['블로그·SNS', 'async function generatePost(', "sys += '\\n\\n' + markGuide;", 2],
+  ['견적서',     'async function generateQuote(', 'sys += buildQuoteFewShot();', 1],
+  ['일정 분석',  'async function extractSchedule(', 'sys += buildFewShot();', 1]
+];
+
+SPOTS.forEach(([name, sig, lastRule, exN]) => {
+  chk('☠️ ' + name + ' — 사용자 지침이 맨 마지막에 붙는다', () => {
+    const b = fnBody(sig, 4000);
+    const user = b.indexOf('userGuideHead(');
+    must(user > 0, name + ' 이 사용자 지침 머리말을 안 씁니다');
+    const rule = b.indexOf(lastRule);
+    must(rule > 0, name + ' 에서 ' + lastRule + ' 을 못 찾았습니다');
+    must(rule < user, name + ' 은 사용자 지침 **뒤에** ' + lastRule + ' 을 붙입니다');
+    return '맨 뒤';
+  });
+
+  chk(name + ' — 예외를 ' + exN + '개만 연다', () => {
+    /* 예외를 늘리면 "지침이 안 먹는다" 는 신고가 그만큼 다시 생긴다.
+       기능 자체가 망가지는 것만 예외로 둔다. */
+    const b = fnBody(sig, 4000);
+    const m = b.match(/userGuideHead\(\[([^\]]*)\]\)/);
+    must(m, name + ' 의 예외 목록을 못 읽었습니다');
+    const n = m[1].split(',').filter((x) => x.trim()).length;
+    must(n === exN, name + ' 예외가 ' + n + '개입니다 (' + exN + '개여야 합니다)');
+    return m[1].replace(/\s+/g, ' ').trim();
+  });
+});
+
+chk('☠️ 옛 머리말이 한 군데도 안 남았다', () => {
+  /* 셋 다 문구가 달랐다 — 하나라도 남으면 그 기능만 옛날처럼 동작한다 */
+  [
+    '[반드시 반영할 지침]',
+    '[업체 정보·가격표 등 반드시 반영할 지침]',
+    '[사용자 지침 — 반드시 반영]'
+  ].forEach((old) => {
+    must(SRC.indexOf(old) < 0, '옛 머리말이 남아 있습니다: ' + old);
+  });
+  return '없음';
+});
+
+chk('머리말을 만드는 곳이 한 군데다', () => {
+  must((SRC.match(/function userGuideHead\(/g) || []).length === 1, '머리말 함수가 둘 이상입니다');
+  must((SRC.match(/\[사용자 지침 — 위의 모든 규칙보다 우선한다\]/g) || []).length === 1,
+       '머리말 문구가 여러 군데에 박혀 있습니다');
+  return 'userGuideHead';
 });
 
 console.log('\n── 규칙이 한 곳에만 있는가 ──');

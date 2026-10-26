@@ -49,7 +49,9 @@
   var CORR_SHOTS = 8;  // 프롬프트에 넣을 최근 예시 수
   /* date는 상대적이라 학습 제외. ★ 2026-09-07 name(고객명) 추가 — 사용자가 고쳐 준 이름 표기가
      다음 분석의 few-shot 정답이 된다(예: 호칭을 뗀 형태, 성만 쓰는 표기). */
-  var CORR_FIELDS = ['startTime', 'endTime', 'name', 'apt', 'unit', 'target', 'phone', 'address', 'price', 'memo'];
+  /* ★ 2026-10-26 industry(업종 이름) 추가 — 사용자가 일정추가 창에서 업종을 바꿔 저장하면
+       그것도 교정으로 남아 다음 분석의 예시가 된다. 옛 예시엔 이 값이 없어 '' 로 취급된다. */
+  var CORR_FIELDS = ['industry', 'startTime', 'endTime', 'name', 'apt', 'unit', 'target', 'phone', 'address', 'price', 'memo'];
   function learnOff(k){ try{ return localStorage.getItem(k) === '1'; }catch(e){ return false; } }
   function setLearnOff(k, off){ try{ if(off) localStorage.setItem(k,'1'); else localStorage.removeItem(k); }catch(e){} }
   ClaudeAI.learnOff = learnOff; ClaudeAI.setLearnOff = setLearnOff;
@@ -95,7 +97,14 @@
     var list = getCorrections();
     if (!list.length) return '';
     var recent = list.slice(-CORR_SHOTS);
-    var lines = ['', '[과거 교정 예시 — 아래는 사용자가 최종 확정한 정답이다. 같거나 비슷한 입력은 반드시 이 정답 패턴을 따르라]'];
+    /* ☠️ 2026-10-26 — 예전 머리말은 '비슷한 입력은 반드시 이 정답 패턴을 따르라' 였다.
+         예시는 업종이 섞여 있어서, 에어컨 건에서 고친 값(작업대상·메모)이 선반·조명 건에도
+         그대로 옮겨지고, 이번 입력에 있는 내용이 예시 값에 밀려 빠졌다(사용자 신고).
+       → 예시는 '칸을 나누는 방식'만 참고하고, 값은 이번 입력에서만 가져오게 한다. */
+    var lines = ['', '[과거 교정 예시 — 사용자가 최종 확정한 결과다]',
+      '- 이 예시는 "어떤 내용을 어느 칸에 어떤 형식으로 넣는지"만 참고한다.',
+      '- 값은 반드시 이번 입력에서만 가져온다. 예시의 작업대상·메모·업종·금액을 이번 결과에 옮겨 적지 않는다.',
+      '- 이번 입력이 예시와 다른 업종의 일이면 예시의 업종을 따르지 않는다.'];
     recent.forEach(function (c) {
       var out = {};
       CORR_FIELDS.forEach(function (k) { if (c.out && c.out[k]) out[k] = c.out[k]; });
@@ -294,10 +303,31 @@
       content.push({ type: 'image', source: { type: 'base64', media_type: im.media_type, data: im.data } });
     });
     content.push({ type: 'text', text: '위 이미지에 보이는 텍스트를 그대로 정확히 옮겨 적어줘.' });
-    var out = await callClaude({ model: getModel(), max_tokens: 1200, system: sys, messages: [{ role: 'user', content: content }] });
+    /* ☠️ 2026-10-26 — 상한이 1,200 이었다. 대화가 길면 위에서부터 옮기다 상한에 걸려
+         **가장 최근 말풍선(보통 핵심 요청)이 잘렸고**, 알리지도 않았다(사용자 신고:
+         '제공한 내용이 반영 안 될 때가 있다'). 상한을 올리고 잘렸는지 기록한다. */
+    var out = await callClaude({ model: getModel(), max_tokens: 3000, system: sys, messages: [{ role: 'user', content: content }] });
+    transcribeImages.cut = !!ClaudeAI.lastTruncated;
     return String(out || '').trim();
   }
   ClaudeAI.transcribeImages = transcribeImages;
+
+  /* ★ 2026-10-26 — 일정 분석에 넘길 업종 목록과 '지금 업종'.
+       업종이 1개뿐이면 고를 게 없으니 판정 규칙을 붙이지 않는다. */
+  function _schedIndustries() {
+    var names = [], cur = '';
+    try {
+      if (window.Profiles && Profiles.list) {
+        Profiles.list().forEach(function (p) {
+          var n = p && String(p.name || '').trim();
+          if (n && names.indexOf(n) < 0) names.push(n);
+        });
+        var c = Profiles.current && Profiles.current();
+        cur = (c && String(c.name || '').trim()) || '';
+      }
+    } catch (e) {}
+    return { names: names, cur: cur };
+  }
 
   // ── 문자/이미지 → 일정 JSON 추출 ──
   async function extractSchedule(opts) {
@@ -306,9 +336,13 @@
     var images = opts.images || [];
     if (!text && !images.length) throw new Error('문자 또는 이미지를 입력해주세요');
 
-    // ★ 2026-08-16: 역할 문구를 지금 업종으로 (아래 주소 파싱 예시는 업종 무관이라 그대로 둔다)
-    var sys = indFill('당신은 {업종} 기사의 일정 비서입니다.') + ' 입력된 문자 텍스트 또는 문자 대화 스크린샷(이미지)에서 작업 일정 정보를 추출해 JSON 객체 하나만 출력하세요.\n' +
-      '키: date(YYYY-MM-DD), startTime(HH:MM 24시간), endTime(HH:MM), name(고객 이름), apt(현장/건물/아파트명), unit(동호수), target(작업대상 예: 벽걸이 2대), phone, address(도로명/지번 주소), price(숫자만), memo.\n' +
+    /* ☠️ 2026-10-26 — 예전엔 역할 문구를 '지금 업종'으로 채웠다(indFill('{업종} 기사의 일정 비서')).
+         그러자 지금 에어컨 청소가 선택돼 있으면 선반 설치 문자를 넣어도 AI 가 작업대상을
+         에어컨 쪽 표현으로 바꿔 적었다(사용자 신고). 역할은 업종 중립으로 두고,
+         업종은 아래 [업종 판정] 규칙으로 '내용을 보고' 고르게 한다. */
+    var _ind = _schedIndustries();
+    var sys = '당신은 현장 작업 기사의 일정 비서입니다. 입력된 문자 텍스트 또는 문자 대화 스크린샷(이미지)에서 작업 일정 정보를 추출해 JSON 객체 하나만 출력하세요.\n' +
+      '키: date(YYYY-MM-DD), startTime(HH:MM 24시간), endTime(HH:MM), name(고객 이름), apt(현장/건물/아파트명), unit(동호수), target(작업대상 — 입력에 적힌 품목·수량 표현 그대로), phone, address(도로명/지번 주소), price(숫자만), memo.\n' +
       '\n' +
       /* ★ 2026-09-07 name 추가 — 폼에 고객명 칸이 생긴 뒤에도(2026-08-30) 이 프롬프트에 키가 없어
            AI 가 이름을 아예 안 내놨다(사용자 신고: "분석한 내용에 고객명이 있어도 안 들어간다"). */
@@ -335,6 +369,19 @@
       '\n' +
       '[전화번호 규칙 — 최우선] 텍스트에 "[연락처: ...]" 줄이 있으면 그 번호를 반드시 phone 값으로 사용한다. 이 형식이 아니어도 텍스트 안에 010으로 시작하는 번호가 보이면 절대 비우지 말고 phone에 채운다.\n' +
       '\n' +
+      /* ★ 2026-10-26 — 칸에 안 맞는 내용을 둘 곳이 없어 AI 가 버리던 것을 memo 로 모은다 */
+      '[내용 보존 규칙 — 매우 중요]\n' +
+      '- target·memo 는 입력에 적힌 표현을 그대로 살린다. 업종에 맞춰 다른 말로 바꾸거나, 입력에 없는 품목·작업을 추가하지 않는다.\n' +
+      '- 위 칸 어디에도 들어가지 않은 고객 요청·특이사항(주차, 출입 방법, 실외기·설치 위치, 자재, 일정 조건, 추가 요청 등)은 하나도 버리지 말고 memo 에 모두 적는다. 여러 개면 줄바꿈으로 나눈다.\n' +
+      '- 대화가 여러 번 오간 경우 가장 마지막에 확정된 날짜·시간·내용을 기준으로 한다.\n' +
+      '\n' +
+      (_ind.names.length > 1
+        ? '[업종(industry) 판정]\n' +
+          '- 키 industry 를 추가한다. 값은 아래 목록 중 입력 내용에 맞는 이름 하나를 글자 그대로 적는다: ' + _ind.names.map(function (n) { return '"' + n + '"'; }).join(', ') + '\n' +
+          '- 지금 앱에 선택된 업종' + (_ind.cur ? '("' + _ind.cur + '")' : '') + '은 참고일 뿐이다. 입력 내용이 다른 업종의 일이면 내용 쪽 업종을 고른다.\n' +
+          '- 내용만으로 판단할 수 없으면 빈 문자열("")로 둔다. 목록에 없는 이름은 만들지 않는다.\n' +
+          '\n'
+        : '') +
       '모르는 값은 빈 문자열("")로, price는 모르면 0. 상대적 날짜(오늘/내일/모레/요일)는 오늘(' + today() + ') 기준으로 계산. 연도가 없으면 올해로. 스크린샷이면 대화 내용을 읽어 고객이 요청한 작업 정보를 추출.\n' +
       '입력이 이미지(캡처)일 때는 _src 키를 추가로 넣으세요: 스크린샷에서 읽은 고객 요청 핵심을 한 줄 텍스트로 옮겨 담습니다(예: "내일 2시 행복아파트 101동 502호 벽걸이 2대 청소 010-1234-5678"). 이는 학습용이며 일정 필드가 아닙니다. 텍스트로 입력된 경우엔 _src를 생략하세요.\n' +
       '코드펜스나 설명 없이 순수 JSON만 출력하세요.';
@@ -355,6 +402,7 @@
     var ocrText = '';
     if (fromImage) {
       try { ocrText = await transcribeImages(images); } catch (e) { ocrText = ''; }
+      var ocrCut = !!(ocrText && transcribeImages.cut);
     }
     var srcText = [text, ocrText].filter(Boolean).join('\n').trim();
 
@@ -371,7 +419,7 @@
       contentArr.push({ type: 'text', text: srcText + '\n\n' + ask1 });
     }
 
-    var out = await callClaude({ system: sys, max_tokens: 800, messages: [{ role: 'user', content: contentArr }] });
+    var out = await callClaude({ system: sys, max_tokens: 1200, messages: [{ role: 'user', content: contentArr }] });   // ★ 2026-10-26 800→1200: memo 가 길어지면 JSON 이 잘려 분석 실패가 났다
     var m = out.match(/\{[\s\S]*\}/);
     if (!m) throw new Error('일정 정보를 찾지 못했습니다');
     var obj = JSON.parse(m[0]);
@@ -390,6 +438,18 @@
       var _nm = srcText.match(/\[발신자:\s*([^\]\n]{1,20})\]/);
       if (_nm) obj.name = _cleanName(_nm[1]);
     }
+    /* ★ 2026-10-26 업종 — AI 가 고른 이름을 내 업종 id 로 바꿔 일정추가 창에 넘긴다.
+         못 고르거나 목록에 없는 이름이면 profileId 를 비워 둔다 → 창은 예전처럼 지금 업종으로 열린다. */
+    obj.industry = String(obj.industry || '').trim();
+    obj.profileId = '';
+    if (obj.industry) {
+      try {
+        var _hit = (window.Profiles && Profiles.matchByName) ? Profiles.matchByName(obj.industry) : null;
+        if (_hit) { obj.profileId = _hit.id; obj.industry = String(_hit.name || '').trim(); }
+        else obj.industry = '';
+      } catch (e) { obj.industry = ''; }
+    }
+    if (fromImage && ocrCut) obj._ocrCut = true;
     // 학습 소스: 이미지였으면 전사 텍스트를 원본으로 사용(다음 분석 few-shot 정확도↑)
     if (fromImage && srcText) obj._src = srcText;
     try { if (window.Subs) Subs.consumeAI('sched'); } catch (e) {}  // ★ 구독: 1회 차감
@@ -1201,7 +1261,9 @@
           // 학습 소스: 텍스트 입력이 있으면 그 원문, 없으면(이미지만) AI가 캡처에서 읽어낸 _src 한 줄
           try { j.__aiSource = txt || j._src || ''; } catch (e) {}
           try { delete j._src; } catch (e) {}  // 일정 필드가 아니므로 폼에 넘기지 않음
+          var _cut = !!j._ocrCut; try { delete j._ocrCut; } catch (e) {}
           window.openQuickWorkAdd(j.date || presetDate || '', j);
+          if (_cut) toast('캡처 내용이 길어 일부를 읽지 못했습니다. 빠진 내용이 있는지 확인해 주세요.', 'err');
         } else {
           toast('일정 추가 화면을 열 수 없습니다', 'err');
         }

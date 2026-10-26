@@ -3920,8 +3920,9 @@
             ClaudeAI.saveCorrection(prefill.__aiSource,
               /* ★ 2026-09-07 name(고객명) 도 학습 대상에 넣는다 — 안 넣으면 사용자가 이름을 고쳐도
                    다음 분석이 같은 실수를 반복한다(ai.js CORR_FIELDS 와 짝을 맞춰야 한다). */
-              { startTime: prefill.startTime, endTime: prefill.endTime, name: prefill.name, apt: prefill.apt, unit: prefill.unit, target: prefill.target, phone: prefill.phone, address: prefill.address, price: prefill.price, memo: prefill.memo },
-              { startTime: st, endTime: et, name: custName, apt: apt, unit: unit, target: target, phone: phone, address: addr, price: price, memo: memo });
+              /* ★ 2026-10-26 업종(industry)도 비교한다 — 사용자가 업종을 바꿔 저장하면 그 업종 이름이 정답이 된다 */
+              { industry: prefill.industry, startTime: prefill.startTime, endTime: prefill.endTime, name: prefill.name, apt: prefill.apt, unit: prefill.unit, target: prefill.target, phone: prefill.phone, address: prefill.address, price: prefill.price, memo: prefill.memo },
+              { industry: (_qwPfSnap && _qwPfSnap.name) || ((window.Profiles && _qwPfId && Profiles.get(_qwPfId)) || {}).name || '', startTime: st, endTime: et, name: custName, apt: apt, unit: unit, target: target, phone: phone, address: addr, price: price, memo: memo });
           }
         } catch (e) {}
         close();

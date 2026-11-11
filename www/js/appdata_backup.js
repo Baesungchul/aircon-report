@@ -45,6 +45,7 @@
     'ac_co_stamp_v1': '직인(도장)',
     'claude_blog_guideline': 'AI 글쓰기 지침',
     'ai_schedule_corrections': '일정등록 학습기록',
+    'ai_industry_learn': '일정등록 업종 학습기록',
     'ai_quote_corrections': '견적서 학습기록',
     'ac_bizcert_corrections': '사업자등록증 학습기록',
     'ac_worker_names': '작업자 이름 목록',

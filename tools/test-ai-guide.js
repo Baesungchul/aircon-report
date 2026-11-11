@@ -130,12 +130,13 @@ console.log('\n── 세 기능 모두 같은가 (블로그 · 견적서 · 일
 const SPOTS = [
   ['블로그·SNS', 'async function generatePost(', "sys += '\\n\\n' + markGuide;", 2],
   ['견적서',     'async function generateQuote(', 'sys += buildQuoteFewShot();', 1],
-  ['일정 분석',  'async function extractSchedule(', 'sys += buildFewShot();', 1]
+  /* 2026-11-12 일정 분석은 예시를 OCR 뒤에 붙이게 되어(비슷한 예시 고르기) 본문 범위를 넓힌다 */
+  ['일정 분석',  'async function extractSchedule(', 'sys += buildFewShot(srcText);', 1, 9000]
 ];
 
-SPOTS.forEach(([name, sig, lastRule, exN]) => {
+SPOTS.forEach(([name, sig, lastRule, exN, span]) => {
   chk('☠️ ' + name + ' — 사용자 지침이 맨 마지막에 붙는다', () => {
-    const b = fnBody(sig, 4000);
+    const b = fnBody(sig, span || 4000);
     const user = b.indexOf('userGuideHead(');
     must(user > 0, name + ' 이 사용자 지침 머리말을 안 씁니다');
     const rule = b.indexOf(lastRule);
@@ -147,7 +148,7 @@ SPOTS.forEach(([name, sig, lastRule, exN]) => {
   chk(name + ' — 예외를 ' + exN + '개만 연다', () => {
     /* 예외를 늘리면 "지침이 안 먹는다" 는 신고가 그만큼 다시 생긴다.
        기능 자체가 망가지는 것만 예외로 둔다. */
-    const b = fnBody(sig, 4000);
+    const b = fnBody(sig, span || 4000);
     const m = b.match(/userGuideHead\(\[([^\]]*)\]\)/);
     must(m, name + ' 의 예외 목록을 못 읽었습니다');
     const n = m[1].split(',').filter((x) => x.trim()).length;

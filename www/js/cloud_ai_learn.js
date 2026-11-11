@@ -8,13 +8,15 @@
   'use strict';
   window.CloudAILearn = window.CloudAILearn || {};
 
-  var CAP = 40;
+  var CAP = 100;      // ★ 2026-11-12 40→100 (ai.js CORR_MAX 와 같게)
+  var IND_CAP = 200;  // ★ 2026-11-12 업종 학습 (ai.js IND_MAX 와 같게)
   function loggedIn() { return window.Cloud && Cloud.ready && Cloud.user && Cloud.db; }
   function hasAI() { return window.ClaudeAI && ClaudeAI.getCorrections && ClaudeAI.setCorrectionsRaw; }
   function docRef() { return Cloud.db.collection('ai_corrections').doc(Cloud.user.uid); }
 
   // 입력문장(in) 기준 병합 — 최신(at)이 우선, 최대 CAP건 유지
-  function mergeLists(a, b) {
+  function mergeLists(a, b, cap) {
+    cap = cap || CAP;
     var map = {};
     (a || []).concat(b || []).forEach(function (c) {
       if (!c || !c.in) return;
@@ -23,7 +25,7 @@
     });
     var out = Object.keys(map).map(function (k) { return map[k]; });
     out.sort(function (x, y) { return (x.at || 0) - (y.at || 0); });
-    if (out.length > CAP) out = out.slice(out.length - CAP);
+    if (out.length > cap) out = out.slice(out.length - cap);
     return out;
   }
 
@@ -36,6 +38,7 @@
     try {
       await docRef().set({
         list: ClaudeAI.getCorrections(),
+        ind: (ClaudeAI.getIndLearn ? ClaudeAI.getIndLearn() : []),   // ★ 2026-11-12 업종 학습
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     } catch (e) { console.warn('[AILearn] push 실패:', e && e.message); }
@@ -51,8 +54,16 @@
       var local = ClaudeAI.getCorrections();
       var merged = mergeLists(local, remote);
       ClaudeAI.setCorrectionsRaw(merged);
+      // ★ 2026-11-12 업종 학습도 같은 방식으로 병합
+      var remoteInd = (snap.exists && snap.data() && snap.data().ind) || [];
+      var mergedInd = remoteInd;
+      if (ClaudeAI.getIndLearn && ClaudeAI.setIndLearnRaw) {
+        mergedInd = mergeLists(ClaudeAI.getIndLearn(), remoteInd, IND_CAP);
+        ClaudeAI.setIndLearnRaw(mergedInd);
+      }
       // 병합 결과가 원격과 다르면(로컬에 새 교정이 있었으면) 되올림
-      if (JSON.stringify(merged) !== JSON.stringify(remote)) await push(true);
+      if (JSON.stringify(merged) !== JSON.stringify(remote) ||
+          JSON.stringify(mergedInd) !== JSON.stringify(remoteInd)) await push(true);
       var cnt = document.getElementById('aiCorrCnt'); if (cnt) cnt.textContent = String(merged.length);
     } catch (e) { console.warn('[AILearn] pull 실패:', e && e.message); }
   }

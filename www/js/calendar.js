@@ -3871,6 +3871,23 @@
       }
     } catch (e) {}
     _workerComboify('qwWorker');  // ★ 공유 닉네임 콤보
+    /* ★ 2026-11-12 창이 열린 직후의 값 — 학습 비교용.
+         창이 스스로 채운 값(주소칸의 아파트명 등)을 '사용자가 고친 것'으로 오인하지 않게,
+         사용자가 실제로 바꾼 칸만 교정으로 본다. */
+    var _qwPfName = function () {
+      try {
+        var id = (window.ProfilesUI && ProfilesUI.pickedId) ? ProfilesUI.pickedId('qwProfile') : '';
+        var pf = (window.Profiles && id) ? Profiles.get(id) : null;
+        return (pf && String(pf.name || '').trim()) || '';
+      } catch (e) { return ''; }
+    };
+    var _qwFormVals = function () {
+      var g = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      return { industry: _qwPfName(), startTime: g('qwStart'), endTime: g('qwEnd'), name: g('qwName'), apt: g('qwApt'),
+               unit: g('qwUnit'), target: g('qwTarget'), phone: g('qwPhone'), address: g('qwAddr'), price: g('qwPrice'), memo: g('qwMemo') };
+    };
+    var _qwInit = null;
+    try { if (prefill && prefill.__aiSource) _qwInit = _qwFormVals(); } catch (e) {}
     var close = function () { var o = document.getElementById('quickWorkOverlay'); if (o) o.remove(); };
     document.getElementById('qwCancel').addEventListener('click', close);
     /* ★ 2026-08-13: 저장 로직을 함수로 빼서 [저장]과 [저장하고 바로 사진 찍기]가 공유한다.
@@ -3973,13 +3990,17 @@
         try { if (typeof invalidateCustomersV2 === 'function') invalidateCustomersV2(); } catch (e) {}
         // ── AI 교정 학습: AI가 채운 값 vs 사용자가 최종 저장한 값 비교해 저장 ──
         try {
-          if (prefill && prefill.__aiSource && window.ClaudeAI && ClaudeAI.saveCorrection) {
-            ClaudeAI.saveCorrection(prefill.__aiSource,
-              /* ★ 2026-09-07 name(고객명) 도 학습 대상에 넣는다 — 안 넣으면 사용자가 이름을 고쳐도
-                   다음 분석이 같은 실수를 반복한다(ai.js CORR_FIELDS 와 짝을 맞춰야 한다). */
-              /* ★ 2026-10-26 업종(industry)도 비교한다 — 사용자가 업종을 바꿔 저장하면 그 업종 이름이 정답이 된다 */
-              { industry: prefill.industry, startTime: prefill.startTime, endTime: prefill.endTime, name: prefill.name, apt: prefill.apt, unit: prefill.unit, target: prefill.target, phone: prefill.phone, address: prefill.address, price: prefill.price, memo: prefill.memo },
-              { industry: (_qwPfSnap && _qwPfSnap.name) || ((window.Profiles && _qwPfId && Profiles.get(_qwPfId)) || {}).name || '', startTime: st, endTime: et, name: custName, apt: apt, unit: unit, target: target, phone: phone, address: addr, price: price, memo: memo });
+          if (prefill && prefill.__aiSource && window.ClaudeAI && ClaudeAI.saveCorrection && _qwInit) {
+            /* ★ 2026-11-12 사용자가 손댄 칸만 정답으로, 손대지 않은 칸은 AI 값 그대로 둔다 */
+            var _aiV = { industry: prefill.industry || '', startTime: prefill.startTime, endTime: prefill.endTime, name: prefill.name, apt: prefill.apt, unit: prefill.unit, target: prefill.target, phone: prefill.phone, address: prefill.address, price: prefill.price, memo: prefill.memo };
+            var _finV = _qwFormVals();
+            Object.keys(_finV).forEach(function (k) {
+              if (_finV[k] === _qwInit[k]) _finV[k] = (_aiV[k] == null ? '' : _aiV[k]);
+            });
+            ClaudeAI.saveCorrection(prefill.__aiSource, _aiV, _finV);
+            /* 업종은 맞았든 고쳤든 저장할 때 확정된 업종을 기록한다 — 쌓일수록 다음 판정이 정확해진다 */
+            if (ClaudeAI.saveIndustryLearn) ClaudeAI.saveIndustryLearn(prefill.__aiSource, _qwPfName());
+            /* (2026-09-07 name, 2026-10-26 industry 를 학습 대상에 넣었다 — ai.js CORR_FIELDS 와 짝을 맞출 것) */
           }
         } catch (e) {}
         close();

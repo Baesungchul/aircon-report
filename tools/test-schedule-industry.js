@@ -26,7 +26,7 @@ function loadAI(profiles, curId, reply, opt) {
   const calls = [];
   const ctx = {
     console, setTimeout, clearTimeout, Date, String, Math, JSON, Object, Array, RegExp, Promise, AbortController,
-    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    localStorage: opt.ls || { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     document: { addEventListener() {}, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
       createElement: () => ({ style: {}, classList: { add() {} }, addEventListener() {} }), body: { appendChild() {} } },
     fetch: async (url, o) => {
@@ -115,9 +115,70 @@ const SMS = '내일 2시 행복아파트 101동 502호 거실 TV 아래 선반 1
   });
   await chk('교정 학습이 업종도 비교한다 (calendar.js)', async () => {
     const cal = fs.readFileSync(path.join(JS, 'calendar.js'), 'utf8');
-    must(/industry: prefill\.industry/.test(cal) && /industry: \(_qwPfSnap/.test(cal), '업종 비교 누락');
+    must(/industry: prefill\.industry/.test(cal) && /industry: _qwPfName\(\)/.test(cal), '업종 비교 누락');
+    must(/saveIndustryLearn\(prefill\.__aiSource, _qwPfName\(\)\)/.test(cal), '확정 업종 기록 누락');
     must(/CORR_FIELDS = \['industry'/.test(fs.readFileSync(path.join(JS, 'ai.js'), 'utf8')), 'CORR_FIELDS 누락');
     return '있음';
+  });
+
+  console.log('\n[4] 학습 — 쌓일수록 업종을 더 잘 고르는가');
+  const memLS = () => { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; };
+  await chk('저장한 업종이 다음 분석 프롬프트에 비슷한 기록으로 실린다', async () => {
+    const ls = memLS();
+    const { AI, calls } = loadAI(PF, 'pf_1', '{"industry":""}', { ls });
+    AI.saveIndustryLearn('거실 벽에 TV 선반 달아주세요 행복아파트', 'TV 선반 설치');
+    AI.saveIndustryLearn('안방 에어컨 분해청소 2대', '에어컨 청소');
+    await AI.extractSchedule({ text: '작은방 벽에 TV 선반 하나 설치 부탁드려요' });
+    const sys = calls[0].system;
+    must(/\[업종 학습/.test(sys), '업종 학습 블록이 없습니다');
+    const blk = sys.slice(sys.indexOf('[업종 학습'));
+    must(/TV 선반 설치/.test(blk.split('\n').slice(0, 6).join('\n')), '비슷한 기록이 먼저 오지 않습니다');
+    must(!/분해청소/.test(blk.split('[과거 교정')[0]), '관계없는 기록이 실렸습니다');
+    return '비슷한 1건만';
+  });
+  await chk('AI 가 업종을 비워도 같은 업종 기록이 쌓였으면 그 업종으로 채운다', async () => {
+    const ls = memLS();
+    const { AI } = loadAI(PF, 'pf_1', '{"industry":""}', { ls });
+    ['거실 실링팬 교체 원해요', '안방 실링팬 새로 달아주세요', '실링팬 소음 나서 교체'].forEach(t => AI.saveIndustryLearn(t, '조명 설치'));
+    for (let i = 0; i < 8; i++) AI.saveIndustryLearn('벽걸이 에어컨 청소 ' + i + '대 행복아파트', '에어컨 청소');
+    const r = await AI.extractSchedule({ text: '작업실 실링팬 교체 가능할까요' });
+    must(r.profileId === 'pf_3', 'profileId=' + r.profileId);
+    return '조명 설치 (실링팬을 조명 업종으로 써 온 사용자)';
+  });
+  await chk('기록이 1건뿐이거나 엇갈리면 추측하지 않는다', async () => {
+    const ls = memLS();
+    const { AI } = loadAI(PF, 'pf_1', '{"industry":""}', { ls });
+    AI.saveIndustryLearn('거실 조명 교체', '조명 설치');
+    const r = await AI.extractSchedule({ text: '거실 조명 교체 문의' });
+    must(r.profileId === '', 'profileId=' + r.profileId);
+    return '비움';
+  });
+  await chk('교정 예시는 최근 8건이 아니라 비슷한 것을 먼저 고른다', async () => {
+    const ls = memLS();
+    const list = [{ in: '세탁기 위 건조기 직렬 설치', out: { target: '건조기 직렬' }, at: 1 }];
+    for (let i = 0; i < 20; i++) list.push({ in: '벽걸이 청소 ' + i, out: { target: '벽걸이 ' + i }, at: 2 + i });
+    ls.setItem('ai_schedule_corrections', JSON.stringify(list));
+    const { AI, calls } = loadAI(PF, 'pf_1', '{}', { ls });
+    await AI.extractSchedule({ text: '드럼세탁기 위에 건조기 직렬로 올려주세요' });
+    must(/건조기 직렬 설치/.test(calls[0].system), '오래된 비슷한 교정이 빠졌습니다');
+    return '21건 중 가장 오래된 것도 선택';
+  });
+  await chk('주소칸 자동값(아파트명)은 예시에서 뺀다', async () => {
+    const ls = memLS();
+    ls.setItem('ai_schedule_corrections', JSON.stringify([{ in: '행복아파트 선반', out: { apt: '행복아파트', address: '행복아파트' }, at: 1 }]));
+    const { AI, calls } = loadAI(PF, 'pf_1', '{}', { ls });
+    await AI.extractSchedule({ text: '행복아파트 선반 설치' });
+    must(!/"address":"행복아파트"/.test(calls[0].system), '자동 주소가 정답으로 실렸습니다');
+    return '제외';
+  });
+  await chk('학습 사용을 끄면 기록도 안 쌓이고 싣지도 않는다', async () => {
+    const ls = memLS(); ls.setItem('ai_schedule_learn_off', '1');
+    const { AI, calls } = loadAI(PF, 'pf_1', '{}', { ls });
+    AI.saveIndustryLearn('거실 TV 선반', 'TV 선반 설치');
+    must(AI.getIndLearn().length === 0, '꺼져 있는데 쌓였습니다');
+    await AI.extractSchedule({ text: '거실 TV 선반' });
+    must(!/\[업종 학습/.test(calls[0].system), '꺼져 있는데 실렸습니다');
+    return '꺼짐';
   });
 
   console.log('\n' + (fails ? '❌ ' + fails + '개 실패' : '✅ ' + oks + '개 모두 통과'));

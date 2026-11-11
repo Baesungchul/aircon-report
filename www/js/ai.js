@@ -45,7 +45,9 @@
 
   // ── 교정 학습 저장소 (사용자가 AI 결과를 고치면 few-shot 예시로 축적) ──
   var CORR_LS = 'ai_schedule_corrections';
-  var CORR_MAX = 40;   // 최대 보관 건수
+  /* ★ 2026-11-12 40 → 100. 프롬프트에는 여전히 8건만 싣고(비용 그대로), 이제는 '최근 8건'이 아니라
+       '이번 입력과 비슷한 것' 위주로 고르므로 많이 쌓일수록 고를 거리가 늘어난다. */
+  var CORR_MAX = 100;  // 최대 보관 건수
   var CORR_SHOTS = 8;  // 프롬프트에 넣을 최근 예시 수
   /* date는 상대적이라 학습 제외. ★ 2026-09-07 name(고객명) 추가 — 사용자가 고쳐 준 이름 표기가
      다음 분석의 few-shot 정답이 된다(예: 호칭을 뗀 형태, 성만 쓰는 표기). */
@@ -85,29 +87,139 @@
       try { if (window.CloudAILearn && CloudAILearn.onLocalChanged) CloudAILearn.onLocalChanged(); } catch (e) {}
     } catch (e) {}
   }
-  function clearCorrections() { setCorrections([]); try { if (window.CloudAILearn && CloudAILearn.push) CloudAILearn.push(true); } catch (e) {} }
+  function clearCorrections() { setCorrections([]); setIndLearn([]); try { if (window.CloudAILearn && CloudAILearn.push) CloudAILearn.push(true); } catch (e) {} }
   ClaudeAI.saveCorrection = saveCorrection;
   ClaudeAI.getCorrections = getCorrections;
   ClaudeAI.setCorrectionsRaw = function (a) { setCorrections(a); };  // 클라우드 병합 결과 반영용
   ClaudeAI.clearCorrections = clearCorrections;
+
+  /* ══════════════════════════════════════════
+     ★ 2026-11-12 업종 학습 + 비슷한 예시 고르기 (사용자 요청)
+     "업종선택을 학습해서 처음보단 나중에 갈수록 더 잘 선택되도록 /
+      분석된 내용을 수정하면 그 내용을 학습해서 다음 분석에 반영"
+     - 교정 예시(ai_schedule_corrections)는 '고친 것'만 쌓인다. 업종은 맞았을 때도
+       기록해야 갈수록 정확해지므로 따로 쌓는다: AI 분석으로 연 일정추가 창에서
+       저장할 때마다 {입력, 확정 업종}.
+     - 분석할 때 이번 입력과 낱말이 많이 겹치는 기록을 골라 프롬프트에 싣는다.
+       드문 낱말(선반·실링팬 등)이 겹칠수록 점수가 높고, 흔한 낱말(아파트·내일)은 낮다.
+  ══════════════════════════════════════════ */
+  var IND_LS = 'ai_industry_learn';
+  var IND_MAX = 200;   // 최대 보관 건수 (건당 수백 자 — 다 차도 100KB 안쪽)
+  var IND_SHOTS = 6;   // 프롬프트에 싣는 비슷한 기록 수
+  function getIndLearn() {
+    try { var a = JSON.parse(localStorage.getItem(IND_LS) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function setIndLearn(a) { try { localStorage.setItem(IND_LS, JSON.stringify(a || [])); } catch (e) {} }
+  function saveIndustryLearn(sourceText, indName) {
+    if (learnOff('ai_schedule_learn_off')) return;
+    try {
+      sourceText = String(sourceText || '').trim().slice(0, 600);
+      indName = String(indName || '').trim();
+      if (!sourceText || !indName) return;
+      var list = getIndLearn().filter(function (c) { return c.in !== sourceText; });
+      list.push({ in: sourceText, ind: indName, at: Date.now() });
+      if (list.length > IND_MAX) list = list.slice(list.length - IND_MAX);
+      setIndLearn(list);
+      try { if (window.CloudAILearn && CloudAILearn.onLocalChanged) CloudAILearn.onLocalChanged(); } catch (e) {}
+    } catch (e) {}
+  }
+  ClaudeAI.saveIndustryLearn = saveIndustryLearn;
+  ClaudeAI.getIndLearn = getIndLearn;
+  ClaudeAI.setIndLearnRaw = function (a) { setIndLearn(a); };   // 클라우드 병합 결과 반영용
+
+  /* 낱말 뽑기 — 숫자·동호수·시간 같은 값과 흔한 인사말은 빼고, 끝에 붙은 조사는 뗀다 */
+  var _STOP = { '안녕하세요':1,'감사합니다':1,'내일':1,'오늘':1,'모레':1,'오전':1,'오후':1,'부탁드립니다':1,
+    '부탁드려요':1,'가능할까요':1,'가능한가요':1,'문의':1,'문의드립니다':1,'예약':1,'연락처':1,'발신자':1,
+    '고객':1,'고객님':1,'사장님':1,'기사님':1,'네':1,'예':1 };
+  function _tokens(s) {
+    s = String(s || '').replace(/\[(연락처|발신자):[^\]]*\]/g, ' ').toLowerCase();
+    var seen = {};
+    s.split(/[^0-9a-z가-힣]+/).forEach(function (w) {
+      if (!w) return;
+      w = w.replace(/(에서|으로|해주세요|해주실|부탁|입니다|이에요|예요|은|는|이|가|을|를|에|로|도|요|좀)$/, '');
+      if (w.length < 2 || _STOP[w]) return;
+      if (/^\d+$/.test(w)) return;
+      if (/^\d+(동|호|층|시|분|대|개|원|만원|천원|일|월|년|차|평|세대)$/.test(w)) return;
+      seen[w] = 1;
+    });
+    return Object.keys(seen);
+  }
+  /* 기록 목록을 이번 입력과 비슷한 순서로 — [{c, s(점수), i(원래 순번)}], 겹치는 낱말이 없으면 빠진다 */
+  function _rankSimilar(list, srcText, getIn) {
+    var q = _tokens(srcText);
+    if (!q.length || !list.length) return [];
+    var docs = list.map(function (c) { return _tokens(getIn(c)); });
+    var df = {}, N = docs.length;
+    docs.forEach(function (d) { d.forEach(function (w) { df[w] = (df[w] || 0) + 1; }); });
+    var qs = {}; q.forEach(function (w) { qs[w] = 1; });
+    return list.map(function (c, i) {
+      var sc = 0;
+      docs[i].forEach(function (w) { if (qs[w]) sc += Math.log(1 + N / df[w]); });
+      return { c: c, s: sc, i: i };
+    }).filter(function (x) { return x.s > 0; })
+      .sort(function (a, b) { return (b.s - a.s) || (b.i - a.i); });
+  }
+  ClaudeAI._tokens = _tokens; ClaudeAI._rankSimilar = _rankSimilar;   /* 검사용 */
+
+  /* 이번 입력과 비슷한 업종 기록 — 지금 내 업종 목록에 있는 이름만 */
+  function _similarInd(srcText) {
+    if (learnOff('ai_schedule_learn_off')) return [];
+    var ok = function (n) {
+      try { return !window.Profiles || !Profiles.matchByName || !!Profiles.matchByName(n); } catch (e) { return true; }
+    };
+    return _rankSimilar(getIndLearn().filter(function (c) { return c && c.ind && ok(c.ind); }), srcText,
+      function (c) { return c.in; }).slice(0, IND_SHOTS);
+  }
+  function buildIndHints(ranked) {
+    if (!ranked || !ranked.length) return '';
+    var L = ['', '[업종 학습 — 이 사용자가 비슷한 입력에 직접 확정한 업종]',
+      '- 이번 입력과 하는 일이 같거나 비슷하면 이 사용자가 확정한 업종을 우선해서 고른다.',
+      '- 하는 일이 분명히 다르면 따르지 않는다.'];
+    ranked.forEach(function (x) {
+      L.push('입력: ' + JSON.stringify(String(x.c.in || '').slice(0, 200)) + ' → 업종: ' + JSON.stringify(x.c.ind));
+    });
+    return L.join('\n');
+  }
+  /* AI 가 업종을 비웠을 때만 쓰는 안전망 — 비슷한 기록 상위 3건 중 2건 이상이 같은 업종이고
+     점수가 충분할 때만 그 업종으로 채운다. 애매하면 비워 둔다(창이 지금 업종으로 열린다). */
+  function _indFallback(ranked) {
+    if (!ranked || !ranked.length || ranked[0].s < 2) return '';
+    var top = ranked[0].c.ind, agree = 0;
+    ranked.slice(0, 3).forEach(function (x) { if (x.c.ind === top) agree++; });
+    return agree >= 2 ? top : '';
+  }
+  ClaudeAI._indFallback = _indFallback;   /* 검사용 */
   // 최근 교정들을 few-shot 프롬프트 블록으로 (빈 값은 생략)
   var SHOT_MAX = 1200;   // 프롬프트에 싣는 교정 예시 1건의 최대 글자 수 (저장은 원문 그대로)
-  function buildFewShot() {
+  function buildFewShot(srcText) {
     if (learnOff('ai_schedule_learn_off')) return '';
     var list = getCorrections();
     if (!list.length) return '';
-    var recent = list.slice(-CORR_SHOTS);
+    /* ★ 2026-11-12 예전엔 '최근 8건'만 실었다 → 9번째 이전에 고친 것은 다시는 반영되지 않았다.
+         이제는 이번 입력과 비슷한 것 최대 5건 + 나머지는 최근 것으로 채운다(합 8건, 비용 그대로). */
+    var pick = [], used = {};
+    _rankSimilar(list, srcText, function (c) { return c.in; }).slice(0, 5)
+      .forEach(function (x) { pick.push(x.i); used[x.i] = 1; });
+    for (var k = list.length - 1; k >= 0 && pick.length < CORR_SHOTS; k--) {
+      if (!used[k]) { pick.push(k); used[k] = 1; }
+    }
+    pick.sort(function (a, b) { return a - b; });
+    var recent = pick.map(function (k) { return list[k]; });
     /* ☠️ 2026-10-26 — 예전 머리말은 '비슷한 입력은 반드시 이 정답 패턴을 따르라' 였다.
          예시는 업종이 섞여 있어서, 에어컨 건에서 고친 값(작업대상·메모)이 선반·조명 건에도
          그대로 옮겨지고, 이번 입력에 있는 내용이 예시 값에 밀려 빠졌다(사용자 신고).
        → 예시는 '칸을 나누는 방식'만 참고하고, 값은 이번 입력에서만 가져오게 한다. */
     var lines = ['', '[과거 교정 예시 — 사용자가 최종 확정한 결과다]',
-      '- 이 예시는 "어떤 내용을 어느 칸에 어떤 형식으로 넣는지"만 참고한다.',
-      '- 값은 반드시 이번 입력에서만 가져온다. 예시의 작업대상·메모·업종·금액을 이번 결과에 옮겨 적지 않는다.',
-      '- 이번 입력이 예시와 다른 업종의 일이면 예시의 업종을 따르지 않는다.'];
+      '- 이 예시는 "어떤 내용을 어느 칸에 어떤 형식으로 넣는지"와 "어떤 일이 어느 업종인지"를 보여 준다. 이번 입력과 비슷한 예시의 형식과 업종 판단을 따른다.',
+      '- 이름·전화번호·주소·동호수·금액·시간·작업대상·메모의 값은 반드시 이번 입력에서만 가져온다. 예시의 값을 이번 결과에 옮겨 적지 않는다.'];
     recent.forEach(function (c) {
       var out = {};
       CORR_FIELDS.forEach(function (k) { if (c.out && c.out[k]) out[k] = c.out[k]; });
+      /* ★ 2026-11-12 일정추가 창은 주소가 비면 아파트명을 주소칸에 자동으로 넣는다. 그 자동값이
+           '사용자가 고친 정답'으로 저장돼 'address 에 단지명을 넣어라'를 가르치고 있었다.
+           예전에 쌓인 기록에서도 그 흔적을 뺀다(어차피 창이 다시 자동으로 채운다). */
+      if (out.address && out.address === out.apt) delete out.address;
       /* ☠️ 2026-09-08 (리소스 점검) — 입력 원문을 자르지 않고 그대로 싣고 있었다.
            캡처에서 읽어낸 전문이 들어오면 건당 수백~수천 자다. 예시 8건이면 그것만으로
            본 지침(2,300자)의 몇 배가 되고, 일정 분석을 부를 때마다 매번 다시 나간다
@@ -386,7 +498,19 @@
       '입력이 이미지(캡처)일 때는 _src 키를 추가로 넣으세요: 스크린샷에서 읽은 고객 요청 핵심을 한 줄 텍스트로 옮겨 담습니다(예: "내일 2시 행복아파트 101동 502호 벽걸이 2대 청소 010-1234-5678"). 이는 학습용이며 일정 필드가 아닙니다. 텍스트로 입력된 경우엔 _src를 생략하세요.\n' +
       '코드펜스나 설명 없이 순수 JSON만 출력하세요.';
 
-    sys += buildFewShot();
+    // OCR 우선: 캡처 이미지는 먼저 '글자만 정확히' 전사한 뒤, 그 텍스트로 일정을 구조화한다
+    var fromImage = images.length > 0;
+    var ocrText = '';
+    if (fromImage) {
+      try { ocrText = await transcribeImages(images); } catch (e) { ocrText = ''; }
+      var ocrCut = !!(ocrText && transcribeImages.cut);
+    }
+    var srcText = [text, ocrText].filter(Boolean).join('\n').trim();
+
+    /* ★ 2026-11-12 예시는 '이번 입력과 비슷한 것'을 고르므로 글자를 다 읽은(OCR) 뒤에 붙인다 */
+    var _indRanked = (_ind.names.length > 1) ? _similarInd(srcText) : [];
+    sys += buildIndHints(_indRanked);
+    sys += buildFewShot(srcText);
 
     /* 사용자 지침 (일정 분석 전용 — 설정/분석창에서 편집)
        ☠️ 과거 교정 예시(buildFewShot) **뒤**에 붙인다. 예시가 정답처럼 보여서
@@ -396,15 +520,6 @@
       var _schedGuide = getChGuide('schedule');
       if (_schedGuide) sys += '\n\n' + userGuideHead([EX_JSON]) + '\n\n' + _schedGuide;
     } catch (e) {}
-
-    // OCR 우선: 캡처 이미지는 먼저 '글자만 정확히' 전사한 뒤, 그 텍스트로 일정을 구조화한다
-    var fromImage = images.length > 0;
-    var ocrText = '';
-    if (fromImage) {
-      try { ocrText = await transcribeImages(images); } catch (e) { ocrText = ''; }
-      var ocrCut = !!(ocrText && transcribeImages.cut);
-    }
-    var srcText = [text, ocrText].filter(Boolean).join('\n').trim();
 
     var contentArr = [];
     if (fromImage && !ocrText) {
@@ -441,6 +556,7 @@
     /* ★ 2026-10-26 업종 — AI 가 고른 이름을 내 업종 id 로 바꿔 일정추가 창에 넘긴다.
          못 고르거나 목록에 없는 이름이면 profileId 를 비워 둔다 → 창은 예전처럼 지금 업종으로 열린다. */
     obj.industry = String(obj.industry || '').trim();
+    if (!obj.industry) obj.industry = _indFallback(_indRanked);   // ★ 2026-11-12 학습 기록 안전망
     obj.profileId = '';
     if (obj.industry) {
       try {

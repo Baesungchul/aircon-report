@@ -49,10 +49,33 @@
     });
   }
 
-  const _today = (function () {
+  function _todayStr() {
     var d = new Date();
     return d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate());
-  })();
+  }
+  /* ★ 2026-11-12 const → let. 앱을 켜 둔 채 날짜가 바뀌면 '오늘'이 어제로 남아 있었다.
+       기본 화면으로 열 때마다 다시 계산한다(__calendarOpen). */
+  let _today = _todayStr();
+
+  /* ══════════════════════════════════════════
+     ★ 2026-11-12 스케줄 화면 기본값 · 5분 이어보기 (사용자 요청)
+     "스케줄창을 클릭했을 때 당일 일정이 아래쪽에 나오게 기본값으로 /
+      최근 5분 내에 다시 열면 기존에 보던 화면, 5분이 지나면 기본 화면"
+     - 기본 화면 = 이번 달 달력(접힘) + 오늘 선택 + 아래에 오늘 일정 목록
+     - 떠난 시각은 스케줄 모달이 닫히는 순간 기록한다(watchModalClose)
+     - 이어보기는 메모리 값이라 앱을 완전히 껐다 켜면 기본 화면이다
+  ══════════════════════════════════════════ */
+  var CAL_RESUME_MS = 5 * 60 * 1000;
+  var _calLeftAt = 0;
+  var _calScrollMem = { body: 0, grid: 0 };
+  function _calCanResume() { return !!_calLeftAt && (Date.now() - _calLeftAt) < CAL_RESUME_MS; }
+  function _restoreCalScroll() {
+    var cb = document.getElementById('customerBody');
+    var g  = document.getElementById('calGrid');
+    var mb = _calScrollMem.body, mg = _calScrollMem.grid;
+    if (cb && mb) cb.scrollTop = mb;
+    if (g && mg && g.classList.contains('cal-agenda')) g.scrollTop = mg;
+  }
 
   /* ══════════════════════════════════════════
      인터셉트: openCustomerModal
@@ -70,6 +93,11 @@
       if (!body) return;
       if (body.querySelector('#reconnectFolderBtn')) return;
 
+      /* ★ 2026-11-12 떠난 지 5분이 지났으면 이어보지 않고 기본 화면(오늘)으로 새로 연다 */
+      if (body.querySelector('#calWrap') && !_calCanResume()) {
+        await window.__calendarOpen();
+        return;
+      }
       _isOpen = true;
       if (body.querySelector('#calWrap')) {
         /* ★ 2026-08-31 1차 수정 — 사용자 보고: "설정탭에서 스케줄로 이동했더니 펼침 화면이
@@ -98,6 +126,8 @@
         await loadCalendarData();
         // 내용이 새로 들어온 뒤 혹시 남은 오차(개수 변화 등)를 마무리로 한 번 더 다듬는다
         if (_expanded) { try { _fitExpanded(0); } catch (e) {} }
+        // ★ 2026-11-12 5분 안에 돌아왔으면 보던 스크롤 위치까지 되돌린다
+        try { _restoreCalScroll(); } catch (e) {}
       } else {
         await window.__calendarOpen();
       }
@@ -152,23 +182,50 @@
     var modal = document.getElementById('customerModal');
     if (!modal) { setTimeout(watchModalClose, 500); return; }
     new MutationObserver(function () {
-      if (!modal.classList.contains('open')) _isOpen = false;
+      if (!modal.classList.contains('open')) {
+        if (_isOpen) _calLeftAt = Date.now();   // ★ 2026-11-12 스케줄을 떠난 시각 (5분 이어보기)
+        _isOpen = false;
+      }
     }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+    /* ★ 2026-11-12 보던 스크롤 위치 기억 — 스크롤 이벤트는 위로 전달되지 않아 capture 로 받는다.
+         모달이 열려 있는 동안만 기록한다(닫히며 0 으로 바뀌는 값을 기억하지 않게). */
+    var cb = document.getElementById('customerBody');
+    if (cb) cb.addEventListener('scroll', function (e) {
+      if (!_isOpen || !modal.classList.contains('open')) return;
+      var t = e.target;
+      if (t === cb) _calScrollMem.body = cb.scrollTop;
+      else if (t && t.id === 'calGrid') _calScrollMem.grid = t.scrollTop;
+    }, true);
   }
 
   /* ══════════════════════════════════════════
      진입점
   ══════════════════════════════════════════ */
   window.__calendarOpen = async function () {
+    /* ★ 2026-11-12 기본 화면 = 이번 달 + 오늘 선택 + 아래 오늘 일정 목록.
+         5분 안에 다시 연 경우에만 보던 달·날짜를 유지한다. */
+    var resume = _calCanResume();
     _isOpen   = true;
     _calItems = null;
     _dateMap  = {};
     _monthCache = {};  // 새로 열 때 최신 데이터로
-    _selDate  = null;
-    renderCalendarShell();
+    if (!resume) {
+      _today    = _todayStr();
+      _calYear  = +_today.slice(0, 4);
+      _calMonth = +_today.slice(5, 7) - 1;
+      _selDate  = _today;
+      _calScrollMem = { body: 0, grid: 0 };
+    }
+    var _keepSel = _selDate;
+    renderCalendarShell();      // (안에서 선택 날짜·펼침 상태를 초기화한다)
+    _selDate = _keepSel;
+    window._calSelectedDate = _selDate || null;   // ＋ 버튼이 이 날짜로 추가
     renderCalendarGrid();       // ★ 달력 뼈대 먼저 표시 (일정은 로드 후 채움)
     _pulseGrab();
-    await loadCalendarData();
+    var _cb0 = document.getElementById('customerBody');
+    if (_cb0) _cb0.scrollTop = 0;
+    await loadCalendarData();   // 끝에서 renderDayDetail(_selDate) 가 아래 목록을 채운다
+    if (resume) { try { _restoreCalScroll(); } catch (e) {} }
   };
 
   /* ══════════════════════════════════════════

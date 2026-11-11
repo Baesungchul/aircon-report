@@ -548,6 +548,9 @@
     }
     /* 고객명 안전망 (2026-09-07) — AI 가 비워도 전사문의 [발신자: ] 줄에서 되살린다.
        ⚠️ 저장된 이름 대신 번호가 표시된 화면도 있어서, 숫자로만 된 값은 이름이 아니다. */
+    /* ★ 2026-11-12 AI 가 주소칸에 단지명을 그대로 넣었으면 주소가 없는 것으로 본다.
+         (예전 학습 기록이 이렇게 가르쳤다) 일정추가 창이 주소가 비면 단지명을 넣으므로 화면은 같다. */
+    if (obj.address && obj.apt && String(obj.address).trim() === String(obj.apt).trim()) obj.address = '';
     obj.name = _cleanName(obj.name);
     if (!obj.name) {
       var _nm = srcText.match(/\[발신자:\s*([^\]\n]{1,20})\]/);

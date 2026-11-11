@@ -3856,13 +3856,33 @@
       _setv('qwTarget', prefill.target); _setv('qwPhone', prefill.phone); _setv('qwAddr', prefill.address);
       _setv('qwPrice', (prefill.price ? String(prefill.price) : '')); _setv('qwStart', prefill.startTime); _setv('qwEnd', prefill.endTime);
       _setv('qwMemo', prefill.memo);
-      // 주소가 비었는데 아파트/건물명이 있으면 네비게이션용으로 주소칸에 아파트명을 채움
-      try {
-        var _addrEl = document.getElementById('qwAddr');
-        var _aptStr = (prefill.apt != null) ? String(prefill.apt).trim() : '';
-        if (_addrEl && !(_addrEl.value || '').trim() && _aptStr) _addrEl.value = _aptStr;
-      } catch (e) {}
     }
+    /* ★ 2026-11-12 주소가 없을 때만 아파트명을 주소칸에 넣는다 (사용자 요청).
+         예전엔 AI 분석으로 열 때 한 번만 넣어서
+           · 직접 입력하는 일정은 주소가 비면 그대로 비어 있었고
+           · 현장명을 고쳐도 주소칸엔 처음 넣은 이름이 남았다.
+         → 현장명을 입력·수정할 때마다, 주소칸이 비어 있거나 '앞서 자동으로 넣은 값'일 때만 따라 바꾼다.
+           사용자가 주소를 직접 입력하면 그 뒤로는 손대지 않는다. */
+    var _qwAddrAuto = null;
+    try {
+      var _addrEl = document.getElementById('qwAddr');
+      var _aptEl  = document.getElementById('qwApt');
+      var _syncAddr = function () {
+        var a = String(_aptEl.value || '').trim();
+        var cur = String(_addrEl.value || '').trim();
+        if (cur && cur !== _qwAddrAuto) return;          // 사용자가 직접 넣은 주소 — 그대로 둔다
+        _addrEl.value = a;
+        _qwAddrAuto = a || null;
+      };
+      if (_addrEl && _aptEl) {
+        _syncAddr();
+        _aptEl.addEventListener('input', _syncAddr);
+        _addrEl.addEventListener('input', function () {
+          var cur = String(_addrEl.value || '').trim();
+          if (cur !== _qwAddrAuto) _qwAddrAuto = null;    // 직접 고친 순간부터 자동 따라가기 중단
+        });
+      }
+    } catch (e) {}
     try {   // ★ 작업자 비어 있으면 기본값 미리 채움 (콤보 변환 전에)
       var _dwEl = document.getElementById('qwWorker');
       if (_dwEl && !(_dwEl.value || '').trim() && window.WorkerCombo && WorkerCombo.defaultName) {
@@ -3997,6 +4017,8 @@
             Object.keys(_finV).forEach(function (k) {
               if (_finV[k] === _qwInit[k]) _finV[k] = (_aiV[k] == null ? '' : _aiV[k]);
             });
+            /* 주소칸에 아파트명이 들어간 건 창의 자동값이다 — 정답으로 가르치지 않는다 */
+            if (_finV.address && _finV.address === String(_finV.apt || '').trim()) _finV.address = '';
             ClaudeAI.saveCorrection(prefill.__aiSource, _aiV, _finV);
             /* 업종은 맞았든 고쳤든 저장할 때 확정된 업종을 기록한다 — 쌓일수록 다음 판정이 정확해진다 */
             if (ClaudeAI.saveIndustryLearn) ClaudeAI.saveIndustryLearn(prefill.__aiSource, _qwPfName());

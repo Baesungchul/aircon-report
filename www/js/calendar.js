@@ -3492,6 +3492,9 @@
              (멀쩡한 일정을 한 달치 쓸어간 적이 있다). 그래서 여기서 직접 마무리한다.
              ⚠️ 새 문서가 서버에 보인 뒤에 옛 것을 치운다 — 반대로 하면 상대 화면에서
                 이 일정이 잠깐 사라진다. 기다리는 동안 화면을 붙잡지 않는다(await 하지 않는다). */
+          /* ★ 2026-11-16 — 새 문서를 여기서 바로 올린다. 예전엔 전체 동기화(모든 폴더를 읽는다)를
+               기다렸는데, 그게 30초를 넘으면 아래 정리가 포기해 옛 날짜 문서가 상대 폰에 계속 남았다. */
+          try { if (window.CloudSync && CloudSync.pushSession) CloudSync.pushSession(newName, sess); } catch (e) {}
           try {
             if (window.CloudSync && CloudSync.retireRenamedItem) CloudSync.retireRenamedItem(oldName, newName);
           } catch (e) {}

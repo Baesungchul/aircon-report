@@ -477,6 +477,7 @@
       var curSet = {}; currentIds.forEach(function(i){ curSet[i]=1; });
       var repaired = 0, ghosts = 0;
       var diverged = 0, stuck = 0;   // ★ R4 — 내용이 다른 것 / 상대 수정을 못 받은 것
+      var moved = 0;                 // ★ 2026-11-16 — 날짜를 옮기고 남은 옛 문서를 정리한 수
       /* ⚠️ 이 블록은 이제 '지우는 곳'이 아니라 **'빠진 것을 찾아 메우는 곳'(R1)** 이다.
            자동 삭제는 2026-09-18 에 껐다 — 아래 긴 주석 참고. */
       if (currentIds.length > 0 && scanOk) {
@@ -509,6 +510,7 @@
             var cloudHash = {};  // ★ R4 — 그 문서가 들고 있다고 말하는 내용 지문
             var cloudSaved = {}; // ★ R4 — 그 문서의 저장시각(내가 못 받은 상대 수정 찾기)
             var legacy = [];     // 기기 식별자가 없는 옛 문서(조건부로만 정리한다)
+            var orphans = [];    // ★ 2026-11-16 — 서버에만 있는 내 문서(날짜 옮긴 흔적인지 아래에서 본다)
             cloudSnap.forEach(function (doc) {
               var id = doc.id;
               var d = doc.data() || {};
@@ -523,6 +525,7 @@
               if (d.manual || String(d.workId || id).indexOf('m_') === 0) return;  // 수동 일정 보존
               if (d.trashed) return;                                               // 휴지통 보존
               if (d.claimedBy) return;                                             // 가져가기 처리중 보존
+              if (!d.deviceId || d.deviceId === deviceId()) orphans.push(id);
               /* ★ R3 — 다른 기기가 올린 문서는 건드리지 않는다.
                  기기 A·B 가 서로의 작업을 치워 버리고, 치운 쪽만 해시를 지우는 바람에
                  어느 쪽도 다시 안 올리는 상태(영구 누락)가 여기서 만들어졌다. */
@@ -554,6 +557,37 @@
                ⭐ 비용 0 — 바로 위에서 서버 문서를 이미 전부 읽었다. 그 목록을 '지울 것 찾기'에만
                   쓰고 있었는데, 같은 목록으로 반대쪽(로컬엔 있는데 서버엔 없는 것)도 알 수 있다.
                → 해시를 지우고 그 자리에서 다시 올린다. 12시간마다 도는 이 대조가 곧 자가복구다. */
+            /* ★★ 2026-11-16 — 날짜를 옮긴 일정의 옛 문서 정리 (정리 대기 목록이 생기기 전에 남은 것)
+               날짜를 바꾸면 폴더 이름의 날짜만 바뀌고 꼬리(_1731…)는 그대로다(calendar.js 날짜 변경).
+               그래서 「서버에만 있는 문서」의 꼬리가 지금 로컬의 **한 작업과만** 정확히 같고,
+               그 작업의 새 문서가 서버에 멀쩡히 있으면 = 옮겨 간 일정의 옛 문서다.
+               ⚠️ 이건 꺼 둔 자동 정리(없어 보이니 지운다)와 다르다. '없어서'가 아니라
+                  '옮겨 간 곳이 로컬과 서버 양쪽에 있어서' 정리한다. 부분 스캔이어도 잘못 지울 수 없다 —
+                  못 읽은 폴더는 짝이 안 생길 뿐이다.
+               ⚠️ 꼬리 일치는 그대로이거나, 같은 날 이름이 겹쳐 '-2' 같은 번호가 붙은 경우만 인정한다.
+               ⚠️ 짝이 둘 이상이면 손대지 않는다. */
+            try {
+              var _tail = function (x) { var m = /^\d{4}-\d{2}-\d{2}(_.+)$/.exec(String(x)); return m ? m[1] : ''; };
+              var _byTail = {};
+              currentIds.forEach(function (cid) {
+                var t = _tail(cid); if (!t) return;
+                var base = t.replace(/-\d+$/, '');
+                [t, base].forEach(function (k) { (_byTail[k] = _byTail[k] || []).indexOf(cid) < 0 && _byTail[k].push(cid); });
+              });
+              for (var oi = 0; oi < orphans.length; oi++) {
+                var oid = orphans[oi], ot = _tail(oid);
+                if (!ot || ot.length < 6) continue;
+                var cands = (_byTail[ot] || []).filter(function (cid) {
+                  if (cid === oid || cid.slice(0, 10) === oid.slice(0, 10)) return false;
+                  var ct = _tail(cid);
+                  return ct === ot || new RegExp('^' + ot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '-\\d+$').test(ct);
+                });
+                if (cands.length !== 1 || !cloudHas[cands[0]]) continue;
+                if (await markMoved(uid, oid, cands[0])) moved++;
+              }
+              if (moved) console.warn('[CloudSync] 날짜를 옮기고 남은 옛 문서 ' + moved + '건을 정리했습니다');
+            } catch (e) { console.warn('[CloudSync] 옮긴 일정 정리 실패(스킵)', e); }
+
             var missing = currentIds.filter(function (id) { return !cloudHas[id]; });
             missing.forEach(function (id) {
               var it = byId[id]; if (!it) return;
@@ -682,13 +716,16 @@
       noteOk();
       _lastRun = { scanned: items.length, changed: writes, repaired: repaired,
                    scanFailed: scanFailed, badDates: badDates, ghosts: ghosts,
-                   diverged: diverged, stuck: stuck };
+                   diverged: diverged, stuck: stuck, moved: moved };
       /* ⚠️ '휴지통정리' 항목은 뺐다 — 자동 삭제를 끈 뒤로 언제나 0 이라 읽는 사람을 헷갈리게 한다.
            대신 repaired(다시 올린 것)·ghosts(서버에만 있는 것)를 남긴다. */
       console.log('[CloudSync] 동기화: 총 ' + items.length + '건, 변경 ' + writes +
                   ', 복구 ' + repaired + ', 내용불일치 ' + diverged + ', 못받음 ' + stuck +
                   ', 서버에만 ' + ghosts);
       try { if (window.Diag) Diag.noteSync({ scanned: items.length, changed: writes, removed: 0 }); } catch (e) {}
+      /* ★ 2026-11-16 — 날짜 옮긴 일정의 정리 대기 목록. 이번 실행에서 올린 새 문서가 큐에서
+           빠진 뒤에 본다(안 기다리면 '아직 안 보임'으로 한 바퀴를 헛돈다). 화면은 붙잡지 않는다. */
+      try { gateIdle(60000).then(function () { CloudSync.processPendingRetires(); }); } catch (e) {}
       /* 2026-09-07 — 동기화는 사용자가 시킨 일이 아니고 건수도 쓸모가 없다. 로그만 남긴다 */
     } catch (e) {
       console.warn('[CloudSync] 동기화 오류', e);
@@ -812,31 +849,129 @@
         상대 화면에서 그 일정이 잠깐 사라졌다 나타난다(원래 cloud:false 로 둔 이유).
      ⚠️ 새 문서가 끝내 안 보이면 아무것도 지우지 않는다. 두 개가 보이는 건 고칠 수 있지만
         둘 다 없어지는 건 못 고친다. */
+  /* ★★ 2026-11-16 — 날짜를 옮긴 일정이 상대 폰 옛 날짜에 계속 남던 문제 (사용자 신고)
+     ☠️ 원인: 위 방식은 '새 문서가 보일 때까지' 2.5초 × 12번(30초)만 기다리고 포기했다.
+        그런데 새 문서를 올리는 syncAll 은 모든 폴더의 _session.json(썸네일 포함)을 다 읽고 나서야
+        올린다 — 작업이 많으면 그것만 30초를 넘는다. 이미 동기화가 돌고 있으면 그 요청은
+        건너뛰고(_syncing), 앱이 백그라운드로 가면 타이머도 멈춘다.
+        포기한 옛 문서는 자동 정리가 꺼져 있어(2026-09-18) **영원히** 남았다.
+     → 세 겹으로 막는다.
+        ① 호출부(calendar.js)가 새 문서를 그 자리에서 바로 올린다(CloudSync.pushSession) — 스캔을 기다리지 않는다
+        ② 할 일을 localStorage 「정리 대기 목록」에 먼저 적는다. 30초 안에 못 끝내도 목록은 남고,
+           다음 syncAll 이 끝날 때마다 다시 시도한다. 끝난 것만 목록에서 지운다
+        ③ 이 장치가 없던 시절에 이미 남은 옛 문서는 전체 대조(syncAll)에서 폴더 이름 꼬리로 찾아 정리한다
+     ⚠️ 순서는 그대로 — 새 문서가 서버에 보인 뒤에만 옛 것을 치운다.
+     ⚠️ 옛 문서는 지우지 않고 trashed + movedTo 로 표시한다. movedTo 가 있으면 공유 휴지통에도 안 나온다
+        (지운 게 아니라 옮긴 것이므로). */
+  function rkey(uid){ return 'cloudRetirePending_' + uid; }
+  function getRetires(uid){
+    try { var a = JSON.parse(localStorage.getItem(rkey(uid)) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function setRetires(uid, a){
+    try {
+      if (a.length) localStorage.setItem(rkey(uid), JSON.stringify(a.slice(-50)));
+      else localStorage.removeItem(rkey(uid));
+    } catch (e) {}
+  }
+  function addRetire(uid, o, n){
+    var a = getRetires(uid).filter(function (x) { return x && x.o !== o; });
+    a.push({ o: o, n: n, at: Date.now() });
+    setRetires(uid, a);
+  }
+  function dropRetire(uid, o){
+    setRetires(uid, getRetires(uid).filter(function (x) { return x && x.o !== o; }));
+  }
+  /* 옛 문서를 '옮겨 감'으로 표시. 끝났으면(표시했거나 문서가 이미 없으면) true */
+  function markMoved(uid, oldWorkId, newWorkId){
+    var id = safeId(oldWorkId);
+    return itemsCol().doc(id).update({
+      trashed: true,
+      trashedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      trashedBy: uid,
+      movedTo: String(newWorkId || '')
+    }).then(function () {
+      try { localStorage.removeItem(hkey(uid, id)); } catch (e) {}
+      console.log('[CloudSync] 날짜 옮긴 옛 문서 정리', oldWorkId, '→', newWorkId);
+      return true;
+    }, function (e) {
+      if (e && e.code === 'not-found') return true;   // 애초에 서버에 없었다 — 할 일 없음
+      console.warn('[CloudSync] 옛 문서 정리 실패(다음에 다시)', oldWorkId, e && e.code);
+      return false;
+    });
+  }
+  /* 대기 하나를 한 번 시도. 새 문서가 아직 안 보이면 false(목록에 남긴다) */
+  function retireOnce(uid, o, n){
+    return itemsCol().doc(safeId(n)).get().then(function (snap) {
+      if (!snap.exists || (snap.data() || {}).trashed) return false;
+      return markMoved(uid, o, n).then(function (ok) { if (ok) dropRetire(uid, o); return ok; });
+    }, function () { return false; });
+  }
+  /* 정리 대기 목록 전체를 한 번 훑는다 — syncAll 이 끝날 때마다 부른다.
+     30일 넘게 못 끝낸 것은 버린다(새 폴더를 그 뒤에 지웠다면 영영 안 끝난다). */
+  var _retireBusy = false;
+  CloudSync.processPendingRetires = function () {
+    if (!loggedIn() || _retireBusy) return Promise.resolve(0);
+    var uid = Cloud.user.uid;
+    var list = getRetires(uid);
+    if (!list.length) return Promise.resolve(0);
+    var LIMIT = 30 * 24 * 60 * 60 * 1000;
+    _retireBusy = true;
+    var done = 0;
+    return list.reduce(function (pr, x) {
+      return pr.then(function () {
+        if (!x || !x.o || !x.n) return;
+        if (Date.now() - (x.at || 0) > LIMIT) { dropRetire(uid, x.o); return; }
+        return retireOnce(uid, x.o, x.n).then(function (ok) { if (ok) done++; });
+      });
+    }, Promise.resolve()).then(function () {
+      _retireBusy = false;
+      if (done) console.log('[CloudSync] 정리 대기 ' + done + '건 처리');
+      return done;
+    }, function () { _retireBusy = false; return done; });
+  };
+
   CloudSync.retireRenamedItem = function (oldWorkId, newWorkId, opts) {
     if (!loggedIn() || !oldWorkId || !newWorkId || oldWorkId === newWorkId) return Promise.resolve(false);
     opts = opts || {};
-    var newId = safeId(newWorkId);
+    var uid = Cloud.user.uid;
+    addRetire(uid, oldWorkId, newWorkId);          // ★ 먼저 적는다 — 아래가 끝나기 전에 앱이 꺼져도 남는다
     var tries = 0;
     var MAX = opts.max || 12, GAP = opts.gap || 2500;   // 기본 최대 30초쯤 기다린다(검사에서만 줄인다)
-    CloudSync.autoSync();                          // 새 문서를 얼른 올려 달라고 재촉
+    CloudSync.autoSync();                          // 새 문서를 얼른 올려 달라고 재촉(호출부가 이미 바로 올렸다면 해시로 건너뛴다)
     return new Promise(function (res) {
       (function look() {
-        itemsCol().doc(newId).get().then(function (snap) {
-          if (snap.exists && !(snap.data() || {}).trashed) {
-            CloudSync.trashWorkItem(oldWorkId).then(function () { res(true); }, function () { res(false); });
-            return;
-          }
+        retireOnce(uid, oldWorkId, newWorkId).then(function (ok) {
+          if (ok) { res(true); return; }
           if (++tries >= MAX) {
-            console.warn('[CloudSync] 새 문서가 안 보여 옛 문서를 그대로 둡니다', oldWorkId, '→', newWorkId);
+            console.warn('[CloudSync] 새 문서가 아직 안 보여 정리 대기 목록에 남깁니다', oldWorkId, '→', newWorkId);
             res(false); return;
           }
-          setTimeout(look, GAP);
-        }).catch(function () {
-          if (++tries >= MAX) { res(false); return; }
           setTimeout(look, GAP);
         });
       })();
     });
+  };
+
+  /* ★ 2026-11-16 — 한 작업을 스캔 없이 바로 올린다 (날짜 변경 직후 전용).
+     scanLocalItems 가 만드는 것과 **같은 모양**으로 감싸서 평소 경로(pushFull·pushOne)를 그대로 탄다.
+     해시·savedAt 가드가 모두 그대로라 나중에 syncAll 이 다시 봐도 중복 업로드가 없다. */
+  CloudSync.pushSession = function (folderName, sess) {
+    if (!loggedIn() || !folderName || !sess || !sess.units || !sess.units.length) return false;
+    var uid = Cloud.user.uid;
+    var it = { type: 'work', sortDate: String(folderName).slice(0, 10), data: {
+      folderName: folderName, apt: sess.apt || '', date: sess.date || String(folderName).slice(0, 10),
+      units: sess.units, totalUnits: sess.units.length,
+      totalPhotos: sess.units.reduce(function (s, u) { return s + (u.beforeCount || 0) + (u.afterCount || 0); }, 0),
+      session: sess
+    }};
+    try {
+      var p = toPayload(it);
+      if (!p.workId || !p.date || badDate(p.date)) return false;
+      var id = safeId(p.workId);
+      pushFull(uid, it, p, id);
+      return pushOne(uid, it, p, id, false);
+    } catch (e) { console.warn('[CloudSync] 바로 올리기 실패(다음 동기화에서)', e); return false; }
   };
 
   CloudSync.trashWorkItem = function (workId) {

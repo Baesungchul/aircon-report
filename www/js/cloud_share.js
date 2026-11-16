@@ -277,6 +277,7 @@
         photoOrder: d.photoOrder || null,  // ★ 2026-07-11: 순서편집 동기화 (openInWorkTab 정렬용)
         addedPhotos: d.addedPhotos || 0,   // ★ 2026-07-11: 상대가 보탠 사진 수 (구분 표시용)
         trashed: !!d.trashed, trashedAt: d.trashedAt || null,
+        movedTo: d.movedTo || '',   // ★ 2026-11-16 날짜를 옮기고 남은 옛 문서 — 휴지통에도 안 보인다
         ownerUid: pUid, partnerUid: pUid,
         partnerName: (pUid === myUid()) ? '내 일정' : (_partnerNames[pUid] || '상대')
       }
@@ -1168,9 +1169,11 @@
   /* ════════ 공유 휴지통 목록/화면 ════════ */
   CloudShare.getTrashItems = function(){
     var out = [];
-    (_myTrashedItems || []).forEach(function(it){ out.push(it); });
+    /* ★ 2026-11-16 movedTo 가 있는 것은 지운 일정이 아니라 날짜를 옮긴 일정의 옛 문서다.
+         휴지통에 보이면 지운 줄 알고, 되살리면 같은 일정이 두 날짜에 생긴다. */
+    (_myTrashedItems || []).forEach(function(it){ if (!(it.data && it.data.movedTo)) out.push(it); });
     Object.keys(_partnerItems).forEach(function(ou){
-      (_partnerItems[ou] || []).forEach(function(it){ if (it.data && it.data.trashed) out.push(it); });
+      (_partnerItems[ou] || []).forEach(function(it){ if (it.data && it.data.trashed && !it.data.movedTo) out.push(it); });
     });
     out.sort(function(a,b){
       function ms(x){ return (x && typeof x.toMillis === 'function') ? x.toMillis() : 0; }

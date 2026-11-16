@@ -354,6 +354,76 @@ const WORK = (n) => '2026-09-0' + n;
     return '날짜 변경 경로';
   });
 
+  console.log('\n[4-2] 날짜 옮긴 일정이 상대 폰 옛 날짜에 남던 문제 (2026-11-16 신고)');
+  const OLD = '2026-11-15_1731000000001', NEW = '2026-11-20_1731000000001';
+
+  await achk('30초 안에 못 끝내도 정리 대기 목록에 남고, 나중에 끝낸다', async () => {
+    /* ☠️ 예전엔 30초 기다리고 포기했다. 새 문서를 올리는 전체 동기화가 그보다 오래 걸리면
+         옛 문서가 상대 폰에 영원히 남았다(자동 정리는 꺼져 있다). */
+    const env = load({ folders: [NEW], server: { [OLD]: { workId: OLD, date: OLD.slice(0, 10) } } });
+    const ok = await env.CloudSync.retireRenamedItem(OLD, NEW, { gap: 5, max: 2 });
+    must(ok === false, '새 문서가 없는데 끝났다고 합니다');
+    must(!env.srv[OLD].trashed, '새 문서가 없는데 옛 것을 치웠습니다');
+    must(/cloudRetirePending_me/.test(Object.keys(env.ls._d).join(' ')), '정리 대기 목록에 안 남았습니다 — 다시 시도할 길이 없습니다');
+    env.srv[NEW] = { workId: NEW, date: NEW.slice(0, 10) };      // 나중에 새 문서가 올라감
+    const n = await env.CloudSync.processPendingRetires();
+    must(n === 1, '대기 목록을 처리하지 않았습니다');
+    must(env.srv[OLD].trashed === true && env.srv[OLD].movedTo === NEW, '옛 문서를 옮김으로 표시하지 않았습니다');
+    must(!env.ls.getItem('cloudRetirePending_me'), '끝난 것이 목록에 남았습니다');
+    return '나중에 마무리';
+  });
+
+  await achk('날짜를 바꾸면 새 문서를 스캔 없이 바로 올린다', async () => {
+    const env = load({ folders: [], server: {} });
+    const sess = { apt: '현장', date: '2026-11-20', units: [{ name: '101', customer: {} }], savedAt: '2026-11-16T00:00:00.000Z' };
+    env.CloudSync.pushSession(NEW, sess);
+    for (let i = 0; i < 40 && !env.srv[NEW]; i++) await new Promise(r => setTimeout(r, 25));
+    must(env.srv[NEW] && env.srv[NEW].date === '2026-11-20', '새 문서가 바로 안 올라갔습니다');
+    return '바로 올림';
+  });
+
+  await achk('이미 남아 있는 옛 문서를 폴더 이름 꼬리로 찾아 정리한다', async () => {
+    const env = load({
+      folders: [NEW, '2026-11-02_1731000000002'],
+      server: {
+        [OLD]: { workId: OLD, date: '2026-11-15' },                       // 옛 날짜에 남은 것
+        [NEW]: { workId: NEW, date: '2026-11-20' },
+        '2026-11-01_1731000000009': { workId: '2026-11-01_1731000000009', date: '2026-11-01' }  // 짝 없는 문서
+      }
+    });
+    await runFull(env);
+    for (let i = 0; i < 40 && !env.srv[OLD].trashed; i++) await new Promise(r => setTimeout(r, 25));
+    must(env.srv[OLD].trashed === true && env.srv[OLD].movedTo === NEW, '옛 날짜 문서가 남았습니다');
+    must(!env.srv[NEW].trashed, '새 문서를 치웠습니다');
+    must(!env.srv['2026-11-01_1731000000009'].trashed, '짝이 없는 문서를 치웠습니다 — 자동 정리를 되살린 셈입니다');
+    return '옮긴 것만 정리';
+  });
+
+  await achk('짝의 새 문서가 서버에 없으면 옛 문서를 건드리지 않는다', async () => {
+    const env = load({ folders: [NEW], server: { [OLD]: { workId: OLD, date: '2026-11-15' } } });
+    /* 같은 대조 안에서 R1 이 새 문서를 다시 올린다. 옛 것은 그게 서버에 보인 **뒤에만** 정리돼야 한다 */
+    const realUpdate = env.srv;   // 정리되는 순간 새 문서가 있었는지 기록
+    let seenNewAtRetire = null;
+    const orig = Object.getOwnPropertyDescriptor(realUpdate, OLD);
+    let val = orig.value;
+    Object.defineProperty(realUpdate, OLD, { get: () => val, set: (v) => { if (v && v.movedTo) seenNewAtRetire = !!realUpdate[NEW]; val = v; }, enumerable: true, configurable: true });
+    await runFull(env);
+    for (let i = 0; i < 40; i++) await new Promise(r => setTimeout(r, 25));
+    must(seenNewAtRetire !== false, '새 문서가 서버에 없을 때 옛 것을 치웠습니다');
+    must(env.srv[NEW], '새 문서가 끝내 안 올라갔습니다');
+    return seenNewAtRetire ? '새 문서 확인 뒤 정리' : '보류';
+  });
+
+  await achk('공유 휴지통에 옮긴 일정은 나오지 않는다', async () => {
+    const c = read('cloud_share.js');
+    must(/movedTo: d\.movedTo/.test(c), 'toCalItem 이 movedTo 를 안 담습니다');
+    must(/!\(it\.data && it\.data\.movedTo\)/.test(c) && /!it\.data\.movedTo/.test(c), '휴지통 목록이 옮긴 일정을 거르지 않습니다');
+    const cal = fs.readFileSync(path.join(JS, 'calendar.js'), 'utf8');
+    const a = cal.indexOf('CloudSync.pushSession(newName, sess)'), b = cal.indexOf('CloudSync.retireRenamedItem(oldName, newName)');
+    must(a > 0 && a < b, '날짜 변경 경로가 새 문서를 먼저 올리지 않습니다');
+    return '거름';
+  });
+
   console.log('\n[5] F4 — 날짜 형식이 어긋난 작업');
 
   await achk('형식이 다른 날짜는 올리지 않는다', async () => {

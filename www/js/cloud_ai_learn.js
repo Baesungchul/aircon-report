@@ -31,14 +31,44 @@
 
   var _busy = false, _pending = false;
 
+  /* ★ 2026-11-17 문서 크기 안전장치 — Firestore 문서는 1MB 가 한도다. 넘으면 set 이 통째로 실패해
+       교정·업종 학습 둘 다 동기화가 멈춘다(경고만 남고 사용자는 모른다).
+       교정 100건 + 업종 200건으로 늘린 뒤 긴 캡처 전사문이 쌓이면 닿을 수 있어, 올리기 전에
+       850KB 안쪽이 될 때까지 **오래된 것부터** 덜어 낸다. 덜어 낸 결과를 로컬에도 그대로 반영해
+       다음 병합 때 다시 늘어나 매번 올리는 일이 없게 한다. */
+  var DOC_BUDGET = 850000;
+  function _bytes(o) {
+    try {
+      var s = JSON.stringify(o);
+      return (typeof TextEncoder !== 'undefined') ? new TextEncoder().encode(s).length : s.length * 3;
+    } catch (e) { return 0; }
+  }
+  function _fitBudget(list, ind) {
+    var cut = false, guard = 0;
+    while (_bytes({ list: list, ind: ind }) > DOC_BUDGET && guard++ < 50) {
+      if (ind.length > 20 && ind.length >= list.length) ind = ind.slice(Math.ceil(ind.length * 0.1));
+      else if (list.length > 20) list = list.slice(Math.ceil(list.length * 0.1));
+      else break;
+      cut = true;
+    }
+    return { list: list, ind: ind, cut: cut };
+  }
+  CloudAILearn._fitBudget = _fitBudget;   /* 검사용 */
+
   async function push(silent) {
     if (!loggedIn() || !hasAI()) return;
     if (_busy) { _pending = true; return; }
     _busy = true;
     try {
+      var _fit = _fitBudget(ClaudeAI.getCorrections(), (ClaudeAI.getIndLearn ? ClaudeAI.getIndLearn() : []));
+      if (_fit.cut) {
+        console.warn('[AILearn] 학습 기록이 커서 오래된 것을 덜어 냈습니다', _fit.list.length, _fit.ind.length);
+        try { ClaudeAI.setCorrectionsRaw(_fit.list); } catch (e) {}
+        try { if (ClaudeAI.setIndLearnRaw) ClaudeAI.setIndLearnRaw(_fit.ind); } catch (e) {}
+      }
       await docRef().set({
-        list: ClaudeAI.getCorrections(),
-        ind: (ClaudeAI.getIndLearn ? ClaudeAI.getIndLearn() : []),   // ★ 2026-11-12 업종 학습
+        list: _fit.list,
+        ind: _fit.ind,   // ★ 2026-11-12 업종 학습
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     } catch (e) { console.warn('[AILearn] push 실패:', e && e.message); }

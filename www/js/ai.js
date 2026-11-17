@@ -75,7 +75,10 @@
   function saveCorrection(sourceText, aiRaw, finalOut) {
     if (learnOff('ai_schedule_learn_off')) return;
     try {
-      sourceText = String(sourceText || '').trim();
+      /* ★ 2026-11-17 원문 2,000자 상한 — 보관 건수를 40→100 으로 늘리면서, 캡처 전사문(상한 3,000토큰)이
+           그대로 쌓이면 클라우드 문서(ai_corrections/{uid}, 1MB 한도)를 넘길 수 있다.
+           프롬프트에는 어차피 1,200자(SHOT_MAX)까지만 싣는다. */
+      sourceText = String(sourceText || '').trim().slice(0, 2000);
       if (!sourceText) return;
       var ai = _normOut(aiRaw), fin = _normOut(finalOut);
       var changed = CORR_FIELDS.some(function (k) { return ai[k] !== fin[k]; });
